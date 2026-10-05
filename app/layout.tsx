@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
+import { Providers } from '@/app/providers'
 import { env } from '@/lib/env'
 import '@/components/SCN/tailwind/styles.css'
 import '@/styles/global.scss'
@@ -16,7 +17,9 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: LayoutProps<'/'>) {
   return (
     <html lang="en" className={inter.variable}>
-      <body>{children}</body>
+      <body>
+        <Providers>{children}</Providers>
+      </body>
     </html>
   )
 }

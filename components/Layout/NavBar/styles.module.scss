@@ -1,0 +1,269 @@
+.header {
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  padding: 0.7rem 1.2rem;
+  box-shadow: var(--shadow-1);
+  width: 100%;
+  height: 4rem;
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 1000;
+  transition: backdrop-filter 0.3s ease;
+  background: var(--color-surface);
+}
+
+.nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: 100%;
+  max-width: 100%;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--color-text);
+  gap: 0.7rem;
+  padding: 0;
+  text-decoration: none;
+  white-space: nowrap;
+  z-index: 1001;
+}
+
+/* Desktop Navigation */
+.desktopNav {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+}
+
+/* Filled by the account area (sign in / user menu) */
+.accountArea {
+  display: flex;
+  align-items: center;
+
+  &:empty {
+    display: none;
+  }
+}
+
+/* Mobile Menu Button */
+.mobileMenuButton {
+  display: none;
+  justify-content: center;
+  align-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  background: none;
+  border: none;
+  color: var(--color-text-2);
+  cursor: pointer;
+  padding: 0.5rem;
+  z-index: 1001;
+
+  svg {
+    width: 1.5rem;
+    height: 1.5rem;
+  }
+}
+
+/* Mobile Navigation Overlay */
+.mobileNavOverlay {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100vh;
+  background: var(--color-overlay);
+  z-index: 999;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.3s ease;
+
+  &.active {
+    opacity: 1;
+    visibility: visible;
+  }
+}
+
+/* Mobile Navigation Menu */
+.mobileNav {
+  display: none;
+  position: fixed;
+  top: 0;
+  right: -100%;
+  width: 80%;
+  max-width: 300px;
+  height: 100vh;
+  background: var(--color-surface);
+  z-index: 1000;
+  transition: right 0.3s ease;
+  box-shadow: -4px 0 6px -1px rgba(0, 0, 0, 0.1);
+  overflow-y: auto;
+
+  &.active {
+    right: 0;
+  }
+}
+
+.mobileNavHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 1.5rem 1.5rem 1rem;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--color-text);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.mobileNavLinks {
+  width: 100%;
+  padding: 1rem 0;
+}
+
+.mobileNavLink {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  padding: 1rem 1.5rem;
+  color: var(--color-text-2);
+  text-decoration: none;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+
+  &:hover {
+    background-color: var(--color-surface-2);
+    color: var(--color-primary);
+  }
+}
+
+.navLink {
+  text-decoration: none;
+  border-radius: 0.5rem;
+  transition: background-color 0.2s;
+  position: relative;
+
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+
+  cursor: pointer;
+
+  /* Underline animation setup */
+  &::after {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    left: 0;
+    width: 0;
+    height: 2px;
+    background-color: currentColor;
+    transition: width 0.3s ease-in-out;
+  }
+
+  span {
+    font-size: 1rem;
+    font-weight: 400;
+    color: var(--color-text-2);
+    opacity: 0.8;
+  }
+
+  span:hover {
+    color: var(--color-primary);
+    opacity: 1;
+  }
+
+  &:hover::after {
+    width: 100%;
+  }
+}
+
+/* Active route underline */
+.navLinkActive::after {
+  width: 100%;
+  background-color: var(--color-primary);
+}
+
+/* Responsive Media Queries */
+@media (width < $breakpoint-md) {
+  .header {
+    padding: 0.7rem 1rem;
+  }
+
+  .desktopNav {
+    display: none;
+  }
+
+  .mobileMenuButton {
+    display: flex;
+  }
+
+  .mobileNavOverlay {
+    display: block;
+  }
+
+  .mobileNav {
+    display: block;
+  }
+}
+
+@media (width <= $breakpoint-xs) {
+  .header {
+    padding: 0.5rem 0.75rem;
+  }
+
+  .mobileNav {
+    width: 90%;
+    max-width: 280px;
+  }
+
+  .mobileNavHeader {
+    padding: 1.25rem 1rem 0.75rem;
+    font-size: 1.1rem;
+  }
+
+  .mobileNavLink {
+    padding: 0.875rem 1rem;
+    font-size: 0.95rem;
+  }
+}
+
+/* Ensure proper spacing for mobile devices */
+@media (width <= $breakpoint-narrow) {
+  .header {
+    padding: 0.5rem;
+    height: 3.5rem;
+  }
+
+  .brand {
+    gap: 0.5rem;
+  }
+
+  .mobileMenuButton {
+    width: 2rem;
+    height: 2rem;
+  }
+}
+
+/* Tablet adjustments */
+@media ($breakpoint-md <= width <= $breakpoint-lg) {
+  .brand {
+    padding: 0 1rem;
+  }
+
+  .desktopNav {
+    gap: 1.5rem;
+  }
+
+  .navLink span {
+    font-size: 0.9rem;
+  }
+}

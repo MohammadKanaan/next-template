@@ -1,0 +1,15 @@
+.pagination {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--color-text-3);
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+
+.page {
+  min-width: 5.5rem;
+  color: var(--color-text);
+  text-align: center;
+  white-space: nowrap;
+}
