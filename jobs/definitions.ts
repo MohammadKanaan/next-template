@@ -35,6 +35,10 @@ export const jobs = {
     schema: sendEmailPayload,
     options: { retryLimit: 5, retryDelay: 30, retryBackoff: true, expireInSeconds: 60 },
   },
+  'delete-object': {
+    schema: z.object({ key: z.string().min(1) }),
+    options: { retryLimit: 5, retryDelay: 30, retryBackoff: true, expireInSeconds: 60 },
+  },
   cleanup: {
     schema: z.object({}),
     options: { retryLimit: 1, expireInSeconds: 300 },

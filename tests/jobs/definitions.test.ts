@@ -37,4 +37,11 @@ describe('job definitions', () => {
     expect(jobs['send-email'].options).toMatchObject({ retryBackoff: true })
     expect(jobs['send-email'].options.retryLimit).toBeGreaterThan(1)
   })
+
+  it('requires a key for the delete-object job and retries it with backoff', () => {
+    expect(jobs['delete-object'].schema.safeParse({ key: 'avatars/u/1' }).success).toBe(true)
+    expect(jobs['delete-object'].schema.safeParse({ key: '' }).success).toBe(false)
+    expect(jobs['delete-object'].schema.safeParse({}).success).toBe(false)
+    expect(jobs['delete-object'].options).toMatchObject({ retryBackoff: true })
+  })
 })

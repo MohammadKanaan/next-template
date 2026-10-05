@@ -8,6 +8,7 @@ import { Suspense, useCallback, useEffect, useState } from 'react'
 import { SignOutButton } from '@/components/Auth/SignOutButton'
 import { Button } from '@/components/SCN/button'
 import { ThemeToggle } from '@/components/ThemeToggle'
+import { UserAvatar } from '@/components/UserAvatar'
 import { useScrollLock } from '@/hooks/useScrollLock'
 import { BREAKPOINTS } from '@/lib/constants-breakpoints'
 import {
@@ -15,6 +16,7 @@ import {
   ROUTE_LOGIN,
   ROUTE_POSTS,
   ROUTE_PRIVATE,
+  ROUTE_SETTINGS,
   ROUTE_UI_KIT,
 } from '@/lib/constants-routes'
 import type { CurrentUser } from '@/lib/dto/users'
@@ -71,7 +73,10 @@ function AccountActions({ user, pending }: AccountActionsProps) {
   }
   return (
     <>
-      <span className={styles.userName}>{user.name}</span>
+      <Link href={ROUTE_SETTINGS} className={styles.profileLink} aria-label="Account settings">
+        <UserAvatar name={user.name} image={user.image} size="sm" />
+        <span className={styles.userName}>{user.name}</span>
+      </Link>
       <SignOutButton />
     </>
   )

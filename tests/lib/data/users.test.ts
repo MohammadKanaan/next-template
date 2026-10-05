@@ -41,6 +41,7 @@ describe('users DAL', () => {
       username: 'ada',
       email: 'ada@example.com',
       emailVerified: false,
+      image: null,
       role: 'user',
     }
     expect(await getViewer()).toEqual(expected)
@@ -66,7 +67,9 @@ describe('users DAL', () => {
     const user = await createUser({})
     const [, payload] = vi.mocked(enqueue).mock.calls.at(-1)!
     const token =
-      payload.template === 'verify-email' && new URL(payload.props.url).searchParams.get('token')
+      'template' in payload &&
+      payload.template === 'verify-email' &&
+      new URL(payload.props.url).searchParams.get('token')
     expect(token).toBeTruthy()
 
     await signInAs(user)

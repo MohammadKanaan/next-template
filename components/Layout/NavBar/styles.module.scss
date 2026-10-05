@@ -49,6 +49,17 @@
   }
 }
 
+.profileLink {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: var(--radius-md);
+
+  &:hover .userName {
+    color: var(--foreground);
+  }
+}
+
 .userName {
   color: var(--muted-foreground);
   font-size: 0.875rem;

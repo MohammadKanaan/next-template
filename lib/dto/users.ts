@@ -21,6 +21,7 @@ export const currentUserSchema = z.object({
   username: z.string(),
   email: z.string(),
   emailVerified: z.boolean(),
+  image: z.string().nullable(),
   role: roleSchema,
 })
 

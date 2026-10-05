@@ -11,6 +11,15 @@ import { ThemeToggle } from '@/components/ThemeToggle'
 import { PageHeader } from '@/components/PageHeader'
 import { Pagination } from '@/components/Pagination'
 import { PostForm } from '@/components/Posts/Form'
+import { AvatarUploader } from '@/components/Settings/AvatarUploader'
+import {
+  Avatar,
+  AvatarBadge,
+  AvatarFallback,
+  AvatarGroup,
+  AvatarGroupCount,
+  AvatarImage,
+} from '@/components/SCN/avatar'
 import { Badge } from '@/components/SCN/badge'
 import { Button } from '@/components/SCN/button'
 import {
@@ -52,6 +61,7 @@ import {
   TableRow,
 } from '@/components/SCN/table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/SCN/tooltip'
+import { UserAvatar } from '@/components/UserAvatar'
 import styles from './styles.module.scss'
 
 type ButtonVariant = NonNullable<ComponentProps<typeof Button>['variant']>
@@ -76,6 +86,12 @@ const BADGE_VARIANTS: BadgeVariant[] = [
   'ghost',
   'link',
 ]
+
+const AVATAR_SAMPLE_IMAGE = `data:image/svg+xml,${encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><rect width="40" height="40" fill="#6366f1"/><circle cx="20" cy="16" r="7" fill="#e0e7ff"/><path d="M6 40c2-10 8-13 14-13s12 3 14 13z" fill="#e0e7ff"/></svg>',
+)}`
+
+const AVATAR_SIZES = ['sm', 'default', 'lg'] as const
 
 const TABLE_ROWS = [
   { id: 'INV-001', name: 'Ada Lovelace', status: 'Active' },
@@ -244,6 +260,42 @@ export function UiKitView() {
               {variant}
             </Badge>
           ))}
+        </div>
+      </Section>
+
+      <Section
+        id="avatar"
+        eyebrow="Display"
+        title="Avatar"
+        description="A picture with an initials fallback, in three sizes; also badges and groups."
+      >
+        <div className={styles.stack}>
+          <div className={styles.row}>
+            {AVATAR_SIZES.map((size) => (
+              <Avatar key={size} size={size}>
+                <AvatarImage src={AVATAR_SAMPLE_IMAGE} alt="" />
+                <AvatarFallback>AL</AvatarFallback>
+              </Avatar>
+            ))}
+            {AVATAR_SIZES.map((size) => (
+              <Avatar key={`${size}-fallback`} size={size}>
+                <AvatarFallback>GH</AvatarFallback>
+              </Avatar>
+            ))}
+            <Avatar size="lg">
+              <AvatarFallback>AT</AvatarFallback>
+              <AvatarBadge />
+            </Avatar>
+          </div>
+          <AvatarGroup>
+            <Avatar>
+              <AvatarFallback>AL</AvatarFallback>
+            </Avatar>
+            <Avatar>
+              <AvatarFallback>GH</AvatarFallback>
+            </Avatar>
+            <AvatarGroupCount>+3</AvatarGroupCount>
+          </AvatarGroup>
         </div>
       </Section>
 
@@ -433,6 +485,40 @@ export function UiKitView() {
             toast.success(`Submitted: ${values.title}`)
             return { ok: true, data: null }
           }}
+        />
+      </Section>
+
+      <Section
+        id="user-avatar"
+        eyebrow="Application components"
+        title="User avatar"
+        description="A user's picture, with their initials until it loads or when there is none."
+      >
+        <div className={styles.row}>
+          <UserAvatar name="Ada Lovelace" image={AVATAR_SAMPLE_IMAGE} size="lg" />
+          <UserAvatar name="Grace Hopper" image={null} size="lg" />
+        </div>
+      </Section>
+
+      <Section
+        id="avatar-uploader"
+        eyebrow="Application components"
+        title="Avatar uploader"
+        description="Picks a file, asks for a presigned upload, sends it to storage, then attaches it. The catalog's handlers refuse, so nothing is uploaded."
+      >
+        <AvatarUploader
+          name="Ada Lovelace"
+          image={null}
+          onCreateUpload={async () => ({
+            ok: false,
+            code: 'FORBIDDEN',
+            message: 'Uploads are disabled in the catalog.',
+          })}
+          onAttach={async () => ({
+            ok: false,
+            code: 'FORBIDDEN',
+            message: 'Uploads are disabled in the catalog.',
+          })}
         />
       </Section>
     </div>

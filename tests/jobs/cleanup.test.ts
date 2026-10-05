@@ -1,10 +1,11 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { handleCleanup } from '@/jobs/cleanup'
-import { deleteExpiredAuthRows } from '@/lib/data/maintenance'
+import { deleteExpiredAuthRows, deleteStalePendingUploads } from '@/lib/data/maintenance'
 
 vi.mock('@/lib/data/maintenance', () => ({
   deleteExpiredAuthRows: vi.fn(async () => ({ sessions: 2, verifications: 1 })),
+  deleteStalePendingUploads: vi.fn(async () => ({ uploads: 3 })),
 }))
 
 describe('cleanup job', () => {
@@ -14,12 +15,16 @@ describe('cleanup job', () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {})
     await handleCleanup({})
     expect(deleteExpiredAuthRows).toHaveBeenCalledTimes(1)
+    expect(deleteStalePendingUploads).toHaveBeenCalledTimes(1)
     expect(log).toHaveBeenCalledWith(expect.stringContaining('2 expired sessions'))
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('3 stale uploads'))
   })
 
   it('re-validates the payload', async () => {
     vi.mocked(deleteExpiredAuthRows).mockClear()
+    vi.mocked(deleteStalePendingUploads).mockClear()
     await expect(handleCleanup('nope')).rejects.toThrow()
     expect(deleteExpiredAuthRows).not.toHaveBeenCalled()
+    expect(deleteStalePendingUploads).not.toHaveBeenCalled()
   })
 })

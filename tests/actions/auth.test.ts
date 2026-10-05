@@ -14,6 +14,7 @@ import { auth, requireUser } from '@/lib/data/auth'
 import { db } from '@/lib/data/db'
 import { UnauthorizedError } from '@/lib/data/errors'
 import { resetRateLimits } from '@/lib/data/rateLimit'
+import type { JobPayload } from '@/jobs/definitions'
 import { enqueue } from '@/lib/server/queue'
 import { cookieJar } from '../helpers/cookies'
 import { createUser, resetDatabase, signInAs, TEST_PASSWORD } from '../helpers/server'
@@ -185,7 +186,10 @@ describe('auth actions', () => {
       const sent = vi
         .mocked(enqueue)
         .mock.calls.map(([, payload]) => payload)
-        .filter((payload) => payload.template === template)
+        .filter(
+          (payload): payload is JobPayload<'send-email'> =>
+            'template' in payload && payload.template === template,
+        )
       return sent.at(-1)
     }
 

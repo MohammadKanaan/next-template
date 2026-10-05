@@ -1,7 +1,8 @@
 // @vitest-environment node
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/data/db'
-import { deleteExpiredAuthRows } from '@/lib/data/maintenance'
+import { deleteExpiredAuthRows, deleteStalePendingUploads } from '@/lib/data/maintenance'
+import { deleteObject } from '@/lib/server/storage'
 import { createUser, resetDatabase } from '../../helpers/server'
 
 const { cookieStore, requestHeaders } = await vi.hoisted(
@@ -12,6 +13,7 @@ vi.mock('next/headers', () => ({
   headers: async () => requestHeaders(),
 }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn(), refresh: vi.fn() }))
+vi.mock('@/lib/server/storage', () => ({ deleteObject: vi.fn(async () => {}) }))
 
 const hour = 60 * 60 * 1000
 
@@ -40,5 +42,54 @@ describe('maintenance DAL', () => {
 
   it('does nothing when nothing has expired', async () => {
     expect(await deleteExpiredAuthRows()).toEqual({ sessions: 0, verifications: 0 })
+  })
+
+  describe('deleteStalePendingUploads', () => {
+    const upload = (key: string, userId: string, status: 'pending' | 'attached', ageMs: number) =>
+      db.upload.create({
+        data: {
+          key,
+          userId,
+          purpose: 'avatar',
+          contentType: 'image/png',
+          size: 10,
+          status,
+          createdAt: new Date(Date.now() - ageMs),
+        },
+      })
+
+    beforeEach(() => {
+      vi.mocked(deleteObject).mockReset()
+    })
+
+    it('deletes pending uploads older than a day with their objects, and nothing else', async () => {
+      const user = await createUser({})
+      await upload('old-pending', user.id, 'pending', 25 * hour)
+      await upload('fresh-pending', user.id, 'pending', 1 * hour)
+      await upload('old-attached', user.id, 'attached', 48 * hour)
+
+      expect(await deleteStalePendingUploads()).toEqual({ uploads: 1 })
+
+      expect(deleteObject).toHaveBeenCalledTimes(1)
+      expect(deleteObject).toHaveBeenCalledWith('old-pending')
+      const keys = (await db.upload.findMany({ orderBy: { key: 'asc' } })).map((row) => row.key)
+      expect(keys).toEqual(['fresh-pending', 'old-attached'])
+    })
+
+    it('keeps the row when the object cannot be deleted, and carries on', async () => {
+      const user = await createUser({})
+      await upload('a-broken', user.id, 'pending', 30 * hour)
+      await upload('b-fine', user.id, 'pending', 30 * hour)
+      vi.mocked(deleteObject).mockImplementation(async (key) => {
+        if (key === 'a-broken') {
+          throw new Error('storage down')
+        }
+      })
+      vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      expect(await deleteStalePendingUploads()).toEqual({ uploads: 1 })
+
+      expect((await db.upload.findMany()).map((row) => row.key)).toEqual(['a-broken'])
+    })
   })
 })

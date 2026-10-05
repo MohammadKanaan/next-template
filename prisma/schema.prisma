@@ -28,6 +28,7 @@ model User {
   sessions      Session[]
   accounts      Account[]
   posts         Post[]
+  uploads       Upload[]
 
   @@map("users")
 }
@@ -90,4 +91,29 @@ model Post {
 
   @@index([userId])
   @@map("posts")
+}
+
+enum UploadPurpose {
+  avatar
+}
+
+enum UploadStatus {
+  pending
+  attached
+}
+
+model Upload {
+  id          String        @id @default(uuid())
+  key         String        @unique
+  userId      String        @map("user_id")
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purpose     UploadPurpose
+  contentType String        @map("content_type")
+  size        Int
+  status      UploadStatus  @default(pending)
+  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([userId, purpose, status])
+  @@index([status, createdAt])
+  @@map("uploads")
 }

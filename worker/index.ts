@@ -1,5 +1,6 @@
 import { PgBoss } from 'pg-boss'
 import { handleCleanup } from '@/jobs/cleanup'
+import { handleDeleteObject } from '@/jobs/deleteObject'
 import { getJobDefinition, jobs, type JobName } from '@/jobs/definitions'
 import { handleSendEmail } from '@/jobs/sendEmail'
 import { db } from '@/lib/data/db'
@@ -51,6 +52,7 @@ async function start() {
   }
 
   await register('send-email', handleSendEmail)
+  await register('delete-object', handleDeleteObject)
   await register('cleanup', handleCleanup)
 
   console.log(`[worker] ready: ${Object.keys(jobs).join(', ')}`)
