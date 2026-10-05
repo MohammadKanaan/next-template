@@ -1,0 +1,41 @@
+// use prisma-8
+
+model User {
+  id        Int               @id @default(autoincrement())
+  name      String
+  username  String            @unique
+  email     String            @unique
+  phone     String?
+  website   String?
+  createdAt TimestamptzString @default(now()) @map("created_at")
+  updatedAt temporal.updatedAtString() @map("updated_at")
+  posts     Post[]
+  sessions  Session[]
+
+  @@map("users")
+}
+
+model Post {
+  id        Int               @id @default(autoincrement())
+  title     String
+  body      String
+  userId    Int               @map("user_id")
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt TimestamptzString @default(now()) @map("created_at")
+  updatedAt temporal.updatedAtString() @map("updated_at")
+
+  @@index([userId])
+  @@map("posts")
+}
+
+model Session {
+  id        Int               @id @default(autoincrement())
+  tokenHash String            @unique @map("token_hash")
+  userId    Int               @map("user_id")
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt TimestamptzString @map("expires_at")
+  createdAt TimestamptzString @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@map("sessions")
+}

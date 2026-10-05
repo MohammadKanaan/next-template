@@ -45,3 +45,9 @@ next-env.d.ts
 # local agent workspaces and generated clients
 .superpowers/
 /generated/
+
+# synced Prisma agent skills
+/.agents/
+/.claude/
+/.cursor/
+/.devin/
