@@ -6,6 +6,8 @@ import { headers } from 'next/headers'
 import { cache } from 'react'
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, signUpInput } from '@/lib/dto/auth'
 import { roleSchema, type Role } from '@/lib/dto/users'
+import { invalidateTags } from '@/lib/server/cache'
+import { userTag } from './cacheTags'
 import { db } from './db'
 import { ForbiddenError, UnauthorizedError } from './errors'
 
@@ -28,6 +30,16 @@ export const auth = betterAuth({
         validator: { input: signUpInput.shape.username },
       },
       role: { type: ['user', 'admin'], required: false, defaultValue: 'user', input: false },
+    },
+  },
+  databaseHooks: {
+    user: {
+      update: {
+        // Any Better Auth-side user change (e.g. email verification) must drop the cached viewer.
+        after: async (user) => {
+          await invalidateTags(userTag(user.id))
+        },
+      },
     },
   },
   // nextCookies must stay the last plugin: it writes Set-Cookie through next/headers in Server Actions.

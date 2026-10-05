@@ -1,9 +1,8 @@
 import { z } from 'zod'
-import { pageSchema, type Page } from '@/lib/dto/common'
-import { postSummarySchema, type ListPostsQuery, type PostSummary } from '@/lib/dto/posts'
+import type { Page } from '@/lib/dto/common'
+import { postsPageSchema, type ListPostsQuery, type PostSummary } from '@/lib/dto/posts'
 import { env } from '@/lib/env'
 
-const postsPageSchema = pageSchema(postSummarySchema)
 const errorMessageSchema = z.object({ message: z.string() })
 
 export class RequestError extends Error {

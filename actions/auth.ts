@@ -15,8 +15,8 @@ export async function signInAction(input: SignInInput): Promise<ActionResult<nul
     const body = parseInput(signInInput, input)
     if (isRateLimitEnabled()) {
       const ip = await getClientIp()
-      consumeRateLimit(`sign-in:ip:${ip}`, { max: 10, windowMs: 60_000 })
-      consumeRateLimit(`sign-in:email:${body.email}`, { max: 5, windowMs: 60_000 })
+      await consumeRateLimit(`sign-in:ip:${ip}`, { max: 10, windowMs: 60_000 })
+      await consumeRateLimit(`sign-in:email:${body.email}`, { max: 5, windowMs: 60_000 })
     }
     await auth.api.signInEmail({ body, headers: await headers() })
     refresh()
@@ -40,7 +40,7 @@ export async function signUpAction(input: SignUpInput): Promise<ActionResult<nul
   try {
     const body = parseInput(signUpInput, input)
     if (isRateLimitEnabled()) {
-      consumeRateLimit(`sign-up:ip:${await getClientIp()}`, { max: 5, windowMs: 60_000 })
+      await consumeRateLimit(`sign-up:ip:${await getClientIp()}`, { max: 5, windowMs: 60_000 })
     }
     if (await isUsernameTaken(body.username)) {
       throw new ValidationError({ username: ['That username is taken'] })

@@ -119,6 +119,72 @@ describe('posts DAL', () => {
     expect(await db.post.count()).toBe(1)
   })
 
+  describe('cache invalidation', () => {
+    it('serves repeated list and detail reads from Redis', async () => {
+      const author = await createUser({})
+      const post = await seedPost(author.id)
+      const findMany = vi.spyOn(db.post, 'findMany')
+      const findUnique = vi.spyOn(db.post, 'findUnique')
+      await listPosts({ page: 1, perPage: 10 })
+      await listPosts({ page: 1, perPage: 10 })
+      await getPost(post.id)
+      await getPost(post.id)
+      expect(findMany).toHaveBeenCalledTimes(1)
+      expect(findUnique).toHaveBeenCalledTimes(1)
+    })
+
+    it('createPost invalidates the cached list', async () => {
+      const author = await createUser({})
+      await seedPost(author.id, 'Old')
+      expect((await listPosts({ page: 1, perPage: 10 })).totalItems).toBe(1)
+      await signInAs(author)
+      await createPost({ title: 'New', body: 'B' })
+      const page = await listPosts({ page: 1, perPage: 10 })
+      expect(page.items.map((post) => post.title)).toEqual(['New', 'Old'])
+    })
+
+    it('updatePost invalidates the cached list and detail', async () => {
+      const author = await createUser({})
+      const post = await seedPost(author.id, 'Before')
+      await listPosts({ page: 1, perPage: 10 })
+      await getPost(post.id)
+      await signInAs(author)
+      await updatePost(post.id, { title: 'After' })
+      expect((await listPosts({ page: 1, perPage: 10 })).items[0].title).toBe('After')
+      expect((await getPost(post.id)).title).toBe('After')
+    })
+
+    it('deletePost invalidates the cached list and detail', async () => {
+      const author = await createUser({})
+      const post = await seedPost(author.id)
+      await listPosts({ page: 1, perPage: 10 })
+      await getPost(post.id)
+      await signInAs(author)
+      await deletePost(post.id)
+      expect((await listPosts({ page: 1, perPage: 10 })).items).toEqual([])
+      await expect(getPost(post.id)).rejects.toBeInstanceOf(NotFoundError)
+    })
+
+    it('computes permissions per viewer from a detail cached by someone else', async () => {
+      const owner = await createUser({})
+      const other = await createUser({})
+      const post = await seedPost(owner.id)
+      await signInAs(owner)
+      expect((await getPost(post.id)).permissions).toEqual({ update: true, delete: true })
+      await signInAs(other)
+      expect((await getPost(post.id)).permissions).toEqual({ update: false, delete: false })
+      signOut()
+      expect((await getPost(post.id)).permissions).toEqual({ update: false, delete: false })
+    })
+
+    it('does not cache a missing post', async () => {
+      await expect(getPost(999)).rejects.toBeInstanceOf(NotFoundError)
+      const author = await createUser({})
+      await db.post.create({ data: { id: 999, userId: author.id, title: 'Late', body: 'B' } })
+      expect((await getPost(999)).title).toBe('Late')
+    })
+  })
+
   it('truncates long bodies and trims whitespace before the ellipsis', () => {
     expect(toExcerpt('short')).toBe('short')
     expect(toExcerpt('abc   def', 6)).toBe('abc…')

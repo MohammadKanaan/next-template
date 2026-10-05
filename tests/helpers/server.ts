@@ -1,6 +1,7 @@
 import { auth } from '@/lib/data/auth'
 import { db } from '@/lib/data/db'
 import type { Role } from '@/lib/dto/users'
+import { getRedis } from '@/lib/server/redis'
 import { cookieJar } from './cookies'
 
 export const TEST_PASSWORD = 'correct-horse-battery'
@@ -11,8 +12,22 @@ export function assertTestDatabase() {
   }
 }
 
+/** Tests share Redis DB 15 only; anything else could hold real data. */
+export function assertTestRedis() {
+  if (!process.env.REDIS_URL?.endsWith('/15')) {
+    throw new Error('Server tests must run against Redis database 15')
+  }
+}
+
+/** Empties the test Redis (cache entries, tag versions, rate-limit counters). */
+export async function resetRedis() {
+  assertTestRedis()
+  await getRedis().flushdb()
+}
+
 export async function resetDatabase() {
   assertTestDatabase()
+  await resetRedis()
   cookieJar.clear()
   await db.$executeRaw`TRUNCATE TABLE posts, sessions, accounts, verifications, users RESTART IDENTITY CASCADE`
 }

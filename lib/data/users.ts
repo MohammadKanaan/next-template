@@ -1,8 +1,10 @@
 import 'server-only'
 import { cache } from 'react'
 import type { Prisma } from '@/generated/prisma/client'
-import type { CurrentUser } from '@/lib/dto/users'
+import { currentUserSchema, type CurrentUser } from '@/lib/dto/users'
+import { remember } from '@/lib/server/cache'
 import { getSessionUser } from './auth'
+import { userTag } from './cacheTags'
 import { db } from './db'
 import { UnauthorizedError } from './errors'
 
@@ -22,13 +24,24 @@ const currentUserSelect = {
   role: true,
 } satisfies Prisma.UserSelect
 
+const VIEWER_CACHE_TTL = 300
+
 /** The signed-in user's record, or null when signed out (e.g. for the nav bar). */
 export const getViewer = cache(async (): Promise<CurrentUser | null> => {
   const sessionUser = await getSessionUser()
   if (!sessionUser) {
     return null
   }
-  return db.user.findUnique({ where: { id: sessionUser.id }, select: currentUserSelect })
+  // The session was checked above; the record itself is the same for the user on every request.
+  return remember(
+    `user:${sessionUser.id}:viewer`,
+    {
+      ttl: VIEWER_CACHE_TTL,
+      tags: [userTag(sessionUser.id)],
+      schema: currentUserSchema.nullable(),
+    },
+    () => db.user.findUnique({ where: { id: sessionUser.id }, select: currentUserSelect }),
+  )
 })
 
 export async function getCurrentUser(): Promise<CurrentUser> {

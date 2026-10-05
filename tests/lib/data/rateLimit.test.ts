@@ -1,52 +1,80 @@
 // @vitest-environment node
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { RateLimitedError } from '@/lib/data/errors'
 import {
   consumeRateLimit,
   getClientIp,
   isRateLimitEnabled,
-  rateLimitBucketCount,
   resetRateLimits,
 } from '@/lib/data/rateLimit'
+import { getRedis } from '@/lib/server/redis'
+import { resetRedis } from '../../helpers/server'
 
 const headerValues = vi.hoisted(() => ({ current: new Headers() }))
 vi.mock('next/headers', () => ({ headers: async () => headerValues.current }))
 
 const rule = { max: 3, windowMs: 1000 }
 
+async function consume(key: string, times: number) {
+  for (let attempt = 0; attempt < times; attempt++) {
+    await consumeRateLimit(key, rule)
+  }
+}
+
 describe('consumeRateLimit', () => {
-  beforeEach(resetRateLimits)
-
-  it('allows max attempts and throws on the next one', () => {
-    for (let attempt = 0; attempt < rule.max; attempt++) {
-      expect(() => consumeRateLimit('k', rule, 0)).not.toThrow()
-    }
-    expect(() => consumeRateLimit('k', rule, 0)).toThrow(RateLimitedError)
+  beforeEach(resetRedis)
+  afterAll(async () => {
+    await resetRedis()
+    await getRedis().quit()
   })
 
-  it('resets after the window', () => {
-    for (let attempt = 0; attempt < rule.max; attempt++) {
-      consumeRateLimit('k', rule, 0)
-    }
-    expect(() => consumeRateLimit('k', rule, 999)).toThrow(RateLimitedError)
-    expect(() => consumeRateLimit('k', rule, 1000)).not.toThrow()
+  it('allows max attempts and throws on the next one', async () => {
+    await expect(consume('k', rule.max)).resolves.toBeUndefined()
+    await expect(consumeRateLimit('k', rule)).rejects.toBeInstanceOf(RateLimitedError)
   })
 
-  it('keeps keys independent', () => {
-    for (let attempt = 0; attempt < rule.max; attempt++) {
-      consumeRateLimit('a', rule, 0)
-    }
-    expect(() => consumeRateLimit('a', rule, 0)).toThrow(RateLimitedError)
-    expect(() => consumeRateLimit('b', rule, 0)).not.toThrow()
+  it('keeps counting inside the window instead of extending it', async () => {
+    await consume('k', 2)
+    const ttl = await getRedis().pttl('ratelimit:k')
+    await consume('k', 1)
+    expect(await getRedis().pttl('ratelimit:k')).toBeLessThanOrEqual(ttl)
   })
 
-  it('prunes expired buckets so the map cannot grow without bound', () => {
-    for (let key = 0; key < 50; key++) {
-      consumeRateLimit(`k${key}`, rule, 0)
-    }
-    expect(rateLimitBucketCount()).toBe(50)
-    consumeRateLimit('fresh', rule, 5000)
-    expect(rateLimitBucketCount()).toBe(1)
+  it('resets after the window', async () => {
+    await consume('k', rule.max)
+    await expect(consumeRateLimit('k', rule)).rejects.toBeInstanceOf(RateLimitedError)
+    await new Promise((resolve) => setTimeout(resolve, rule.windowMs + 50))
+    await expect(consumeRateLimit('k', rule)).resolves.toBeUndefined()
+  })
+
+  it('keeps keys independent', async () => {
+    await consume('a', rule.max)
+    await expect(consumeRateLimit('a', rule)).rejects.toBeInstanceOf(RateLimitedError)
+    await expect(consumeRateLimit('b', rule)).resolves.toBeUndefined()
+  })
+
+  it('shares counters across callers through Redis, and expires them there', async () => {
+    await consume('shared', 1)
+    expect(await getRedis().get('ratelimit:shared')).toBe('1')
+    expect(await getRedis().pttl('ratelimit:shared')).toBeGreaterThan(0)
+  })
+
+  it('allows the attempt and logs when Redis is unavailable', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const multi = vi.spyOn(getRedis(), 'multi').mockImplementation(() => {
+      throw new Error('redis down')
+    })
+    await expect(consumeRateLimit('k', rule)).resolves.toBeUndefined()
+    expect(log).toHaveBeenCalled()
+    multi.mockRestore()
+    log.mockRestore()
+  })
+
+  it('resetRateLimits clears every counter', async () => {
+    await consume('a', rule.max)
+    await consume('b', rule.max)
+    await resetRateLimits()
+    await expect(consumeRateLimit('a', rule)).resolves.toBeUndefined()
   })
 })
 

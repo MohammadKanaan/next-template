@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { pageQuerySchema, permissionsSchema } from './common'
+import { pageQuerySchema, pageSchema, permissionsSchema } from './common'
 import { userProfileSchema } from './users'
 
 export const POST_TITLE_MAX_LENGTH = 200
@@ -56,3 +56,11 @@ export const postDetailSchema = z.object({
 })
 
 export type PostDetail = z.infer<typeof postDetailSchema>
+
+/** What a post list returns; shared by the DAL's cache and the client facade. */
+export const postsPageSchema = pageSchema(postSummarySchema)
+
+/** A detail without the viewer-specific `permissions`: the part that is safe to cache for everyone. */
+export const postDetailBaseSchema = postDetailSchema.omit({ permissions: true })
+
+export type PostDetailBase = z.infer<typeof postDetailBaseSchema>

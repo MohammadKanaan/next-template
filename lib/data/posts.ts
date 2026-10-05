@@ -5,11 +5,16 @@ import {
   POST_EXCERPT_LENGTH,
   type CreatePostInput,
   type ListPostsQuery,
+  postDetailBaseSchema,
+  postsPageSchema,
   type PostDetail,
+  type PostDetailBase,
   type PostSummary,
   type UpdatePostInput,
 } from '@/lib/dto/posts'
+import { invalidateTags, remember } from '@/lib/server/cache'
 import { getSessionUser, requireUser, type SessionUser } from './auth'
+import { POSTS_TAG, postTag } from './cacheTags'
 import { db } from './db'
 import { ForbiddenError, NotFoundError } from './errors'
 import { userProfileSelect } from './users'
@@ -21,6 +26,8 @@ const postSummarySelect = {
   createdAt: true,
   user: { select: userProfileSelect },
 } satisfies Prisma.PostSelect
+
+const POSTS_CACHE_TTL = 300
 
 const postDetailSelect = {
   id: true,
@@ -54,8 +61,8 @@ function toPostSummary(row: PostSummaryRow): PostSummary {
   }
 }
 
-function toPostDetail(row: PostDetailRow, viewer: SessionUser | null): PostDetail {
-  const allowed = canModify(viewer, row.userId)
+/** Everything about a post that does not depend on who is looking. */
+function toPostBase(row: PostDetailRow): PostDetailBase {
   return {
     id: row.id,
     title: row.title,
@@ -63,8 +70,12 @@ function toPostDetail(row: PostDetailRow, viewer: SessionUser | null): PostDetai
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     author: row.user,
-    permissions: { update: allowed, delete: allowed },
   }
+}
+
+function toPostDetail(base: PostDetailBase, viewer: SessionUser | null): PostDetail {
+  const allowed = canModify(viewer, base.author.id)
+  return { ...base, permissions: { update: allowed, delete: allowed } }
 }
 
 export async function listPosts({
@@ -73,28 +84,42 @@ export async function listPosts({
   authorId,
 }: ListPostsQuery): Promise<Page<PostSummary>> {
   const where: Prisma.PostWhereInput = authorId ? { userId: authorId } : {}
-  const [rows, totalItems] = await Promise.all([
-    db.post.findMany({
-      where,
-      select: postSummarySelect,
-      orderBy: { id: 'desc' },
-      skip: (page - 1) * perPage,
-      take: perPage,
-    }),
-    db.post.count({ where }),
-  ])
-  return toPage(rows.map(toPostSummary), totalItems, { page, perPage })
+  return remember(
+    `posts:list:${page}:${perPage}:${authorId ?? 'all'}`,
+    { ttl: POSTS_CACHE_TTL, tags: [POSTS_TAG], schema: postsPageSchema },
+    async () => {
+      const [rows, totalItems] = await Promise.all([
+        db.post.findMany({
+          where,
+          select: postSummarySelect,
+          orderBy: { id: 'desc' },
+          skip: (page - 1) * perPage,
+          take: perPage,
+        }),
+        db.post.count({ where }),
+      ])
+      return toPage(rows.map(toPostSummary), totalItems, { page, perPage })
+    },
+  )
 }
 
 export async function getPost(id: number): Promise<PostDetail> {
-  const [row, viewer] = await Promise.all([
-    db.post.findUnique({ where: { id }, select: postDetailSelect }),
+  const [base, viewer] = await Promise.all([
+    // Cached for everyone; `permissions` is computed per viewer below, never cached.
+    remember(
+      `post:${id}`,
+      { ttl: POSTS_CACHE_TTL, tags: [POSTS_TAG, postTag(id)], schema: postDetailBaseSchema },
+      async () => {
+        const row = await db.post.findUnique({ where: { id }, select: postDetailSelect })
+        if (!row) {
+          throw new NotFoundError('Post not found')
+        }
+        return toPostBase(row)
+      },
+    ),
     getSessionUser(),
   ])
-  if (!row) {
-    throw new NotFoundError('Post not found')
-  }
-  return toPostDetail(row, viewer)
+  return toPostDetail(base, viewer)
 }
 
 export async function createPost(input: CreatePostInput): Promise<PostDetail> {
@@ -103,7 +128,8 @@ export async function createPost(input: CreatePostInput): Promise<PostDetail> {
     data: { ...input, userId: viewer.id },
     select: postDetailSelect,
   })
-  return toPostDetail(row, viewer)
+  await invalidateTags(POSTS_TAG)
+  return toPostDetail(toPostBase(row), viewer)
 }
 
 /** The post vanished between the access check and the write (e.g. a concurrent delete). */
@@ -132,10 +158,12 @@ export async function updatePost(id: number, input: UpdatePostInput): Promise<Po
   const row = await db.post
     .update({ where: { id }, data: input, select: postDetailSelect })
     .catch(mapMissingRecord)
-  return toPostDetail(row, viewer)
+  await invalidateTags(POSTS_TAG, postTag(id))
+  return toPostDetail(toPostBase(row), viewer)
 }
 
 export async function deletePost(id: number): Promise<void> {
   await requirePostChange(id)
   await db.post.delete({ where: { id } }).catch(mapMissingRecord)
+  await invalidateTags(POSTS_TAG, postTag(id))
 }

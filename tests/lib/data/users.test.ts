@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { auth } from '@/lib/data/auth'
 import { db } from '@/lib/data/db'
 import { UnauthorizedError } from '@/lib/data/errors'
 import { getCurrentUser, getViewer, isUsernameTaken } from '@/lib/data/users'
@@ -42,6 +43,20 @@ describe('users DAL', () => {
     }
     expect(await getViewer()).toEqual(expected)
     expect(await getCurrentUser()).toEqual(expected)
+  })
+
+  it('serves the viewer from the cache, and a Better Auth user update refreshes it', async () => {
+    const user = await createUser({ name: 'Ada' })
+    await signInAs(user)
+    expect((await getViewer())?.name).toBe('Ada')
+
+    // Straight to the database: the cached viewer is served until its tag is invalidated.
+    await db.user.update({ where: { id: user.id }, data: { name: 'Direct' } })
+    expect((await getViewer())?.name).toBe('Ada')
+
+    // A Better Auth-side update (what email verification does) fires the hook that invalidates it.
+    await auth.api.updateUser({ body: { name: 'Via Better Auth' }, headers: requestHeaders() })
+    expect((await getViewer())?.name).toBe('Via Better Auth')
   })
 
   it('reports whether a username is taken', async () => {
