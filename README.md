@@ -1,7 +1,7 @@
 # Next Template
 
-A reusable Next.js baseline: App Router, a typed client API layer with Prisma-derived DTOs, Route Handlers
-backed by Prisma and PostgreSQL, schema-first forms, and shadcn/ui with SCSS everywhere else.
+A reusable Next.js baseline: App Router, a server-only Data Access Layer on Prisma and PostgreSQL, Better
+Auth, Server Actions for writes, shared Zod DTOs, schema-first forms, and shadcn/ui with SCSS everywhere else.
 
 ## Stack
 
@@ -9,67 +9,72 @@ backed by Prisma and PostgreSQL, schema-first forms, and shadcn/ui with SCSS eve
 - Bun as the package manager (scripts run on Node 24)
 - SCSS CSS Modules for all styling; shadcn/ui (Radix) + Tailwind CSS 4 only inside `components/SCN`
 - lucide-react icons, sonner toasts
-- axios service layer, TanStack Query 5, Zustand 5
-- React Hook Form 7 + `@hookform/resolvers` + Zod 4
-- Prisma ORM 8 (pinned release candidate) + PostgreSQL 16
+- Prisma ORM 7.10 (`prisma-client` generator, `@prisma/adapter-pg`) + PostgreSQL 16
+- Better Auth 1.7 (email + password, official Prisma adapter)
+- Server Actions + Zod 4 DTOs; React Hook Form 7 + `@hookform/resolvers`
 - Vitest + Testing Library + jsdom
 
 ## Setup
 
 ```bash
-bun install
-cp .env.example .env
-cp .env.test.example .env.test
-docker compose up -d db          # or use a local PostgreSQL >= 15 and edit DATABASE_URL
-bun run db:migrate               # emit the contract, plan and apply migrations
-bun run db:seed                  # 3 users, 12 posts
+cp .env.example .env              # then set BETTER_AUTH_SECRET (openssl rand -base64 32)
+cp .env.test.example .env.test    # same for the test database
+docker compose up -d db           # or use a local PostgreSQL >= 15 and edit DATABASE_URL
+bun install                       # also generates the Prisma client (postinstall)
+bun run db:deploy                 # apply migrations
+bun run db:seed                   # 4 users, 16 posts
 bun run dev
 ```
 
-Open http://localhost:3000. The dev login is a plain email (no password): `leanne@example.com`,
-`ervin@example.com` or `clementine@example.com`. Replace this with real authentication before
-production.
+Open http://localhost:3000 and log in as `leanne@example.com` / `password123` (admin:
+`admin@example.com` / `password123`), or create an account at `/signup`.
 
 If you use a local PostgreSQL instead of Docker, create the `next_template_dev` and
 `next_template_test` databases and put the matching URLs in `.env` and `.env.test`.
 
+**Existing checkouts:** the dev database from before the Prisma 7 / Better Auth refactor holds the
+old Prisma 8 schema. Run `bun run db:reset` once; it drops, re-migrates, and re-seeds the dev
+database (it destroys that data).
+
 ## Scripts
 
-| Script                    | What it does                                                                        |
-| ------------------------- | ----------------------------------------------------------------------------------- |
-| `bun run dev`             | Next dev server (Turbopack).                                                        |
-| `bun run build`           | Production build.                                                                   |
-| `bun run start`           | Serve the production build.                                                         |
-| `bun run lint`            | ESLint.                                                                             |
-| `bun run format`          | Prettier, write.                                                                    |
-| `bun run format:check`    | Prettier, check only.                                                               |
-| `bun run typecheck`       | `next typegen` then `tsc --noEmit`.                                                 |
-| `bun run test`            | Vitest, single run.                                                                 |
-| `bun run test:watch`      | Vitest in watch mode.                                                               |
-| `bun run contract:emit`   | Re-emit `prisma/contract.json` and `prisma/contract.d.ts` from `contract.prisma`.   |
-| `bun run db:migrate`      | Emit the contract, plan a migration, apply it to the dev DB and advance the db ref. |
-| `bun run db:deploy`       | Apply pending migrations non-interactively (CI / production).                       |
-| `bun run db:seed`         | Idempotent seed script (`prisma/seed.ts`) for the dev DB.                           |
-| `bun run db:studio`       | Print the database schema tree (`prisma db schema`; Prisma 8 has no Studio).        |
-| `bun run db:test:prepare` | Reset and migrate `next_template_test` (refuses any other database).                |
+| Script                    | What it does                                                           |
+| ------------------------- | ---------------------------------------------------------------------- |
+| `bun run dev`             | Next dev server (Turbopack).                                           |
+| `bun run build`           | Production build.                                                      |
+| `bun run start`           | Serve the production build.                                            |
+| `bun run lint`            | ESLint.                                                                |
+| `bun run format`          | Prettier, write.                                                       |
+| `bun run format:check`    | Prettier, check only.                                                  |
+| `bun run typecheck`       | `prisma generate`, `next typegen`, then `tsc --noEmit`.                |
+| `bun run test`            | Vitest, single run.                                                    |
+| `bun run test:watch`      | Vitest in watch mode.                                                  |
+| `bun run db:generate`     | Regenerate the Prisma client into `generated/` (also runs on install). |
+| `bun run db:migrate`      | Create and apply a migration to the dev DB, then regenerate.           |
+| `bun run db:deploy`       | Apply pending migrations only (CI / production).                       |
+| `bun run db:seed`         | Seed the dev DB (`prisma/seed.ts`, replaces the seeded users).         |
+| `bun run db:reset`        | Drop, re-migrate, and re-seed the dev DB.                              |
+| `bun run db:studio`       | Prisma Studio.                                                         |
+| `bun run db:test:prepare` | Reset and migrate the database in `.env.test`.                         |
 
 ## Testing
 
-Run `bun run db:test:prepare` once per schema change (and whenever the test DB may be dirty), then
-`bun run test`. Server tests call the Route Handlers directly against `next_template_test` and never
-touch the dev database. Component, store, presenter and service tests need no database.
+Copy `.env.test.example` to `.env.test`, run `bun run db:test:prepare` once per schema change (and
+whenever the test DB may be dirty), then `bun run test`. Server tests call the DAL, Server Actions, and
+Route Handler directly against `next_template_test` and never touch the dev database. Component,
+presenter, and DTO tests need no database.
 
 ## Architecture
 
 ```
-prisma/contract.prisma ──contract:emit──▶ prisma/contract.d.ts ──▶ types/models.ts ──▶ service DTOs
+prisma/schema.prisma ──prisma generate──▶ generated/prisma (git-ignored)
 
-Client view ──useApiData / sFetch──▶ XService (API, axios) ──HTTP──▶ app/api/v1 Route Handler
-     ▲                                                                   │ zod validate
-     │ presentX(dto) only where a view needs overrides                   ▼
-     └──────────────── ApiResponse<XResponse> ◀── serializer ◀── repository (Prisma) ──▶ PostgreSQL
+lib/dto/*  Zod schemas: inputs and outputs, types via z.infer (client- and server-safe)
+lib/data/* server-only DAL: the only code that touches Prisma; enforces auth; returns DTOs
 
-Server page ──▶ repository ──▶ serializer ──▶ DTO props ──▶ server or client components
+Server Component ───────────────────────────────────────────▶ lib/data ──▶ PostgreSQL
+Server Action (actions/*)  parseInput(lib/dto) ─────────────▶ lib/data
+Client facade (lib/client) ─fetch─▶ Route Handler (app/api/v1) ▶ lib/data   (parsed with lib/dto)
 ```
 
 **Styling and `components/SCN`.** Design tokens live in `styles/palette.scss` and
@@ -79,87 +84,74 @@ uses a semantic class in a co-located `styles.module.scss`; Tailwind utilities, 
 `shadcn add` keeps working. Callers never pass `className` or `style` to reusable components. Form
 controls own their `label`, `required` and `error` props. Read `AGENTS.md` for the full rules.
 
-**Services and `ApiResponse`.** `services/*Service.ts` (PascalCase, default-exported classes) extend
-the static `API` class in `services/api.ts`. Every method resolves to `ApiResponse<T>` (`success`,
-`status`, `message`, `data`, optional `errors` keyed by field); they do not throw and do not toast.
-`*Response`, `*Attributes` and `*ListParams` types live next to their service and are derived from
-the generated Prisma models in `types/models.ts` (`Omit<UserModel, 'email'>`,
-`PostModel & { permissions }`) — never hand-written copies of the columns.
+**DTOs.** `lib/dto` holds Zod schemas for inputs (`createPostInput`, `signUpInput`) and outputs
+(`postSummarySchema`, `postDetailSchema`); `z.infer` gives the types. Output schemas use
+`z.coerce.date()`, so a client parsing JSON gets `Date` back. Lists are `Page<T>`.
 
-**`sFetch` / `sData` / `mFetch` / `mData`.** `lib/apiCall.ts` standardizes loading toggling, toast
-errors and throwing:
+**Data Access Layer.** `lib/data/*` is `server-only` and the only code that imports Prisma (ESLint
+enforces it). Each function selects exactly the columns its DTO needs, maps the row to the DTO, and
+enforces auth itself with `requireUser()` / `requireAdmin()` plus record-level rules (a post may be
+changed by its author or an admin).
 
-- `sFetch(request, options)`: one request, returns the full `ApiResponse`.
-- `sData(request, options)`: one request, returns `response.data`, always throws on failure.
-- `mFetch([...requests], options)`: parallel requests, returns the full `ApiResponse` tuple.
-- `mData([...requests], options)`: parallel requests, returns the `data` tuple, throws if any fails.
+**Server Actions.** Writes live in `actions/`: validate with `parseInput`, call the DAL,
+`revalidatePath` / `refresh`, and return an `ActionResult<T>`. Forms map failures onto fields with
+`applyActionErrors`.
 
-| Option                 | Applies to | Default          | Meaning                                                              |
-| ---------------------- | ---------- | ---------------- | -------------------------------------------------------------------- |
-| `loading`              | all        | none             | Setter called with `true` then `false`, e.g. `setIsLoading`.         |
-| `toast`                | all        | `true`           | Show the resolved error message as a toast.                          |
-| `toastColor`           | all        | `'destructive'`  | `'default'`, `'destructive'` or `'success'`.                         |
-| `fallbackErrorMessage` | all        | `Request failed` | Message when the response carries none.                              |
-| `overrideErrorMessage` | all        | none             | Always shown instead of the response message.                        |
-| `throwOnError`         | `*Fetch`   | `true`           | Throw on failure; `false` returns `{ success: false, ... }` instead. |
-| `toastMode`            | `m*`       | `'each'`         | `'each'`, `'first'` or `'none'` for batches.                         |
+**Route Handler and facade.** `GET /api/v1/posts` exists only because a client component must fetch
+(`/posts/csr`). `lib/client/posts.ts` calls it and parses the response with the shared schema.
 
-`sData` and `mData` always throw; use `sFetch` with `toast: false, throwOnError: false` when a form
-page needs to inspect field errors itself.
-
-**`useApiData` and `queryKeys`.** `hooks/useApiData` wraps TanStack Query around `sData` and returns
-`{ data, isLoading, error, errorMessage, hasData, refresh }`. Query keys come from
-`lib/queryKeys.ts` so mutations can invalidate by prefix (`['posts']`). The client defaults to
-`retry: false` and no refetch on window focus (`app/providers.tsx`).
+**Errors.** The DAL throws `UnauthorizedError`, `ForbiddenError`, `NotFoundError` and
+`ValidationError`. Actions turn them into `ActionResult` failures, the Route Handler into
+401/403/404/422 JSON, and `loadPage` into a login redirect or `notFound()`.
 
 **Presenters.** Types are the source of truth; presenters exist only for overrides. A presenter is
 a plain function that spreads the DTO and replaces just the fields a view needs reshaped
 (`presentUser` turns a bare `website` domain into a linkable URL). Apply it where the data is
-consumed, such as a view's `useMemo`. If the DTO already fits the view, use it directly.
+consumed, such as a view's `useMemo`.
 
-**Stores.** Zustand (`stores/user.ts`) holds the signed-in profile and its `user`.
-`UserBootstrap` loads the profile once. Select state per slice (`useUserStore((s) => s.user)`),
-never with an object-literal selector.
+**Auth.** Better Auth with email + password, database sessions, and the `nextCookies` plugin. `role`
+(`user` / `admin`) is an additional user field. `proxy.ts` redirects private routes to
+`/login?next=...` when the session cookie is absent (unknown paths count as private) and sends
+signed-in users away from `/login` and `/signup`; it only checks cookie presence. The DAL does the
+real check on every read and write.
 
-**Route Handlers, repositories, serializers.** `app/api/v1/**/route.ts` stay thin: validate with Zod
-(`lib/validation/*`), call a repository in `server/repositories`, serialize rows into the same
-`*Response` types the services declare (`server/serializers`). JSON keys are the Prisma model's
-camelCase field names; columns are snake_case through `@map`. Server Components call repositories and serializers directly,
-never their own HTTP API. The Prisma 8 setup is contract-first: `prisma/contract.prisma` is the
-source, `prisma/contract.json` and `prisma/contract.d.ts` are emitted and committed, queries run
-through `db.orm.public.<Model>` (`server/db.ts`), and timestamps come back as Postgres text (convert
-with `toIsoString` from `server/models.ts`). Close the client with `db.close()`. `package.json`
-pins `@prisma/orm-toolchain` through `overrides` so the CLI and the runtime package agree on the
-contract format; revisit the pin when bumping Prisma.
+## Design decisions
 
-**Forms.** The form component owns `useForm` and the Zod schema and validates; it hands validated
-values to the page. The page owns the request (`sFetch` with `toast: false, throwOnError: false`),
-cache invalidation, toasts and navigation, and returns the `ApiResponse`; the form maps `errors`
-onto fields or shows `message` as a form-level alert. Hydrate/build helpers sit in a `utils.ts` next
-to the form (`components/Posts/Form`).
+- **One contract.** Three paths (Server Component, Server Action, client facade → Route Handler)
+  end at the same DAL function and return the same DTO type under the same auth rules.
+- **DAL and DTO boundary.** Prisma rows never leave `lib/data`; callers only see Zod-defined DTOs, and
+  the DAL's `select` plus mapping make schema drift a compile error.
+- **Auth in the DAL.** A page, action, or proxy that forgets a check cannot bypass authorization,
+  because the data functions enforce it themselves.
+- **Server Actions vs Route Handlers.** Actions for UI writes (no extra HTTP surface to design);
+  a Route Handler only where a client has to fetch.
+- **Typed errors per caller.** One set of error classes, translated once per transport.
 
-**Auth.** A dev-only email login (`POST /api/v1/auth/session`) creates a hashed-token session and
-sets an httpOnly cookie (`Uauth`). `proxy.ts` redirects private routes to `/login?next=...` when the
-cookie is absent (unknown paths count as private) and sends signed-in users away from `/login`. It
-only checks cookie presence; Route Handlers validate the session, and a stale cookie is cleared by
-the first `/api/v1/me` call.
+## What I'd do at scale
+
+- Declarative authorization policies instead of inline checks.
+- ZenStack or Postgres row-level security as a second enforcement layer.
+- Extend the existing lint rule to restrict `better-auth` imports as well.
+- Cursor pagination (`CursorPage<T> = { items, nextCursor }`) for feeds.
+- Generate OpenAPI from the Zod schemas if external API consumers appear.
 
 ## Adding a resource
 
-1. Add the model to `prisma/contract.prisma` (camelCase fields with snake_case `@map`s, text
-   timestamps as `TimestamptzString`) and run `bun run db:migrate`.
-2. Add a repository in `server/repositories/<name>.ts` using `db.orm.public.<Model>`; export row
-   types from `server/models.ts` if needed.
-3. Add a serializer in `server/serializers/<name>.ts` that maps a row to the `*Response` contract
-   (pick public columns, ISO timestamps, computed fields such as `permissions`).
-4. Export the model from `types/models.ts`, then add `services/<Name>Service.ts`
-   (default-exported class extending `API`) with `*Response`, `*Attributes` and `*ListParams`
-   types derived from it, plus keys in `lib/queryKeys.ts`.
-5. Add Zod schemas in `lib/validation/<name>.ts` and the Route Handlers under
-   `app/api/v1/<name>/`, with tests in `tests/server/` against the test DB.
-6. Only if a view needs reshaped fields, add `presentX` in `presenters/<Name>Presenter.ts`.
-7. Add the pages (`page.tsx` + `view.tsx`), the form component and routes in
-   `lib/constants-routes.ts` (decide whether they are public or private).
+1. Add the model to `prisma/schema.prisma` (camelCase fields with snake_case `@map`s) and run
+   `bun run db:migrate`.
+2. Add the Zod schemas to `lib/dto/<name>.ts` (inputs and the output variants a view needs).
+3. Add the DAL in `lib/data/<name>.ts`: `import 'server-only'`, select exactly the DTO columns, map
+   rows to DTOs, call `requireUser()` / `requireAdmin()` and enforce record-level rules, throw typed
+   errors.
+4. Add Server Actions in `actions/<name>.ts` (`parseInput` → DAL → `revalidatePath` →
+   `ActionResult`). Add a Route Handler under `app/api/v1/<name>/` plus a facade in `lib/client`
+   only if a client component must fetch.
+5. Only if a view needs reshaped fields, add `presentX` in `presenters/<Name>Presenter.ts`.
+6. Add the pages (`page.tsx` + `view.tsx`), the form component, and routes in
+   `lib/constants-routes.ts` (decide whether they are public or private). Wrap page reads in
+   `loadPage`.
+7. Add tests in `tests/lib/data/`, `tests/actions/` (and `tests/app/` or `tests/lib/client/` for a
+   handler) against the test DB.
 
 ## More
 
