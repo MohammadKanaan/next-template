@@ -43,6 +43,8 @@ const REDIRECT_BASE = 'http://localhost'
 /**
  * Accepts only same-origin relative targets. The value is resolved the way a browser would, so
  * `/\\evil.example` and `/<TAB>/evil.example` (which browsers read as `//evil.example`) fall back.
+ * Dot segments can also normalise to a `//` path (`/.//evil.example`), which a browser would treat
+ * as protocol-relative, so the resolved path is checked too.
  */
 export function safeRedirectPath(value: string | null | undefined, fallback = ROUTE_PRIVATE) {
   if (!value || !value.startsWith('/')) {
@@ -50,7 +52,7 @@ export function safeRedirectPath(value: string | null | undefined, fallback = RO
   }
   try {
     const url = new URL(value, REDIRECT_BASE)
-    if (url.origin !== REDIRECT_BASE) {
+    if (url.origin !== REDIRECT_BASE || url.pathname.startsWith('//')) {
       return fallback
     }
     return `${url.pathname}${url.search}${url.hash}`

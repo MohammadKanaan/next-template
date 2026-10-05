@@ -44,6 +44,10 @@ describe('route helpers', () => {
       '/\t/evil.example',
       '/\n/evil.example',
       '\\evil.example',
+      '/.//evil.example',
+      '/..//evil.example',
+      '/a/..//evil.example',
+      '/./\\evil.example',
     ]) {
       expect(safeRedirectPath(value)).toBe('/private')
     }
