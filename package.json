@@ -7,6 +7,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "worker": "tsx --tsconfig worker/tsconfig.json --env-file-if-exists=.env worker/index.ts",
+    "dev:worker": "tsx watch --tsconfig worker/tsconfig.json --env-file-if-exists=.env worker/index.ts",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -20,7 +22,7 @@
     "db:seed": "prisma db seed",
     "db:reset": "prisma migrate reset --force && prisma db seed",
     "db:studio": "prisma studio",
-    "db:test:prepare": "test -f .env.test || { echo 'Missing .env.test'; exit 1; }; DOTENV_CONFIG_PATH=.env.test DOTENV_CONFIG_OVERRIDE=true prisma migrate reset --force"
+    "db:test:prepare": "test -f .env.test || { echo 'Missing .env.test'; exit 1; }; DOTENV_CONFIG_PATH=.env.test DOTENV_CONFIG_OVERRIDE=true prisma migrate reset --force && tsx --tsconfig worker/tsconfig.json --env-file=.env.test worker/migrate.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1146.0",

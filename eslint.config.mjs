@@ -13,6 +13,12 @@ const serverImportPattern = {
   message: 'lib/server is server-only infrastructure. Reach it through the DAL (lib/data).',
 }
 
+const maintenanceImportPattern = {
+  group: ['@/lib/data/maintenance', '**/lib/data/maintenance'],
+  message:
+    'lib/data/maintenance is the system DAL for background jobs. Import it from jobs/** only.',
+}
+
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
@@ -38,13 +44,20 @@ const eslintConfig = defineConfig([
       'no-restricted-imports': [
         'error',
         {
-          patterns: [prismaImportPattern],
+          patterns: [prismaImportPattern, maintenanceImportPattern],
         },
       ],
     },
   },
+  // Background jobs (and tests of them) are the only callers of the system DAL.
+  {
+    files: ['jobs/**/*.ts', 'tests/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': ['error', { patterns: [prismaImportPattern] }],
+    },
+  },
   // UI and request-edge code never imports lib/server directly (it is also guarded at runtime by
-  // `server-only`). A later block replaces the rule above, so it repeats the Prisma pattern.
+  // `server-only`). A later block replaces the rule above, so it repeats the other patterns.
   {
     files: [
       'app/**/*.{ts,tsx}',
@@ -59,7 +72,7 @@ const eslintConfig = defineConfig([
       'no-restricted-imports': [
         'error',
         {
-          patterns: [prismaImportPattern, serverImportPattern],
+          patterns: [prismaImportPattern, serverImportPattern, maintenanceImportPattern],
         },
       ],
     },

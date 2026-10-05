@@ -1,0 +1,11 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["../*"],
+      "server-only": ["./serverOnly.ts"]
+    }
+  },
+  "include": ["../**/*.ts", "../**/*.tsx"],
+  "exclude": ["../node_modules"]
+}
