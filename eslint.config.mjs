@@ -22,6 +22,23 @@ const eslintConfig = defineConfig([
     },
   },
   {
+    files: ['**/*.{ts,tsx,mts}'],
+    ignores: ['lib/data/**', 'prisma/**'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['@/generated/*', '**/generated/prisma/*', '@prisma/*'],
+              message: 'Only lib/data may use Prisma. Call a DAL function instead.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ['components/SCN/**/*.{ts,tsx}'],
     rules: {
       'max-len': [
