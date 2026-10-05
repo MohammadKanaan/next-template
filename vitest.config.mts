@@ -17,5 +17,7 @@ export default defineConfig(({ mode }) => ({
     include: ['tests/**/*.test.{ts,tsx}'],
     env: loadEnv(mode, process.cwd(), ''),
     fileParallelism: false,
+    // Better Auth imports `next/headers.js` itself; inline it so `vi.mock('next/headers')` applies.
+    server: { deps: { inline: ['better-auth'] } },
   },
 }))
