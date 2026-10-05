@@ -1,5 +1,7 @@
 import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
+import { Suspense } from 'react'
+import { PageLoading } from '@/components/PageLoading'
 import { safeRedirectPath } from '@/lib/constants-routes'
 import { getViewer } from '@/lib/data/users'
 import { SignUpView } from './view'
@@ -8,7 +10,9 @@ export const metadata: Metadata = {
   title: 'Sign up',
 }
 
-export default async function SignUpPage({ searchParams }: PageProps<'/signup'>) {
+type SignUpSearch = Pick<PageProps<'/signup'>, 'searchParams'>
+
+async function SignUpContent({ searchParams }: SignUpSearch) {
   const { next } = await searchParams
   const nextPath = safeRedirectPath(typeof next === 'string' ? next : undefined)
 
@@ -18,4 +22,12 @@ export default async function SignUpPage({ searchParams }: PageProps<'/signup'>)
   }
 
   return <SignUpView nextPath={nextPath} />
+}
+
+export default function SignUpPage({ searchParams }: PageProps<'/signup'>) {
+  return (
+    <Suspense fallback={<PageLoading />}>
+      <SignUpContent searchParams={searchParams} />
+    </Suspense>
+  )
 }

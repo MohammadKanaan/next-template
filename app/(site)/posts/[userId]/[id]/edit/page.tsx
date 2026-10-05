@@ -1,7 +1,9 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import { Suspense } from 'react'
 import { Empty } from '@/components/Empty'
+import { PageLoading } from '@/components/PageLoading'
 import { Button } from '@/components/SCN/button'
 import { ROUTE_POST_DETAILS, ROUTE_POST_EDIT } from '@/lib/constants-routes'
 import { loadPage } from '@/lib/data/page'
@@ -13,7 +15,9 @@ export const metadata: Metadata = {
   title: 'Edit post',
 }
 
-export default async function PostEditPage({ params }: PageProps<'/posts/[userId]/[id]/edit'>) {
+type PostEditParams = Pick<PageProps<'/posts/[userId]/[id]/edit'>, 'params'>
+
+async function PostEdit({ params }: PostEditParams) {
   const { userId, id } = await params
   const postId = idSchema.safeParse(id)
   if (!postId.success) {
@@ -36,4 +40,12 @@ export default async function PostEditPage({ params }: PageProps<'/posts/[userId
   }
 
   return <PostEditView post={post} />
+}
+
+export default function PostEditPage({ params }: PageProps<'/posts/[userId]/[id]/edit'>) {
+  return (
+    <Suspense fallback={<PageLoading />}>
+      <PostEdit params={params} />
+    </Suspense>
+  )
 }

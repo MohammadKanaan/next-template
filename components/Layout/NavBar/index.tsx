@@ -4,7 +4,7 @@ import clsx from 'clsx'
 import { Menu, X } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useCallback, useEffect, useState } from 'react'
+import { Suspense, useCallback, useEffect, useState } from 'react'
 import { SignOutButton } from '@/components/Auth/SignOutButton'
 import { Button } from '@/components/SCN/button'
 import { ThemeToggle } from '@/components/ThemeToggle'
@@ -29,12 +29,61 @@ const NAV_LINKS = [
   { label: 'Private', href: ROUTE_PRIVATE },
 ]
 
-type NavBarProps = {
-  user: CurrentUser | null
+type NavLinksProps = {
+  pathname: string | null
 }
 
-export function NavBar({ user }: NavBarProps) {
-  const pathname = usePathname()
+function NavLinks({ pathname }: NavLinksProps) {
+  const isActive = (href: string) =>
+    pathname !== null && (pathname === href || pathname.startsWith(`${href}/`))
+
+  return NAV_LINKS.map((link) => (
+    <Link
+      key={link.href}
+      href={link.href}
+      className={clsx(styles.navLink, isActive(link.href) && styles.navLinkActive)}
+    >
+      <span>{link.label}</span>
+    </Link>
+  ))
+}
+
+/** Reads the pathname, which is not known while prerendering a route with dynamic params. */
+function ActiveNavLinks() {
+  return <NavLinks pathname={usePathname()} />
+}
+
+type AccountActionsProps = {
+  user: CurrentUser | null
+  pending: boolean
+}
+
+function AccountActions({ user, pending }: AccountActionsProps) {
+  if (pending) {
+    return null
+  }
+  if (!user) {
+    return (
+      <Button asChild size="sm">
+        <Link href={ROUTE_LOGIN}>Log in</Link>
+      </Button>
+    )
+  }
+  return (
+    <>
+      <span className={styles.userName}>{user.name}</span>
+      <SignOutButton />
+    </>
+  )
+}
+
+type NavBarProps = {
+  user: CurrentUser | null
+  /** The viewer is still loading: show no account actions rather than a wrong "Log in". */
+  pending?: boolean
+}
+
+export function NavBar({ user, pending = false }: NavBarProps) {
   const { lockScroll, unlockScroll } = useScrollLock()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
 
@@ -64,8 +113,6 @@ export function NavBar({ user }: NavBarProps) {
     return () => window.removeEventListener('resize', handleResize)
   }, [closeMobileMenu])
 
-  const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`)
-
   return (
     <header className={styles.header}>
       <nav className={styles.nav}>
@@ -85,27 +132,12 @@ export function NavBar({ user }: NavBarProps) {
         </button>
 
         <div className={styles.desktopNav}>
-          {NAV_LINKS.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              className={clsx(styles.navLink, isActive(link.href) && styles.navLinkActive)}
-            >
-              <span>{link.label}</span>
-            </Link>
-          ))}
+          <Suspense fallback={<NavLinks pathname={null} />}>
+            <ActiveNavLinks />
+          </Suspense>
           <div className={styles.accountArea}>
             <ThemeToggle />
-            {user ? (
-              <>
-                <span className={styles.userName}>{user.name}</span>
-                <SignOutButton />
-              </>
-            ) : (
-              <Button asChild size="sm">
-                <Link href={ROUTE_LOGIN}>Log in</Link>
-              </Button>
-            )}
+            <AccountActions user={user} pending={pending} />
           </div>
         </div>
 
@@ -137,16 +169,7 @@ export function NavBar({ user }: NavBarProps) {
             <ThemeToggle />
             {/* Account actions close the menu; theme choices keep it open. */}
             <div className={styles.accountArea} onClick={closeMobileMenu}>
-              {user ? (
-                <>
-                  <span className={styles.userName}>{user.name}</span>
-                  <SignOutButton />
-                </>
-              ) : (
-                <Button asChild size="sm">
-                  <Link href={ROUTE_LOGIN}>Log in</Link>
-                </Button>
-              )}
+              <AccountActions user={user} pending={pending} />
             </div>
           </div>
         </div>

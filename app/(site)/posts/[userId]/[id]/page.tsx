@@ -1,5 +1,7 @@
 import type { Metadata } from 'next'
 import { notFound, redirect } from 'next/navigation'
+import { Suspense } from 'react'
+import { PageLoading } from '@/components/PageLoading'
 import { ROUTE_POST_DETAILS } from '@/lib/constants-routes'
 import { loadPage } from '@/lib/data/page'
 import { getPost } from '@/lib/data/posts'
@@ -10,7 +12,9 @@ export const metadata: Metadata = {
   title: 'Post details',
 }
 
-export default async function PostDetailPage({ params }: PageProps<'/posts/[userId]/[id]'>) {
+type PostDetailParams = Pick<PageProps<'/posts/[userId]/[id]'>, 'params'>
+
+async function PostDetail({ params }: PostDetailParams) {
   const { userId, id } = await params
   const postId = idSchema.safeParse(id)
   if (!postId.success) {
@@ -23,4 +27,12 @@ export default async function PostDetailPage({ params }: PageProps<'/posts/[user
   }
 
   return <PostDetailView post={post} />
+}
+
+export default function PostDetailPage({ params }: PageProps<'/posts/[userId]/[id]'>) {
+  return (
+    <Suspense fallback={<PageLoading />}>
+      <PostDetail params={params} />
+    </Suspense>
+  )
 }

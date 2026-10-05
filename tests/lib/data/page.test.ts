@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { ForbiddenError, NotFoundError, UnauthorizedError } from '@/lib/data/errors'
 import { loadPage } from '@/lib/data/page'
 
+const connection = vi.hoisted(() => vi.fn(async () => {}))
+vi.mock('next/server', () => ({ connection }))
 vi.mock('next/navigation', () => ({
   redirect: (url: string) => {
     throw new Error(`REDIRECT ${url}`)
@@ -15,6 +17,15 @@ vi.mock('next/navigation', () => ({
 describe('loadPage', () => {
   it('returns the loaded value', async () => {
     expect(await loadPage(async () => 42, '/x')).toBe(42)
+  })
+
+  it('waits for a request before running the read', async () => {
+    const order: string[] = []
+    connection.mockImplementationOnce(async () => {
+      order.push('connection')
+    })
+    await loadPage(async () => order.push('load'), '/x')
+    expect(order).toEqual(['connection', 'load'])
   })
 
   it('redirects signed-out users to login with the page as next', async () => {
