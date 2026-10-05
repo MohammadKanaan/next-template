@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { Empty } from '@/components/Empty'
 import { PageHeader } from '@/components/PageHeader'
 import { Pagination } from '@/components/Pagination'
+import { PostForm } from '@/components/Posts/Form'
 import { Badge } from '@/components/SCN/badge'
 import { Button } from '@/components/SCN/button'
 import {
@@ -401,6 +402,22 @@ export function UiKitView() {
         description="Previous and next controls driven by local state."
       >
         <Pagination page={page} totalPages={5} onPageChange={setPage} />
+      </Section>
+
+      <Section
+        id="forms"
+        eyebrow="Application components"
+        title="Forms"
+        description="React Hook Form with a Zod schema; the page owns the request."
+      >
+        <PostForm
+          post={null}
+          submitLabel="Submit"
+          onSubmit={async (values) => {
+            toast.success(`Submitted: ${values.title}`)
+            return { success: true, status: 200, message: 'ok', data: null }
+          }}
+        />
       </Section>
     </div>
   )
