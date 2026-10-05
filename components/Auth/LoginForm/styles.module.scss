@@ -15,3 +15,13 @@
   color: var(--color-text-3);
   font-size: 0.875rem;
 }
+
+.footer {
+  margin: 0;
+  color: var(--color-text-2);
+  font-size: 0.875rem;
+
+  a {
+    color: var(--color-primary);
+  }
+}

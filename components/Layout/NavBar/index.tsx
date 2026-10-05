@@ -3,9 +3,9 @@
 import clsx from 'clsx'
 import { Menu, X } from 'lucide-react'
 import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 import { useCallback, useEffect, useState } from 'react'
-import { toast } from 'sonner'
+import { SignOutButton } from '@/components/Auth/SignOutButton'
 import { Button } from '@/components/SCN/button'
 import { useScrollLock } from '@/hooks/useScrollLock'
 import { BREAKPOINTS } from '@/lib/constants-breakpoints'
@@ -16,8 +16,8 @@ import {
   ROUTE_PRIVATE,
   ROUTE_UI_KIT,
 } from '@/lib/constants-routes'
+import type { CurrentUser } from '@/lib/dto/users'
 import { env } from '@/lib/env'
-import { useUserStore } from '@/stores/user'
 import styles from './styles.module.scss'
 
 const MOBILE_NAV_ID = 'mobile-nav'
@@ -28,13 +28,12 @@ const NAV_LINKS = [
   { label: 'Private', href: ROUTE_PRIVATE },
 ]
 
-export function NavBar() {
+type NavBarProps = {
+  user: CurrentUser | null
+}
+
+export function NavBar({ user }: NavBarProps) {
   const pathname = usePathname()
-  const router = useRouter()
-  const user = useUserStore((s) => s.user)
-  const hasLoadedProfile = useUserStore((s) => s.hasLoadedProfile)
-  const isUserLoading = useUserStore((s) => s.isUserLoading)
-  const logout = useUserStore((s) => s.logout)
   const { lockScroll, unlockScroll } = useScrollLock()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
 
@@ -63,16 +62,6 @@ export function NavBar() {
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
   }, [closeMobileMenu])
-
-  const handleLogout = async () => {
-    const response = await logout()
-    if (!response.success) {
-      toast.error(response.message)
-      return
-    }
-    router.refresh()
-    router.push(ROUTE_HOME)
-  }
 
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`)
 
@@ -109,25 +98,16 @@ export function NavBar() {
             </Link>
           ))}
           <div className={styles.accountArea}>
-            {hasLoadedProfile &&
-              (user ? (
-                <>
-                  <span className={styles.userName}>{user.name}</span>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    loading={isUserLoading}
-                    onClick={handleLogout}
-                  >
-                    Log out
-                  </Button>
-                </>
-              ) : (
-                <Button asChild size="sm">
-                  <Link href={ROUTE_LOGIN}>Log in</Link>
-                </Button>
-              ))}
+            {user ? (
+              <>
+                <span className={styles.userName}>{user.name}</span>
+                <SignOutButton />
+              </>
+            ) : (
+              <Button asChild size="sm">
+                <Link href={ROUTE_LOGIN}>Log in</Link>
+              </Button>
+            )}
           </div>
         </div>
 
@@ -154,6 +134,19 @@ export function NavBar() {
                 {link.label}
               </Link>
             ))}
+          </div>
+          {/* Any account action closes the menu (log in navigates; log out stays on this page). */}
+          <div className={styles.mobileAccountArea} onClick={closeMobileMenu}>
+            {user ? (
+              <>
+                <span className={styles.userName}>{user.name}</span>
+                <SignOutButton />
+              </>
+            ) : (
+              <Button asChild size="sm">
+                <Link href={ROUTE_LOGIN}>Log in</Link>
+              </Button>
+            )}
           </div>
         </div>
       </nav>

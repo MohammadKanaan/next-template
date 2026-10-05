@@ -1,15 +1,18 @@
 'use client'
 
 import { zodResolver } from '@hookform/resolvers/zod'
+import Link from 'next/link'
 import { useForm } from 'react-hook-form'
 import { Button } from '@/components/SCN/button'
 import { Input } from '@/components/SCN/input'
-import { loginSchema, type LoginFormValues } from '@/lib/validation/auth'
-import type { ApiResponse } from '@/types/api'
+import { ROUTE_SIGNUP } from '@/lib/constants-routes'
+import { signInInput, type SignInInput } from '@/lib/dto/auth'
+import { applyActionErrors } from '@/lib/formErrors'
+import type { ActionResult } from '@/types/api'
 import styles from './styles.module.scss'
 
 export type LoginFormProps = {
-  onSubmit: (values: LoginFormValues) => Promise<ApiResponse<unknown>>
+  onSubmit: (values: SignInInput) => Promise<ActionResult<unknown>>
 }
 
 export function LoginForm({ onSubmit }: LoginFormProps) {
@@ -18,18 +21,15 @@ export function LoginForm({ onSubmit }: LoginFormProps) {
     handleSubmit,
     setError,
     formState: { errors, isSubmitting },
-  } = useForm<LoginFormValues>({ resolver: zodResolver(loginSchema), defaultValues: { email: '' } })
+  } = useForm<SignInInput>({
+    resolver: zodResolver(signInInput),
+    defaultValues: { email: '', password: '' },
+  })
 
   const submit = handleSubmit(async (values) => {
-    const response = await onSubmit(values)
-    if (response.success) {
-      return
-    }
-    const emailErrors = response.errors?.email
-    if (emailErrors?.length) {
-      setError('email', { type: 'server', message: emailErrors[0] })
-    } else {
-      setError('root.server', { type: 'server', message: response.message })
+    const result = await onSubmit(values)
+    if (!result.ok) {
+      applyActionErrors(result, ['email', 'password'], setError)
     }
   })
 
@@ -43,6 +43,14 @@ export function LoginForm({ onSubmit }: LoginFormProps) {
         error={errors.email?.message}
         {...register('email')}
       />
+      <Input
+        label="Password"
+        type="password"
+        autoComplete="current-password"
+        required
+        error={errors.password?.message}
+        {...register('password')}
+      />
       {errors.root?.server && (
         <p className={styles.formError} role="alert">
           {errors.root.server.message}
@@ -51,7 +59,12 @@ export function LoginForm({ onSubmit }: LoginFormProps) {
       <Button type="submit" loading={isSubmitting}>
         Sign in
       </Button>
-      <p className={styles.hint}>Dev login: try leanne@example.com (seeded user).</p>
+      <p className={styles.hint}>
+        Dev login: leanne@example.com / password123 (admin: admin@example.com).
+      </p>
+      <p className={styles.footer}>
+        No account? <Link href={ROUTE_SIGNUP}>Sign up</Link>
+      </p>
     </form>
   )
 }

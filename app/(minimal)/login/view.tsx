@@ -1,10 +1,10 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
+import { signInAction } from '@/actions/auth'
 import { LoginForm } from '@/components/Auth/LoginForm'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/SCN/card'
-import type { LoginFormValues } from '@/lib/validation/auth'
-import { useUserStore } from '@/stores/user'
+import type { SignInInput } from '@/lib/dto/auth'
 import styles from './styles.module.scss'
 
 type LoginViewProps = {
@@ -13,15 +13,13 @@ type LoginViewProps = {
 
 export function LoginView({ nextPath }: LoginViewProps) {
   const router = useRouter()
-  const createSession = useUserStore((s) => s.createSession)
 
-  const handleSubmit = async ({ email }: LoginFormValues) => {
-    const response = await createSession(email)
-    if (response.success) {
+  const handleSubmit = async (values: SignInInput) => {
+    const result = await signInAction(values)
+    if (result.ok) {
       router.replace(nextPath)
-      router.refresh()
     }
-    return response
+    return result
   }
 
   return (
@@ -30,7 +28,7 @@ export function LoginView({ nextPath }: LoginViewProps) {
         <Card>
           <CardHeader>
             <CardTitle>Log in</CardTitle>
-            <CardDescription>Enter your email to start a session.</CardDescription>
+            <CardDescription>Use your email and password.</CardDescription>
           </CardHeader>
           <CardContent>
             <LoginForm onSubmit={handleSubmit} />
