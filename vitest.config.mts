@@ -1,12 +1,12 @@
 import { fileURLToPath } from 'node:url'
 import react from '@vitejs/plugin-react'
-import tsconfigPaths from 'vite-tsconfig-paths'
 import { loadEnv } from 'vite'
 import { defineConfig } from 'vitest/config'
 
 export default defineConfig(({ mode }) => ({
-  plugins: [tsconfigPaths(), react()],
+  plugins: [react()],
   resolve: {
+    tsconfigPaths: true,
     alias: {
       'server-only': fileURLToPath(new URL('./tests/mocks/server-only.ts', import.meta.url)),
     },

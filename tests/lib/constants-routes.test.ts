@@ -38,8 +38,20 @@ describe('route helpers', () => {
     expect(loginPath('/posts/new?x=1')).toBe('/login?next=%2Fposts%2Fnew%3Fx%3D1')
   })
 
+  it('rejects backslash and control-character tricks that browsers read as another host', () => {
+    for (const value of [
+      '/\\evil.example',
+      '/\t/evil.example',
+      '/\n/evil.example',
+      '\\evil.example',
+    ]) {
+      expect(safeRedirectPath(value)).toBe('/private')
+    }
+  })
+
   it('only accepts same-origin relative redirect targets', () => {
     expect(safeRedirectPath('/posts/new')).toBe('/posts/new')
+    expect(safeRedirectPath('/posts/new?x=1#h')).toBe('/posts/new?x=1#h')
     expect(safeRedirectPath('//evil.example')).toBe('/private')
     expect(safeRedirectPath('https://evil.example')).toBe('/private')
     expect(safeRedirectPath(undefined, '/')).toBe('/')

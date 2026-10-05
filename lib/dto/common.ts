@@ -3,8 +3,8 @@ import { z } from 'zod'
 export const DEFAULT_PER_PAGE = 10
 export const MAX_PER_PAGE = 100
 
-/** A positive integer id, coerced from a route param or query string. */
-export const idSchema = z.coerce.number().int().positive()
+/** A positive Postgres `int4` id, coerced from a route param or query string. */
+export const idSchema = z.coerce.number().int().positive().max(2147483647)
 
 export const pageQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),

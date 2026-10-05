@@ -25,6 +25,8 @@ describe('idSchema', () => {
     expect(idSchema.parse('7')).toBe(7)
     expect(idSchema.safeParse('abc').success).toBe(false)
     expect(idSchema.safeParse('1.5').success).toBe(false)
+    expect(idSchema.parse('2147483647')).toBe(2147483647)
+    expect(idSchema.safeParse('2147483648').success).toBe(false)
   })
 })
 

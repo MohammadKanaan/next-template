@@ -49,7 +49,14 @@ describe('toActionFailure', () => {
     } catch (error) {
       redirectError = error
     }
-    expect(() => toActionFailure(redirectError)).toThrow()
+    expect(redirectError).toBeDefined()
+    let rethrown: unknown
+    try {
+      toActionFailure(redirectError)
+    } catch (error) {
+      rethrown = error
+    }
+    expect(rethrown).toBe(redirectError)
   })
 })
 

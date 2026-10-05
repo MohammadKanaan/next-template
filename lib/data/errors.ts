@@ -1,5 +1,4 @@
 import 'server-only'
-import { unstable_rethrow } from 'next/navigation'
 import { NextResponse } from 'next/server'
 import type { z } from 'zod'
 import type { ActionFailure, ErrorBody, ErrorCode, FieldErrors } from '@/types/api'
@@ -71,9 +70,11 @@ function toErrorBody(error: DataError): ErrorBody {
     : { code: error.code, message: error.message }
 }
 
-/** Server Actions: a typed DAL error becomes a failed result; anything else propagates. */
+/**
+ * Server Actions: a typed DAL error becomes a failed result; anything else (including Next's
+ * redirect and not-found errors) is rethrown untouched.
+ */
 export function toActionFailure(error: unknown): ActionFailure {
-  unstable_rethrow(error)
   if (error instanceof DataError) {
     return { ok: false, ...toErrorBody(error) }
   }

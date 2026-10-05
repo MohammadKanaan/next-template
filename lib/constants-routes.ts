@@ -38,6 +38,23 @@ export const isPublicRoute = (path: string): boolean =>
 
 export const isPrivateRoute = (path: string): boolean => !isPublicRoute(path)
 
+const REDIRECT_BASE = 'http://localhost'
+
+/**
+ * Accepts only same-origin relative targets. The value is resolved the way a browser would, so
+ * `/\\evil.example` and `/<TAB>/evil.example` (which browsers read as `//evil.example`) fall back.
+ */
 export function safeRedirectPath(value: string | null | undefined, fallback = ROUTE_PRIVATE) {
-  return value && value.startsWith('/') && !value.startsWith('//') ? value : fallback
+  if (!value || !value.startsWith('/')) {
+    return fallback
+  }
+  try {
+    const url = new URL(value, REDIRECT_BASE)
+    if (url.origin !== REDIRECT_BASE) {
+      return fallback
+    }
+    return `${url.pathname}${url.search}${url.hash}`
+  } catch {
+    return fallback
+  }
 }

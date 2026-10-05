@@ -59,9 +59,11 @@ export function LoginForm({ onSubmit }: LoginFormProps) {
       <Button type="submit" loading={isSubmitting}>
         Sign in
       </Button>
-      <p className={styles.hint}>
-        Dev login: leanne@example.com / password123 (admin: admin@example.com).
-      </p>
+      {process.env.NODE_ENV !== 'production' && (
+        <p className={styles.hint}>
+          Dev login: leanne@example.com / password123 (admin: admin@example.com).
+        </p>
+      )}
       <p className={styles.footer}>
         No account? <Link href={ROUTE_SIGNUP}>Sign up</Link>
       </p>
