@@ -39,8 +39,7 @@ const eslintConfig = defineConfig([
     'next-env.d.ts',
     'generated/**',
     'coverage/**',
-    // Emitted by `prisma contract emit` / `prisma migration plan`, and synced agent skills.
-    'prisma/contract.d.ts',
+    // Generated SQL migrations and synced agent skills.
     'prisma/migrations/**',
     '.agents/**',
     '.claude/**',
