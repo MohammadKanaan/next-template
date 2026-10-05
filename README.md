@@ -11,6 +11,7 @@ Auth, Server Actions for writes, shared Zod DTOs, schema-first forms, and shadcn
 - lucide-react icons, sonner toasts
 - Prisma ORM 7.10 (`prisma-client` generator, `@prisma/adapter-pg`) + PostgreSQL 18
 - Better Auth 1.7 (email + password, official Prisma adapter)
+- Redis (data cache, rate limiter), pg-boss jobs, Resend + React Email, S3-compatible storage (MinIO in dev)
 - Server Actions + Zod 4 DTOs; React Hook Form 7 + `@hookform/resolvers`
 - Vitest + Testing Library + jsdom
 
@@ -19,18 +20,29 @@ Auth, Server Actions for writes, shared Zod DTOs, schema-first forms, and shadcn
 ```bash
 cp .env.example .env              # then set BETTER_AUTH_SECRET (openssl rand -base64 32)
 cp .env.test.example .env.test    # same for the test database
-docker compose up -d db           # or use a local PostgreSQL >= 15 and edit DATABASE_URL
+docker compose up -d              # PostgreSQL, Redis, MinIO (+ bucket init); or run them yourself
 bun install                       # also generates the Prisma client (postinstall)
 bun run db:deploy                 # apply migrations
 bun run db:seed                   # 4 users, 16 posts
-bun run dev
+bun run dev                       # web process, http://localhost:3000
+bun run dev:worker                # in a second terminal: background jobs (emails, cleanup)
 ```
 
 Open http://localhost:3000 and log in as `leanne@example.com` / `password123` (admin:
 `admin@example.com` / `password123`), or create an account at `/signup`.
 
-If you use a local PostgreSQL instead of Docker, create the `next_template_dev` and
-`next_template_test` databases and put the matching URLs in `.env` and `.env.test`.
+The app needs three services: **PostgreSQL >= 15** (18 in `docker-compose.yml`), **Redis**, and an
+**S3-compatible store** (MinIO, bucket `next-template`, `avatars/` publicly readable). Compose
+starts all three (the MinIO images are Chainguard builds that have not been verified end to end).
+If you run them yourself, create the `next_template_dev` and `next_template_test` databases, point
+`REDIS_URL` and the `S3_*` variables in `.env` at your services, and put the matching values in
+`.env.test` (Redis **database 15**: the tests flush it).
+
+The **worker** is a second process (`bun run worker`, or `dev:worker` to restart on changes). Without
+it, jobs pile up in the queue: no verification or reset emails are sent and cleanup does not run.
+With `RESEND_API_KEY` unset, emails are printed in the worker console instead of sent, so the
+verification and reset links are right there. Give the worker the same `BETTER_AUTH_URL` as the web
+process.
 
 **Existing checkouts:** the dev database from before the Prisma 7 / Better Auth refactor holds the
 old Prisma 8 schema. Run `bun run db:reset` once; it drops, re-migrates, and re-seeds the dev
@@ -38,31 +50,51 @@ database (it destroys that data).
 
 ## Scripts
 
-| Script                    | What it does                                                           |
-| ------------------------- | ---------------------------------------------------------------------- |
-| `bun run dev`             | Next dev server (Turbopack).                                           |
-| `bun run build`           | Production build.                                                      |
-| `bun run start`           | Serve the production build.                                            |
-| `bun run lint`            | ESLint.                                                                |
-| `bun run format`          | Prettier, write.                                                       |
-| `bun run format:check`    | Prettier, check only.                                                  |
-| `bun run typecheck`       | `prisma generate`, `next typegen`, then `tsc --noEmit`.                |
-| `bun run test`            | Vitest, single run.                                                    |
-| `bun run test:watch`      | Vitest in watch mode.                                                  |
-| `bun run db:generate`     | Regenerate the Prisma client into `generated/` (also runs on install). |
-| `bun run db:migrate`      | Create and apply a migration to the dev DB, then regenerate.           |
-| `bun run db:deploy`       | Apply pending migrations only (CI / production).                       |
-| `bun run db:seed`         | Seed the dev DB (`prisma/seed.ts`, replaces the seeded users).         |
-| `bun run db:reset`        | Drop, re-migrate, and re-seed the dev DB.                              |
-| `bun run db:studio`       | Prisma Studio.                                                         |
-| `bun run db:test:prepare` | Reset and migrate the database in `.env.test`.                         |
+| Script                    | What it does                                                            |
+| ------------------------- | ----------------------------------------------------------------------- |
+| `bun run dev`             | Next dev server (Turbopack).                                            |
+| `bun run build`           | Production build.                                                       |
+| `bun run start`           | Serve the production build.                                             |
+| `bun run worker`          | Background worker (pg-boss jobs and cron).                              |
+| `bun run dev:worker`      | The worker with `tsx watch`.                                            |
+| `bun run lint`            | ESLint.                                                                 |
+| `bun run format`          | Prettier, write.                                                        |
+| `bun run format:check`    | Prettier, check only.                                                   |
+| `bun run typecheck`       | `prisma generate`, `next typegen`, then `tsc --noEmit`.                 |
+| `bun run test`            | Vitest, single run.                                                     |
+| `bun run test:watch`      | Vitest in watch mode.                                                   |
+| `bun run db:generate`     | Regenerate the Prisma client into `generated/` (also runs on install).  |
+| `bun run db:migrate`      | Create and apply a migration to the dev DB, then regenerate.            |
+| `bun run db:deploy`       | Apply pending migrations only (CI / production).                        |
+| `bun run db:seed`         | Seed the dev DB (`prisma/seed.ts`, replaces the seeded users).          |
+| `bun run db:reset`        | Drop, re-migrate, and re-seed the dev DB.                               |
+| `bun run db:studio`       | Prisma Studio.                                                          |
+| `bun run db:test:prepare` | Reset and migrate the database in `.env.test`, install `pgboss` schema. |
 
 ## Testing
 
 Copy `.env.test.example` to `.env.test`, run `bun run db:test:prepare` once per schema change (and
 whenever the test DB may be dirty), then `bun run test`. Server tests call the DAL, Server Actions, and
-Route Handler directly against `next_template_test` and never touch the dev database. Component,
+Route Handlers directly against `next_template_test` and Redis database 15 (flushed between tests) and
+never touch the dev database. Storage and Resend are mocked, so MinIO is not needed. Component,
 presenter, and DTO tests need no database.
+
+## Backend services
+
+| Service    | Used for                                                              | Code                                           |
+| ---------- | --------------------------------------------------------------------- | ---------------------------------------------- |
+| PostgreSQL | All data; also the job queue (pg-boss, `pgboss` schema)               | `lib/data`, `prisma/`, `jobs/`                 |
+| Redis      | Data cache (versioned tags, fail-open) and the shared rate limiter    | `lib/server/cache.ts`, `lib/data/rateLimit.ts` |
+| Worker     | Sends email, deletes replaced objects, hourly cleanup of expired rows | `worker/`, `jobs/`                             |
+| Resend     | Verification and password-reset email (console log without a key)     | `lib/server/mailer.ts`, `emails/`              |
+| S3 / MinIO | Avatar uploads, browser POSTs straight to the bucket (`/settings`)    | `lib/server/storage.ts`, `lib/data/uploads.ts` |
+
+`GET /api/health` returns 200 when PostgreSQL and Redis answer and 503 otherwise (ok/fail per
+dependency, no error text); point a load balancer or container probe at it.
+
+Docker images for the web and worker processes are a planned follow-up. For now run `bun run build`
+then `bun run start` for the web process and `bun run worker` for the worker, both with the same
+environment. `next.config.ts` already sets `output: 'standalone'` for the future image.
 
 ## Architecture
 
@@ -73,6 +105,7 @@ lib/dto/*  Zod schemas: inputs and outputs, types via z.infer (client- and serve
 lib/data/* server-only DAL: the only code that touches Prisma; enforces auth; returns DTOs
 
 Server Component ───────────────────────────────────────────▶ lib/data ──▶ PostgreSQL
+                                                                      └──▶ Redis / S3 / job queue (lib/server)
 Server Action (actions/*)  parseInput(lib/dto) ─────────────▶ lib/data
 Client facade (lib/client) ─fetch─▶ Route Handler (app/api/v1) ▶ lib/data   (parsed with lib/dto)
 ```
@@ -112,6 +145,19 @@ changed by its author or an admin).
 `revalidatePath` / `refresh`, and return an `ActionResult<T>`. Forms map failures onto fields with
 `applyActionErrors`.
 
+**Caching and rendering.** Cache Components are on: pages prerender a static shell and stream request
+data inside `<Suspense>`. The DAL caches viewer-independent reads in Redis with tag versions and
+invalidates inside the write functions. `'use cache'` is never used on anything that reads data
+Redis caches, and every component that calls a data function sits in a `<Suspense>`.
+
+**Jobs and email.** `jobs/definitions.ts` lists each job (name, Zod payload, retry options, cron).
+`enqueue()` validates and sends; the worker runs the handlers. Jobs that touch the database use the
+system DAL `lib/data/maintenance.ts`, importable only from `jobs/`.
+
+**Uploads.** The server issues a presigned POST and records an `Upload` row; the browser sends the
+file straight to storage; attaching re-checks the object, updates `user.image`, and queues deletion
+of the replaced avatar. Abandoned uploads are cleaned up hourly.
+
 **Route Handler and facade.** `GET /api/v1/posts` exists only because a client component must fetch
 (`/posts/csr`). `lib/client/posts.ts` calls it and parses the response with the shared schema.
 
@@ -132,7 +178,13 @@ stale cookie must not lock anyone out). The DAL does the real check on every rea
 
 Better Auth's HTTP routes `/api/auth/sign-up/email` and `/api/auth/update-user` are disabled
 (`disabledPaths`): they would bypass our validation. Sign-up goes through `signUpAction`; sign-in and
-sign-up actions are rate limited in production (in memory, per process).
+sign-up actions are rate limited in production (Redis-backed, so shared across instances; if Redis
+is down the attempt is allowed).
+
+Sign-up sends a verification email and the login form links to a password reset, both through the
+`send-email` job. Verification is soft: unverified users can sign in and see a banner with a Resend
+button. Resetting a password signs out every session. Better Auth's `/verify-email` and
+`/reset-password/:token` routes stay enabled because the email links use them.
 
 Sessions last 7 days and refresh only through Server Actions or the auth route (Server Components
 cannot set cookies), so a user who only browses is signed out when the session expires.
@@ -154,8 +206,8 @@ cannot set cookies), so a user who only browses is signed out when the session e
 - Declarative authorization policies instead of inline checks.
 - ZenStack or Postgres row-level security as a second enforcement layer.
 - Extend the existing lint rule to restrict `better-auth` imports as well.
-- Rate limiting is per-process memory today; use Redis or Better Auth's database rate-limit storage so
-  the limits hold across instances.
+- The rate limiter fails open when Redis is down; decide per action whether that is acceptable.
+- Docker images for the web and worker, and a compose `app` profile.
 - Cursor pagination (`CursorPage<T> = { items, nextCursor }`) for feeds.
 - Generate OpenAPI from the Zod schemas if external API consumers appear.
 
@@ -173,7 +225,8 @@ cannot set cookies), so a user who only browses is signed out when the session e
 5. Only if a view needs reshaped fields, add `presentX` in `presenters/<Name>Presenter.ts`.
 6. Add the pages (`page.tsx` + `view.tsx`), the form component, and routes in
    `lib/constants-routes.ts` (decide whether they are public or private). Wrap page reads in
-   `loadPage`.
+   `loadPage` and render them from an async component inside `<Suspense>`. If the reads are viewer
+   independent and worth caching, use `remember()` in the DAL and invalidate its tags in the writes.
 7. Add tests in `tests/lib/data/`, `tests/actions/` (and `tests/app/` or `tests/lib/client/` for a
    handler) against the test DB.
 
