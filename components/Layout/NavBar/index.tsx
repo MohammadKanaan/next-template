@@ -3,12 +3,21 @@
 import clsx from 'clsx'
 import { Menu, X } from 'lucide-react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useCallback, useEffect, useState } from 'react'
+import { toast } from 'sonner'
+import { Button } from '@/components/SCN/button'
 import { useScrollLock } from '@/hooks/useScrollLock'
 import { BREAKPOINTS } from '@/lib/constants-breakpoints'
-import { ROUTE_HOME, ROUTE_POSTS, ROUTE_PRIVATE, ROUTE_UI_KIT } from '@/lib/constants-routes'
+import {
+  ROUTE_HOME,
+  ROUTE_LOGIN,
+  ROUTE_POSTS,
+  ROUTE_PRIVATE,
+  ROUTE_UI_KIT,
+} from '@/lib/constants-routes'
 import { env } from '@/lib/env'
+import { useUserStore } from '@/stores/user'
 import styles from './styles.module.scss'
 
 const MOBILE_NAV_ID = 'mobile-nav'
@@ -21,6 +30,11 @@ const NAV_LINKS = [
 
 export function NavBar() {
   const pathname = usePathname()
+  const router = useRouter()
+  const user = useUserStore((s) => s.user)
+  const hasLoadedProfile = useUserStore((s) => s.hasLoadedProfile)
+  const isUserLoading = useUserStore((s) => s.isUserLoading)
+  const logout = useUserStore((s) => s.logout)
   const { lockScroll, unlockScroll } = useScrollLock()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
 
@@ -49,6 +63,16 @@ export function NavBar() {
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
   }, [closeMobileMenu])
+
+  const handleLogout = async () => {
+    const response = await logout()
+    if (!response.success) {
+      toast.error(response.message)
+      return
+    }
+    router.refresh()
+    router.push(ROUTE_HOME)
+  }
 
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`)
 
@@ -84,7 +108,27 @@ export function NavBar() {
               <span>{link.label}</span>
             </Link>
           ))}
-          <div className={styles.accountArea} />
+          <div className={styles.accountArea}>
+            {hasLoadedProfile &&
+              (user ? (
+                <>
+                  <span className={styles.userName}>{user.name}</span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    loading={isUserLoading}
+                    onClick={handleLogout}
+                  >
+                    Log out
+                  </Button>
+                </>
+              ) : (
+                <Button asChild size="sm">
+                  <Link href={ROUTE_LOGIN}>Log in</Link>
+                </Button>
+              ))}
+          </div>
         </div>
 
         <div

@@ -2,6 +2,7 @@
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
+import { UserBootstrap } from '@/components/Auth/UserBootstrap'
 import { Toaster } from '@/components/SCN/sonner'
 import { TooltipProvider } from '@/components/SCN/tooltip'
 
@@ -16,6 +17,7 @@ export function Providers({ children }: { children: ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
+        <UserBootstrap />
         {children}
         <Toaster />
       </TooltipProvider>

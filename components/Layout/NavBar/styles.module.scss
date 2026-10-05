@@ -45,10 +45,17 @@
 .accountArea {
   display: flex;
   align-items: center;
+  gap: 0.75rem;
 
   &:empty {
     display: none;
   }
+}
+
+.userName {
+  color: var(--color-text-2);
+  font-size: 0.875rem;
+  font-weight: 500;
 }
 
 /* Mobile Menu Button */
