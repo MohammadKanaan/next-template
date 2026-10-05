@@ -138,15 +138,25 @@ docs/DECISIONS.md        # Framework and library choices, with reasons
 - **Better Auth**, email + password, with the official Prisma adapter and the `nextCookies` plugin
   (always the last plugin). Sessions are database rows; the session cookie is set by Better Auth.
   `role` (`user` / `admin`) is an additional user field, not settable from sign-up input.
-- Only `lib/data/auth.ts`, `actions/auth.ts`, `app/api/auth/[...all]`, and `proxy.ts` import
-  `better-auth`. Everything else asks the DAL: `getSessionUser()`, `requireUser()`,
+- Only `lib/data/auth.ts`, `actions/auth.ts`, `app/api/auth/[...all]`, `proxy.ts`, and
+  `prisma/seed.ts` (password hashing via `better-auth/crypto`) import `better-auth`. Everything else asks the DAL: `getSessionUser()`, `requireUser()`,
   `requireAdmin()`, `getViewer()`.
 - `requireUser()` always **throws** `UnauthorizedError`; it never redirects. Pages wrap their reads
   in `loadPage(load, path)` (`lib/data/page.ts`), which turns `UnauthorizedError` into a redirect to
   `/login?next=…` and `NotFoundError` into `notFound()`.
 - `proxy.ts` is optimistic only: it checks cookie _presence_ (`getSessionCookie`) to redirect
-  private pages to `/login?next=…` and signed-in users away from `/login` and `/signup`. The real
-  check is always in the DAL.
+  private pages to `/login?next=…`. It has no guest-only redirect, because a stale cookie must not
+  lock anyone out of `/login`; the `/login` and `/signup` pages call `getViewer()` and redirect
+  signed-in users themselves. The real check is always in the DAL.
+- Better Auth's HTTP router has `disabledPaths: ['/sign-up/email', '/update-user']` (returns 404):
+  sign-up goes only through `signUpAction` (validated with `signUpInput`, rate limited), and profile
+  editing does not exist yet, so those endpoints would bypass our username and name rules. Direct
+  `auth.api.*` calls from server code are unaffected. Remove an entry only together with the code
+  that validates the same rules.
+- `signInAction` / `signUpAction` are rate limited in production (`lib/data/rateLimit.ts`, in-memory,
+  per process) because Better Auth's own limiter only runs in its HTTP router.
+- Sessions refresh only through Server Actions or the auth route (Server Components cannot set
+  cookies), so a user who only browses is signed out when the 7-day session expires.
 - Client code never reads or sends a token; the cookie is httpOnly and travels on its own.
 
 ## Data Access Layer

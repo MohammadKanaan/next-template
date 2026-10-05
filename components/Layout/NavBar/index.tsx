@@ -135,7 +135,7 @@ export function NavBar({ user }: NavBarProps) {
               </Link>
             ))}
           </div>
-          {/* Any account action closes the menu (log in navigates; log out stays on this page). */}
+          {/* Any account action closes the menu (both end in a navigation). */}
           <div className={styles.mobileAccountArea} onClick={closeMobileMenu}>
             {user ? (
               <>

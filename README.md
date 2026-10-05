@@ -111,9 +111,16 @@ consumed, such as a view's `useMemo`.
 
 **Auth.** Better Auth with email + password, database sessions, and the `nextCookies` plugin. `role`
 (`user` / `admin`) is an additional user field. `proxy.ts` redirects private routes to
-`/login?next=...` when the session cookie is absent (unknown paths count as private) and sends
-signed-in users away from `/login` and `/signup`; it only checks cookie presence. The DAL does the
-real check on every read and write.
+`/login?next=...` when the session cookie is absent (unknown paths count as private); it only
+checks cookie presence, so the `/login` and `/signup` pages redirect signed-in users themselves (a
+stale cookie must not lock anyone out). The DAL does the real check on every read and write.
+
+Better Auth's HTTP routes `/api/auth/sign-up/email` and `/api/auth/update-user` are disabled
+(`disabledPaths`): they would bypass our validation. Sign-up goes through `signUpAction`; sign-in and
+sign-up actions are rate limited in production (in memory, per process).
+
+Sessions last 7 days and refresh only through Server Actions or the auth route (Server Components
+cannot set cookies), so a user who only browses is signed out when the session expires.
 
 ## Design decisions
 
@@ -132,6 +139,8 @@ real check on every read and write.
 - Declarative authorization policies instead of inline checks.
 - ZenStack or Postgres row-level security as a second enforcement layer.
 - Extend the existing lint rule to restrict `better-auth` imports as well.
+- Rate limiting is per-process memory today; use Redis or Better Auth's database rate-limit storage so
+  the limits hold across instances.
 - Cursor pagination (`CursorPage<T> = { items, nextCursor }`) for feeds.
 - Generate OpenAPI from the Zod schemas if external API consumers appear.
 
