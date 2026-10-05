@@ -5,6 +5,8 @@ const encode = (value: RouteParameter) => encodeURIComponent(String(value))
 export const ROUTE_HOME = '/'
 export const ROUTE_LOGIN = '/login'
 export const ROUTE_SIGNUP = '/signup'
+export const ROUTE_FORGOT_PASSWORD = '/forgot-password'
+export const ROUTE_RESET_PASSWORD = '/reset-password'
 export const ROUTE_PRIVATE = '/private'
 export const ROUTE_POSTS = '/posts'
 export const ROUTE_POSTS_SSR = `${ROUTE_POSTS}/ssr`
@@ -24,6 +26,8 @@ export const PUBLIC_ROUTES = [
   ROUTE_HOME,
   ROUTE_LOGIN,
   ROUTE_SIGNUP,
+  ROUTE_FORGOT_PASSWORD,
+  ROUTE_RESET_PASSWORD,
   ROUTE_POSTS,
   ROUTE_UI_KIT,
 ] as const

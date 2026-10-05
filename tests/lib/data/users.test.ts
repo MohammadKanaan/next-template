@@ -4,6 +4,7 @@ import { auth } from '@/lib/data/auth'
 import { db } from '@/lib/data/db'
 import { UnauthorizedError } from '@/lib/data/errors'
 import { getCurrentUser, getViewer, isUsernameTaken } from '@/lib/data/users'
+import { enqueue } from '@/lib/server/queue'
 import { cookieJar } from '../../helpers/cookies'
 import { createUser, resetDatabase, signInAs } from '../../helpers/server'
 
@@ -39,6 +40,7 @@ describe('users DAL', () => {
       name: 'Ada',
       username: 'ada',
       email: 'ada@example.com',
+      emailVerified: false,
       role: 'user',
     }
     expect(await getViewer()).toEqual(expected)
@@ -57,6 +59,22 @@ describe('users DAL', () => {
     // A Better Auth-side update (what email verification does) fires the hook that invalidates it.
     await auth.api.updateUser({ body: { name: 'Via Better Auth' }, headers: requestHeaders() })
     expect((await getViewer())?.name).toBe('Via Better Auth')
+  })
+
+  it('flips the cached viewer to verified when the emailed link is opened', async () => {
+    vi.mocked(enqueue).mockClear()
+    const user = await createUser({})
+    const [, payload] = vi.mocked(enqueue).mock.calls.at(-1)!
+    const token =
+      payload.template === 'verify-email' && new URL(payload.props.url).searchParams.get('token')
+    expect(token).toBeTruthy()
+
+    await signInAs(user)
+    expect((await getViewer())?.emailVerified).toBe(false)
+
+    await auth.api.verifyEmail({ query: { token: String(token) }, headers: requestHeaders() })
+
+    expect((await getViewer())?.emailVerified).toBe(true)
   })
 
   it('reports whether a username is taken', async () => {

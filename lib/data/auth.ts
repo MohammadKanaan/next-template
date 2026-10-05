@@ -5,11 +5,21 @@ import { nextCookies } from 'better-auth/next-js'
 import { headers } from 'next/headers'
 import { cache } from 'react'
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, signUpInput } from '@/lib/dto/auth'
+import type { JobPayload } from '@/jobs/definitions'
 import { roleSchema, type Role } from '@/lib/dto/users'
 import { invalidateTags } from '@/lib/server/cache'
+import { enqueue } from '@/lib/server/queue'
 import { userTag } from './cacheTags'
 import { db } from './db'
 import { ForbiddenError, UnauthorizedError } from './errors'
+
+/**
+ * Queues an email without awaiting it: the caller's response time must not reveal whether an
+ * account exists. A failure to queue is logged; the user can ask again.
+ */
+function queueEmail(payload: JobPayload<'send-email'>) {
+  enqueue('send-email', payload).catch((error) => console.error('[auth] email not queued:', error))
+}
 
 export const auth = betterAuth({
   database: prismaAdapter(db, { provider: 'postgresql' }),
@@ -17,6 +27,19 @@ export const auth = betterAuth({
     enabled: true,
     minPasswordLength: PASSWORD_MIN_LENGTH,
     maxPasswordLength: PASSWORD_MAX_LENGTH,
+    // Verification is soft: unverified users can sign in; the layout nags them with a banner.
+    requireEmailVerification: false,
+    revokeSessionsOnPasswordReset: true,
+    sendResetPassword: async ({ user, url }) => {
+      queueEmail({ template: 'reset-password', to: user.email, props: { name: user.name, url } })
+    },
+  },
+  emailVerification: {
+    sendOnSignUp: true,
+    autoSignInAfterVerification: true,
+    sendVerificationEmail: async ({ user, url }) => {
+      queueEmail({ template: 'verify-email', to: user.email, props: { name: user.name, url } })
+    },
   },
   // Better Auth's HTTP router would bypass our rules: sign-up goes only through `signUpAction`
   // (validated with `signUpInput`), and there is no profile editing yet. `auth.api.*` calls made

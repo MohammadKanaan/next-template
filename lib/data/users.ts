@@ -21,6 +21,7 @@ const currentUserSelect = {
   name: true,
   username: true,
   email: true,
+  emailVerified: true,
   role: true,
 } satisfies Prisma.UserSelect
 

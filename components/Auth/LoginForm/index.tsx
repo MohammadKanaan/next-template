@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useForm } from 'react-hook-form'
 import { Input } from '@/components/Form/Input'
 import { LoadingButton } from '@/components/LoadingButton'
-import { ROUTE_SIGNUP } from '@/lib/constants-routes'
+import { ROUTE_FORGOT_PASSWORD, ROUTE_SIGNUP } from '@/lib/constants-routes'
 import { signInInput, type SignInInput } from '@/lib/dto/auth'
 import { applyActionErrors } from '@/lib/formErrors'
 import type { ActionResult } from '@/types/api'
@@ -51,6 +51,9 @@ export function LoginForm({ onSubmit }: LoginFormProps) {
         error={errors.password?.message}
         {...register('password')}
       />
+      <Link className={styles.forgotLink} href={ROUTE_FORGOT_PASSWORD}>
+        Forgot password?
+      </Link>
       {errors.root?.server && (
         <p className={styles.formError} role="alert">
           {errors.root.server.message}

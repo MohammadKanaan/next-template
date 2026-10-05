@@ -2,11 +2,19 @@
 import { APIError } from 'better-auth/api'
 import { refresh } from 'next/cache'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { signInAction, signOutAction, signUpAction } from '@/actions/auth'
+import {
+  requestPasswordResetAction,
+  resendVerificationAction,
+  resetPasswordAction,
+  signInAction,
+  signOutAction,
+  signUpAction,
+} from '@/actions/auth'
 import { auth, requireUser } from '@/lib/data/auth'
 import { db } from '@/lib/data/db'
 import { UnauthorizedError } from '@/lib/data/errors'
 import { resetRateLimits } from '@/lib/data/rateLimit'
+import { enqueue } from '@/lib/server/queue'
 import { cookieJar } from '../helpers/cookies'
 import { createUser, resetDatabase, signInAs, TEST_PASSWORD } from '../helpers/server'
 
@@ -28,6 +36,7 @@ describe('auth actions', () => {
   beforeEach(async () => {
     await resetDatabase()
     vi.mocked(refresh).mockClear()
+    vi.mocked(enqueue).mockClear()
     resetRateLimits()
   })
   afterEach(() => {
@@ -167,6 +176,164 @@ describe('auth actions', () => {
     ).toMatchObject({
       ok: false,
       code: 'RATE_LIMITED',
+    })
+  })
+
+  describe('emails', () => {
+    /** The link of the last queued email for `template`, as the worker would render it. */
+    function queuedLink(template: 'verify-email' | 'reset-password') {
+      const sent = vi
+        .mocked(enqueue)
+        .mock.calls.map(([, payload]) => payload)
+        .filter((payload) => payload.template === template)
+      return sent.at(-1)
+    }
+
+    const tokenIn = (url: string) =>
+      new URL(url).pathname.split('/').pop() ?? new URL(url).searchParams.get('token')
+
+    it('queues a verification email on sign-up and leaves the user unverified', async () => {
+      expect(await signUpAction(newUser)).toEqual({ ok: true, data: null })
+      expect(queuedLink('verify-email')).toMatchObject({
+        to: 'new@example.com',
+        props: { name: 'New', url: expect.stringContaining('/verify-email?token=') },
+      })
+      expect(await db.user.findFirstOrThrow()).toMatchObject({ emailVerified: false })
+    })
+
+    it('does not block sign-in for an unverified email', async () => {
+      const user = await createUser({})
+      expect(await signInAction({ email: user.email, password: TEST_PASSWORD })).toEqual({
+        ok: true,
+        data: null,
+      })
+    })
+
+    it('answers ok for an unknown email without queueing anything', async () => {
+      expect(await requestPasswordResetAction({ email: 'ghost@example.com' })).toEqual({
+        ok: true,
+        data: null,
+      })
+      expect(enqueue).not.toHaveBeenCalled()
+    })
+
+    it('queues a reset email for a known address', async () => {
+      const user = await createUser({ email: 'ada@example.com' })
+      vi.mocked(enqueue).mockClear()
+      expect(await requestPasswordResetAction({ email: 'Ada@Example.com' })).toEqual({
+        ok: true,
+        data: null,
+      })
+      expect(queuedLink('reset-password')).toMatchObject({
+        to: user.email,
+        props: { name: user.name, url: expect.stringContaining('/reset-password/') },
+      })
+    })
+
+    it('rejects a malformed email on the reset request', async () => {
+      expect(await requestPasswordResetAction({ email: 'nope' })).toMatchObject({
+        ok: false,
+        code: 'VALIDATION',
+        fieldErrors: { email: ['Enter a valid email address'] },
+      })
+    })
+
+    it('resets the password with the emailed token and revokes sessions', async () => {
+      const user = await createUser({ email: 'ada@example.com' })
+      await signInAs(user)
+      expect(await db.session.count({ where: { userId: user.id } })).toBeGreaterThan(0)
+      await requestPasswordResetAction({ email: user.email })
+      const token = tokenIn(queuedLink('reset-password')!.props.url)!
+
+      expect(await resetPasswordAction({ token, password: 'brand-new-pass-1' })).toEqual({
+        ok: true,
+        data: null,
+      })
+
+      expect(await db.session.count({ where: { userId: user.id } })).toBe(0)
+      cookieJar.clear()
+      expect(await signInAction({ email: user.email, password: TEST_PASSWORD })).toMatchObject({
+        ok: false,
+        code: 'UNAUTHORIZED',
+      })
+      expect(await signInAction({ email: user.email, password: 'brand-new-pass-1' })).toEqual({
+        ok: true,
+        data: null,
+      })
+    })
+
+    it('accepts a reset token only once', async () => {
+      const user = await createUser({})
+      await requestPasswordResetAction({ email: user.email })
+      const token = tokenIn(queuedLink('reset-password')!.props.url)!
+      await resetPasswordAction({ token, password: 'brand-new-pass-1' })
+      expect(await resetPasswordAction({ token, password: 'another-pass-22' })).toEqual({
+        ok: false,
+        code: 'VALIDATION',
+        message: 'This reset link is invalid or has expired. Request a new one.',
+      })
+    })
+
+    it('rejects an unknown token and a short password', async () => {
+      expect(
+        await resetPasswordAction({ token: 'bogus', password: 'long-enough-1' }),
+      ).toMatchObject({
+        ok: false,
+        code: 'VALIDATION',
+        message: expect.stringContaining('invalid or has expired'),
+      })
+      const short = await resetPasswordAction({ token: 'bogus', password: 'short' })
+      expect(!short.ok && short.fieldErrors?.password).toHaveLength(1)
+    })
+
+    it('rate limits reset requests per email in production only', async () => {
+      const attempt = () => requestPasswordResetAction({ email: 'victim@example.com' })
+      for (let n = 0; n < 5; n++) {
+        expect(await attempt()).toMatchObject({ ok: true })
+      }
+
+      await resetRateLimits()
+      vi.stubEnv('NODE_ENV', 'production')
+      for (let n = 0; n < 3; n++) {
+        expect(await attempt()).toMatchObject({ ok: true })
+      }
+      expect(await attempt()).toMatchObject({ ok: false, code: 'RATE_LIMITED' })
+    })
+
+    it('resends the verification email to the signed-in user', async () => {
+      const user = await createUser({ email: 'ada@example.com' })
+      await signInAs(user)
+      vi.mocked(enqueue).mockClear()
+      expect(await resendVerificationAction()).toEqual({ ok: true, data: null })
+      expect(queuedLink('verify-email')).toMatchObject({ to: 'ada@example.com' })
+    })
+
+    it('requires a session to resend verification', async () => {
+      expect(await resendVerificationAction()).toMatchObject({ ok: false, code: 'UNAUTHORIZED' })
+      expect(enqueue).not.toHaveBeenCalled()
+    })
+
+    it('does not resend to an already verified user', async () => {
+      const user = await createUser({})
+      await db.user.update({ where: { id: user.id }, data: { emailVerified: true } })
+      await signInAs(user)
+      vi.mocked(enqueue).mockClear()
+      expect(await resendVerificationAction()).toEqual({ ok: true, data: null })
+      expect(enqueue).not.toHaveBeenCalled()
+    })
+
+    it('rate limits resending verification in production', async () => {
+      const user = await createUser({})
+      await signInAs(user)
+      vi.stubEnv('NODE_ENV', 'production')
+      for (let n = 0; n < 3; n++) {
+        expect(await resendVerificationAction()).toEqual({ ok: true, data: null })
+      }
+      expect(await resendVerificationAction()).toEqual({
+        ok: false,
+        code: 'RATE_LIMITED',
+        message: 'Too many attempts. Try again in a minute.',
+      })
     })
   })
 })

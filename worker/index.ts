@@ -1,6 +1,7 @@
 import { PgBoss } from 'pg-boss'
 import { handleCleanup } from '@/jobs/cleanup'
-import { getJobDefinition, jobs, type JobName, type JobPayload } from '@/jobs/definitions'
+import { getJobDefinition, jobs, type JobName } from '@/jobs/definitions'
+import { handleSendEmail } from '@/jobs/sendEmail'
 import { db } from '@/lib/data/db'
 
 /**
@@ -19,15 +20,12 @@ if (!connectionString) {
 const boss = new PgBoss({ connectionString })
 boss.on('error', (error) => console.error('[worker] pg-boss error:', error))
 
-/** Handlers receive job arrays; each job's payload is re-validated before the handler runs. */
-async function register<N extends JobName>(
-  name: N,
-  handler: (payload: JobPayload<N>) => Promise<void>,
-) {
+/** Handlers receive job arrays; each handler re-validates the payload it is given. */
+async function register(name: JobName, handler: (payload: unknown) => Promise<void>) {
   await boss.work(name, async (batch) => {
     for (const job of batch) {
       try {
-        await handler(jobs[name].schema.parse(job.data) as JobPayload<N>)
+        await handler(job.data)
       } catch (error) {
         console.error(`[worker] ${name} job ${job.id} failed:`, error)
         throw error
@@ -52,6 +50,7 @@ async function start() {
     }
   }
 
+  await register('send-email', handleSendEmail)
   await register('cleanup', handleCleanup)
 
   console.log(`[worker] ready: ${Object.keys(jobs).join(', ')}`)

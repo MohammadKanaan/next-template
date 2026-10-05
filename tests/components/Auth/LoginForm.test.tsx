@@ -27,4 +27,12 @@ describe('LoginForm', () => {
     expect(onSubmit).toHaveBeenCalledWith({ email: 'who@example.com', password: 'secret' })
     expect(await screen.findByRole('alert')).toHaveTextContent('Invalid email or password')
   })
+
+  it('links to the forgot-password page', () => {
+    render(<LoginForm onSubmit={vi.fn()} />)
+    expect(screen.getByRole('link', { name: 'Forgot password?' })).toHaveAttribute(
+      'href',
+      '/forgot-password',
+    )
+  })
 })

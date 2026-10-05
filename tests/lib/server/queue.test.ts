@@ -1,8 +1,10 @@
 // @vitest-environment node
 import { PgBoss } from 'pg-boss'
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import { closeQueue, enqueue } from '@/lib/server/queue'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { assertTestDatabase } from '../../helpers/server'
+
+const { closeQueue, enqueue } =
+  await vi.importActual<typeof import('@/lib/server/queue')>('@/lib/server/queue')
 
 const payload = {
   template: 'verify-email',

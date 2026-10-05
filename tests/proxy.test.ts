@@ -27,6 +27,12 @@ describe('proxy', () => {
     }
   })
 
+  it('lets signed-out visitors reach the password reset pages', () => {
+    for (const path of ['/forgot-password', '/reset-password']) {
+      expect(proxy(request(`${path}?token=abc`)).headers.get('x-middleware-next')).toBe('1')
+    }
+  })
+
   it('lets anyone through to public pages', () => {
     expect(proxy(request('/posts')).headers.get('x-middleware-next')).toBe('1')
   })

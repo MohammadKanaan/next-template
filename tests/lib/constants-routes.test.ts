@@ -19,6 +19,8 @@ describe('route helpers', () => {
       '/',
       '/login',
       '/signup',
+      '/forgot-password',
+      '/reset-password',
       '/posts',
       '/posts/ssr',
       '/posts/1/2',
