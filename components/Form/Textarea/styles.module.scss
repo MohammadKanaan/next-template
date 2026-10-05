@@ -1,0 +1,13 @@
+.field {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.requiredMarker,
+.error {
+  color: var(--destructive);
+}
+
+.error {
+  font-size: 0.875rem;
+}

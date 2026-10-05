@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import { Textarea } from '@/components/SCN/textarea'
+import { Textarea } from '@/components/Form/Textarea'
 
 describe('Textarea', () => {
   it('associates its label and marks required fields', () => {

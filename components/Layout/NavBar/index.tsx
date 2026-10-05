@@ -7,6 +7,7 @@ import { usePathname } from 'next/navigation'
 import { useCallback, useEffect, useState } from 'react'
 import { SignOutButton } from '@/components/Auth/SignOutButton'
 import { Button } from '@/components/SCN/button'
+import { ThemeToggle } from '@/components/ThemeToggle'
 import { useScrollLock } from '@/hooks/useScrollLock'
 import { BREAKPOINTS } from '@/lib/constants-breakpoints'
 import {
@@ -88,16 +89,13 @@ export function NavBar({ user }: NavBarProps) {
             <Link
               key={link.href}
               href={link.href}
-              className={clsx(
-                styles.navLink,
-                isActive(link.href) && styles.navLinkActive,
-                'ui-press',
-              )}
+              className={clsx(styles.navLink, isActive(link.href) && styles.navLinkActive)}
             >
               <span>{link.label}</span>
             </Link>
           ))}
           <div className={styles.accountArea}>
+            <ThemeToggle />
             {user ? (
               <>
                 <span className={styles.userName}>{user.name}</span>
@@ -135,18 +133,21 @@ export function NavBar({ user }: NavBarProps) {
               </Link>
             ))}
           </div>
-          {/* Any account action closes the menu (both end in a navigation). */}
-          <div className={styles.mobileAccountArea} onClick={closeMobileMenu}>
-            {user ? (
-              <>
-                <span className={styles.userName}>{user.name}</span>
-                <SignOutButton />
-              </>
-            ) : (
-              <Button asChild size="sm">
-                <Link href={ROUTE_LOGIN}>Log in</Link>
-              </Button>
-            )}
+          <div className={styles.mobileAccountArea}>
+            <ThemeToggle />
+            {/* Account actions close the menu; theme choices keep it open. */}
+            <div className={styles.accountArea} onClick={closeMobileMenu}>
+              {user ? (
+                <>
+                  <span className={styles.userName}>{user.name}</span>
+                  <SignOutButton />
+                </>
+              ) : (
+                <Button asChild size="sm">
+                  <Link href={ROUTE_LOGIN}>Log in</Link>
+                </Button>
+              )}
+            </div>
           </div>
         </div>
       </nav>

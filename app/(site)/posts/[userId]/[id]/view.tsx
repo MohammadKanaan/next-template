@@ -8,7 +8,7 @@ import { Button } from '@/components/SCN/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/SCN/card'
 import { ROUTE_POST_EDIT, ROUTE_POSTS } from '@/lib/constants-routes'
 import type { PostDetail } from '@/lib/dto/posts'
-import { getInitials } from '@/lib/utils'
+import { getInitials } from '@/lib/getInitials'
 import { presentUser } from '@/presenters/UserPresenter'
 import styles from './styles.module.scss'
 

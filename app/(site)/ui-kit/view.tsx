@@ -4,6 +4,10 @@ import { X } from 'lucide-react'
 import { useState, type ComponentProps, type ReactNode } from 'react'
 import { toast } from 'sonner'
 import { Empty } from '@/components/Empty'
+import { Input } from '@/components/Form/Input'
+import { Textarea } from '@/components/Form/Textarea'
+import { LoadingButton } from '@/components/LoadingButton'
+import { ThemeToggle } from '@/components/ThemeToggle'
 import { PageHeader } from '@/components/PageHeader'
 import { Pagination } from '@/components/Pagination'
 import { PostForm } from '@/components/Posts/Form'
@@ -20,6 +24,7 @@ import {
 import { Checkbox } from '@/components/SCN/checkbox'
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -27,7 +32,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/SCN/dialog'
-import { Input } from '@/components/SCN/input'
 import { Label } from '@/components/SCN/label'
 import {
   Select,
@@ -47,7 +51,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/SCN/table'
-import { Textarea } from '@/components/SCN/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/SCN/tooltip'
 import styles from './styles.module.scss'
 
@@ -110,7 +113,7 @@ export function UiKitView() {
     <div className={styles.page}>
       <PageHeader
         title="UI Kit"
-        description="Reusable component wrappers, variants, sizes, and interactive states."
+        description="Official shadcn primitives and application compositions, using the neutral theme."
         actions={<Badge variant="secondary">Next template</Badge>}
       />
 
@@ -143,7 +146,7 @@ export function UiKitView() {
             ))}
           </div>
           <div className={styles.row}>
-            <Button loading>Loading</Button>
+            <LoadingButton loading>Loading</LoadingButton>
             <Button disabled>Disabled</Button>
           </div>
         </div>
@@ -181,11 +184,11 @@ export function UiKitView() {
         id="label"
         eyebrow="Forms"
         title="Label"
-        description="The shared label renders a required marker when asked."
+        description="The stock label is associated with a control using htmlFor."
       >
         <div className={styles.row}>
-          <Label>Plain label</Label>
-          <Label required>Required label</Label>
+          <Label htmlFor="label-example">Example label</Label>
+          <Input id="label-example" placeholder="Associated control" />
         </div>
       </Section>
 
@@ -329,8 +332,12 @@ export function UiKitView() {
               <DialogDescription>A short description of what this dialog does.</DialogDescription>
             </DialogHeader>
             <DialogFooter>
-              <Button variant="outline">Cancel</Button>
-              <Button>Confirm</Button>
+              <DialogClose asChild>
+                <Button variant="outline">Cancel</Button>
+              </DialogClose>
+              <DialogClose asChild>
+                <Button>Confirm</Button>
+              </DialogClose>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -367,6 +374,15 @@ export function UiKitView() {
             Error
           </Button>
         </div>
+      </Section>
+
+      <Section
+        id="theme"
+        eyebrow="Application components"
+        title="Theme"
+        description="Light, dark, or system preference. Changes persist across visits."
+      >
+        <ThemeToggle />
       </Section>
 
       <Section

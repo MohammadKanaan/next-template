@@ -61,8 +61,8 @@ record-level rules), so a caller that forgets a check cannot bypass it.
 - **Database:** Prisma ORM 7.10 (`prisma-client` generator, `@prisma/adapter-pg`) on PostgreSQL 16
 - **Auth:** Better Auth (email + password, official Prisma adapter, `nextCookies`)
 - **Forms:** React Hook Form + Zod 4
-- **Styling:** SCSS — CSS Modules beside each component, tokens in `styles/`. Tailwind exists only
-  inside `components/SCN` because shadcn needs it; nowhere else.
+- **Styling:** Stock shadcn neutral tokens and Tailwind base styles in `styles/global.css`.
+  SCSS CSS Modules beside application components; Tailwind utilities stay in `components/SCN`.
 - **Testing:** Vitest + Testing Library (jsdom; server tests run in node against a real test DB)
 - **Linting:** ESLint (`eslint-config-next` + `eslint-config-prettier`) + Prettier
 
@@ -83,7 +83,7 @@ lib/data/                # Server-only DAL: db client, auth, errors, users, post
 lib/client/              # Client facades that fetch a Route Handler and parse with a lib/dto schema
 prisma/                  # schema.prisma, migrations, seed
 generated/               # Generated Prisma client (git-ignored; `postinstall` regenerates it)
-styles/                  # Global SCSS (palette, variables, global)
+styles/                  # global.css: official shadcn theme tokens and Tailwind base styles
 proxy.ts                 # Optimistic auth redirects (Next 16's renamed middleware)
 tests/                   # Vitest tests mirroring the source structure
 docs/DECISIONS.md        # Framework and library choices, with reasons
@@ -117,21 +117,26 @@ docs/DECISIONS.md        # Framework and library choices, with reasons
   Component that owns `metadata` and awaits `params`/`searchParams` (they are Promises).
 - Component folders: `components/<Area>/<Name>/index.tsx` with a co-located `styles.module.scss`.
 - Match the style of the file or directory you are editing — do not restructure opportunistically.
-- Do not cast with `as` inside JSX. Narrow or derive the value in the component body.
+- In application code, do not cast with `as` inside JSX. Narrow or derive the value in the
+  component body. Leave CLI-generated `components/SCN` code as upstream provides it.
 
 ## Styling
 
-- Outside `components/SCN`: semantic class names in a CSS Module, values from the tokens in
-  `styles/variables.scss` (`var(--color-*)`). No Tailwind utilities, no `@apply`, no inline `style`
-  unless the value is genuinely runtime-only.
-- Inside `components/SCN`: Tailwind on the shadcn/Radix element only; wrapper elements the template
-  adds use a CSS Module. Split long class lists into arrays passed to `cn`/`cva` so lines stay
-  within 100 characters.
-- Callers never pass `className`/`style` to reusable components. Add a named prop or variant to the
-  owning component instead.
-- Reusable form controls (`Input`, `Textarea`) own their visible label and error through `label`,
-  `required`, and `error` props, and forward every other prop (including `ref` from
-  `register()`) to the native control.
+- `styles/global.css` is the single theme source: stock neutral `:root` / `.dark` tokens and the
+  official Tailwind base layer. No secondary palette or token aliases that override shadcn.
+- Outside `components/SCN`: semantic class names in CSS Modules, using shadcn tokens directly
+  (`var(--foreground)`, `var(--muted-foreground)`, `var(--border)`, etc.). No Tailwind utilities,
+  `@apply`, or inline `style` in application components unless the value is genuinely runtime-only.
+- `components/SCN` contains official CLI-generated primitives. Keep them unchanged apart from
+  Prettier formatting, including long class strings and upstream inline styles. Update/reinstall
+  with `bunx shadcn@latest add <names> --overwrite --yes`, not local rewrites.
+- Application callers do not pass `className`/`style` to reusable components. Put composition and
+  named variants in application wrappers, not generated primitives.
+- Form controls in `components/Form/Input` and `components/Form/Textarea` own `label`, `required`,
+  and `error`, forwarding native props and React 19 `ref` to the stock controls. `LoadingButton`
+  composes stock Button and Spinner. These behaviors must stay outside `components/SCN`.
+- `Providers` uses `next-themes` with `attribute="class"`, system default, and transition suppression
+  on theme changes. `ThemeToggle` offers light/dark/system; the stock Toaster follows the theme.
 
 ## Authentication
 
@@ -290,7 +295,7 @@ catch (error) { return toActionFailure(error) }`. Return `ActionResult<T>`; neve
 | `(site)`    | Main pages (NavBar, content container, footer)         |
 | `(minimal)` | Auth pages (`/login`, `/signup`; no navigation chrome) |
 
-- The root `app/layout.tsx` owns fonts, global styles, and `Providers` (tooltips, toaster).
+- The root `app/layout.tsx` owns fonts, global styles, and `Providers` (theme, tooltips, toaster).
 - `(site)` pages render at request time: the layout reads the session (`getViewer()`) for the NavBar.
 
 ## Environment & Config

@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import { Input } from '@/components/SCN/input'
+import { Input } from '@/components/Form/Input'
 
 describe('Input', () => {
   it('associates its label and marks required fields', () => {

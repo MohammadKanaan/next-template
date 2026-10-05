@@ -3,9 +3,10 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMemo } from 'react'
 import { useForm } from 'react-hook-form'
+import { Input } from '@/components/Form/Input'
+import { Textarea } from '@/components/Form/Textarea'
+import { LoadingButton } from '@/components/LoadingButton'
 import { Button } from '@/components/SCN/button'
-import { Input } from '@/components/SCN/input'
-import { Textarea } from '@/components/SCN/textarea'
 import { createPostInput, type CreatePostInput, type PostDetail } from '@/lib/dto/posts'
 import { applyActionErrors } from '@/lib/formErrors'
 import type { ActionResult } from '@/types/api'
@@ -50,9 +51,9 @@ export function PostForm({ post, submitLabel, onSubmit, onCancel }: PostFormProp
             Cancel
           </Button>
         )}
-        <Button type="submit" loading={isSubmitting} disabled={post !== null && !isDirty}>
+        <LoadingButton type="submit" loading={isSubmitting} disabled={post !== null && !isDirty}>
           {submitLabel}
-        </Button>
+        </LoadingButton>
       </div>
     </form>
   )

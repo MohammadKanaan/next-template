@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation'
 import { useTransition } from 'react'
 import { signOutAction } from '@/actions/auth'
-import { Button } from '@/components/SCN/button'
+import { LoadingButton } from '@/components/LoadingButton'
 import { ROUTE_HOME } from '@/lib/constants-routes'
 
 export function SignOutButton() {
@@ -18,8 +18,14 @@ export function SignOutButton() {
   }
 
   return (
-    <Button type="button" variant="outline" size="sm" loading={isPending} onClick={handleClick}>
+    <LoadingButton
+      type="button"
+      variant="outline"
+      size="sm"
+      loading={isPending}
+      onClick={handleClick}
+    >
       Log out
-    </Button>
+    </LoadingButton>
   )
 }

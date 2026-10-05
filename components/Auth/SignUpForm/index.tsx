@@ -3,8 +3,8 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import Link from 'next/link'
 import { useForm } from 'react-hook-form'
-import { Button } from '@/components/SCN/button'
-import { Input } from '@/components/SCN/input'
+import { Input } from '@/components/Form/Input'
+import { LoadingButton } from '@/components/LoadingButton'
 import { ROUTE_LOGIN } from '@/lib/constants-routes'
 import { signUpInput, type SignUpInput } from '@/lib/dto/auth'
 import { applyActionErrors } from '@/lib/formErrors'
@@ -70,9 +70,9 @@ export function SignUpForm({ onSubmit }: SignUpFormProps) {
           {errors.root.server.message}
         </p>
       )}
-      <Button type="submit" loading={isSubmitting}>
+      <LoadingButton type="submit" loading={isSubmitting}>
         Create account
-      </Button>
+      </LoadingButton>
       <p className={styles.footer}>
         Already have an account? <Link href={ROUTE_LOGIN}>Log in</Link>
       </p>

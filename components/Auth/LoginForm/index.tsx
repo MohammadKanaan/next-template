@@ -3,8 +3,8 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import Link from 'next/link'
 import { useForm } from 'react-hook-form'
-import { Button } from '@/components/SCN/button'
-import { Input } from '@/components/SCN/input'
+import { Input } from '@/components/Form/Input'
+import { LoadingButton } from '@/components/LoadingButton'
 import { ROUTE_SIGNUP } from '@/lib/constants-routes'
 import { signInInput, type SignInInput } from '@/lib/dto/auth'
 import { applyActionErrors } from '@/lib/formErrors'
@@ -56,9 +56,9 @@ export function LoginForm({ onSubmit }: LoginFormProps) {
           {errors.root.server.message}
         </p>
       )}
-      <Button type="submit" loading={isSubmitting}>
+      <LoadingButton type="submit" loading={isSubmitting}>
         Sign in
-      </Button>
+      </LoadingButton>
       {process.env.NODE_ENV !== 'production' && (
         <p className={styles.hint}>
           Dev login: leanne@example.com / password123 (admin: admin@example.com).

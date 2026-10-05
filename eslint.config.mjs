@@ -38,15 +38,6 @@ const eslintConfig = defineConfig([
       ],
     },
   },
-  {
-    files: ['components/SCN/**/*.{ts,tsx}'],
-    rules: {
-      'max-len': [
-        'error',
-        { code: 100, tabWidth: 2, ignoreUrls: true, ignoreRegExpLiterals: true },
-      ],
-    },
-  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:

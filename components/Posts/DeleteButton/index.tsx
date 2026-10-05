@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
 import { deletePostAction } from '@/actions/posts'
+import { LoadingButton } from '@/components/LoadingButton'
 import { Button } from '@/components/SCN/button'
 import {
   Dialog,
@@ -57,9 +58,14 @@ export function DeletePostButton({ postId }: DeletePostButtonProps) {
               Cancel
             </Button>
           </DialogClose>
-          <Button type="button" variant="destructive" loading={isPending} onClick={handleConfirm}>
+          <LoadingButton
+            type="button"
+            variant="destructive"
+            loading={isPending}
+            onClick={handleConfirm}
+          >
             Delete
-          </Button>
+          </LoadingButton>
         </DialogFooter>
       </DialogContent>
     </Dialog>

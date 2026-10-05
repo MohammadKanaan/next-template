@@ -2,8 +2,7 @@ import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import { Providers } from '@/app/providers'
 import { env } from '@/lib/env'
-import '@/components/SCN/tailwind/styles.css'
-import '@/styles/global.scss'
+import '@/styles/global.css'
 
 const inter = Inter({
   variable: '--font-inter',
@@ -16,7 +15,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<'/'>) {
   return (
-    <html lang="en" className={inter.variable}>
+    <html lang="en" className={inter.variable} suppressHydrationWarning>
       <body>
         <Providers>{children}</Providers>
       </body>

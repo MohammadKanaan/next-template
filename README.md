@@ -77,12 +77,27 @@ Server Action (actions/*)  parseInput(lib/dto) ───────────
 Client facade (lib/client) ─fetch─▶ Route Handler (app/api/v1) ▶ lib/data   (parsed with lib/dto)
 ```
 
-**Styling and `components/SCN`.** Design tokens live in `styles/palette.scss` and
-`styles/variables.scss` and are emitted as CSS variables. Every component outside `components/SCN`
-uses a semantic class in a co-located `styles.module.scss`; Tailwind utilities, directives and
-`@apply` are allowed only in `components/SCN`, where the shadcn components live in a flat layout so
-`shadcn add` keeps working. Callers never pass `className` or `style` to reusable components. Form
-controls own their `label`, `required` and `error` props. Read `AGENTS.md` for the full rules.
+**Styling and `components/SCN`.** `styles/global.css` contains the official shadcn neutral theme,
+light/dark tokens, and Tailwind base styles. Application CSS Modules use those tokens directly.
+`components/SCN` holds stock CLI-generated primitives, with no local styling or API overrides.
+Forms use `components/Form/Input` and `components/Form/Textarea` for labels and errors;
+`LoadingButton` composes the stock Button and Spinner. Callers do not pass `className` or `style`
+to application components. Read `AGENTS.md` for the full rules.
+
+The theme menu in navigation offers light, dark, and system preferences. `next-themes` defaults to
+system, saves the selection, and updates the stock Toaster too. The `/ui-kit` catalog exercises
+the components and theme selector.
+
+Add or reinstall primitives using the official CLI:
+
+```bash
+bunx shadcn@latest add button input textarea --overwrite --yes
+```
+
+Keep `lib/utils.ts` dedicated to the CLI's `cn` utility; put application helpers in separate files.
+Official references: [CLI](https://ui.shadcn.com/docs/cli),
+[theming](https://ui.shadcn.com/docs/theming), and
+[Next.js dark mode](https://ui.shadcn.com/docs/dark-mode/next).
 
 **DTOs.** `lib/dto` holds Zod schemas for inputs (`createPostInput`, `signUpInput`) and outputs
 (`postSummarySchema`, `postDetailSchema`); `z.infer` gives the types. Output schemas use

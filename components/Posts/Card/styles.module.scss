@@ -3,10 +3,11 @@
   flex-direction: column;
   gap: 0.75rem;
   width: 100%;
+  min-width: 0;
   padding: 1rem;
-  border: 1px solid var(--color-border);
-  border-radius: 0.75rem;
-  background: var(--color-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
 }
 
 .cardHeader {
@@ -17,29 +18,37 @@
 }
 
 .title {
+  min-width: 0;
   margin: 0;
-  color: var(--color-text);
+  color: var(--foreground);
   font-size: 1rem;
   font-weight: 600;
 }
 
+.title,
+.body,
+.byline {
+  overflow-wrap: anywhere;
+}
+
 .pill {
+  flex-shrink: 0;
   padding: 0.25rem 0.5rem;
   border-radius: 999px;
-  background: var(--color-primary-soft-bg);
-  color: var(--color-primary-soft-text);
+  background: var(--secondary);
+  color: var(--secondary-foreground);
   font-size: 0.75rem;
 }
 
 .body {
   margin: 0;
-  color: var(--color-text-2);
+  color: var(--muted-foreground);
   line-height: 1.4;
 }
 
 .byline {
   margin: 0;
-  color: var(--color-text-3);
+  color: var(--muted-foreground);
   font-size: 0.875rem;
 }
 
@@ -49,7 +58,7 @@
 }
 
 .link {
-  color: var(--color-primary);
+  color: var(--primary);
   font-weight: 600;
   text-decoration: none;
 

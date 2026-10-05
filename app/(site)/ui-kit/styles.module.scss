@@ -25,7 +25,7 @@
 
 .eyebrow {
   margin: 0;
-  color: var(--color-primary);
+  color: var(--primary);
   font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.06em;
@@ -34,7 +34,7 @@
 
 .sectionTitle {
   margin: 0;
-  color: var(--color-text);
+  color: var(--foreground);
   font-size: 1.5rem;
   font-weight: 600;
   line-height: 1.25;
@@ -43,16 +43,16 @@
 .sectionDescription {
   max-width: 48rem;
   margin: 0;
-  color: var(--color-text-3);
+  color: var(--muted-foreground);
   font-size: 0.875rem;
   line-height: 1.5;
 }
 
 .panel {
   padding: 1.5rem;
-  border: 0.0625rem solid var(--color-border);
+  border: 0.0625rem solid var(--border);
   border-radius: var(--radius);
-  background: var(--color-surface);
+  background: var(--card);
 }
 
 /* ── Layout Primitives ─────────────────────────────── */
@@ -71,7 +71,7 @@
 
 .copy {
   margin: 0;
-  color: var(--color-text-2);
+  color: var(--muted-foreground);
   font-size: 0.875rem;
   line-height: 1.5;
 }
@@ -87,7 +87,7 @@
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  color: var(--color-text-2);
+  color: var(--muted-foreground);
   font-size: 0.875rem;
   cursor: pointer;
 }
@@ -98,7 +98,7 @@
   display: flex;
   align-items: center;
   gap: 1rem;
-  color: var(--color-text-3);
+  color: var(--muted-foreground);
   font-size: 0.875rem;
 }
 

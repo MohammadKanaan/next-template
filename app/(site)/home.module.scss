@@ -6,20 +6,20 @@
   justify-content: center;
   height: 100vh;
   margin-top: -4rem;
-  background: linear-gradient(180deg, var(--color-surface) 0%, var(--color-surface-2) 100%);
+  background: var(--background);
 
   h1 {
     margin: 0;
-    font-size: 4.5rem;
-    line-height: 1;
-    color: var(--color-primary);
-    font-weight: 200;
+    font-size: clamp(2.25rem, 5vw, 3rem);
+    line-height: 1.2;
+    color: var(--foreground);
+    font-weight: 600;
   }
 
   p {
     margin: 0;
     font-size: 1.125rem;
     line-height: 1.625;
-    color: var(--color-secondary);
+    color: var(--secondary-foreground);
   }
 }
