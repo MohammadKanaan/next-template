@@ -1,30 +1,14 @@
-export type ValidationErrors = Record<string, string[]>
+export type FieldErrors = Record<string, string[]>
 
-export type ApiResponse<T> = {
-  success: boolean
-  data: T | null
-  status: number
+export type ErrorCode = 'UNAUTHORIZED' | 'FORBIDDEN' | 'NOT_FOUND' | 'VALIDATION'
+
+/** Error JSON from Route Handlers; the same fields a failed Server Action returns. */
+export type ErrorBody = {
+  code: ErrorCode
   message: string
-  errors?: ValidationErrors
+  fieldErrors?: FieldErrors
 }
 
-export type Listing<T, E = Record<string, unknown>> = {
-  list: T[]
-  extraData: E
-  limitValue: number
-  totalPages: number
-  totalCount: number
-  currentPage: number
-  nextPage: number | null
-  prevPage: number | null
-}
+export type ActionFailure = { ok: false } & ErrorBody
 
-export type Permissions = {
-  update: boolean
-  destroy: boolean
-}
-
-export type ApiErrorBody = {
-  message: string
-  errors?: ValidationErrors
-}
+export type ActionResult<T> = { ok: true; data: T } | ActionFailure
