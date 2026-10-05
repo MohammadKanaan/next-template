@@ -12,6 +12,9 @@ services:
 
   redis:
     image: redis:7-alpine
+    # volatile-lru evicts only keys with a TTL (cached entries, rate-limit counters), never the
+    # TTL-less tag versions that invalidate the cache.
+    command: ['redis-server', '--maxmemory', '256mb', '--maxmemory-policy', 'volatile-lru']
     ports:
       - '6379:6379'
     volumes:

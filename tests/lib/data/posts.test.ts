@@ -133,6 +133,15 @@ describe('posts DAL', () => {
       expect(findUnique).toHaveBeenCalledTimes(1)
     })
 
+    it('keeps an author filter that spells "all" apart from the unfiltered list', async () => {
+      const author = await createUser({})
+      await seedPost(author.id, 'Visible')
+      expect((await listPosts({ page: 1, perPage: 10, authorId: 'all' })).items).toEqual([])
+      expect((await listPosts({ page: 1, perPage: 10 })).items.map((post) => post.title)).toEqual([
+        'Visible',
+      ])
+    })
+
     it('createPost invalidates the cached list', async () => {
       const author = await createUser({})
       await seedPost(author.id, 'Old')

@@ -85,7 +85,8 @@ export async function listPosts({
 }: ListPostsQuery): Promise<Page<PostSummary>> {
   const where: Prisma.PostWhereInput = authorId ? { userId: authorId } : {}
   return remember(
-    `posts:list:${page}:${perPage}:${authorId ?? 'all'}`,
+    // JSON keeps the parts unambiguous: no author value can spell the unfiltered list's key.
+    JSON.stringify(['posts:list', page, perPage, authorId ?? null]),
     { ttl: POSTS_CACHE_TTL, tags: [POSTS_TAG], schema: postsPageSchema },
     async () => {
       const [rows, totalItems] = await Promise.all([

@@ -18,16 +18,23 @@ export async function deleteExpiredAuthRows() {
 }
 
 const STALE_UPLOAD_AGE_MS = 24 * 60 * 60 * 1000
+/** Rows per run, so a big backlog cannot outlast the job's expiry; the next hourly run goes on. */
+const STALE_UPLOAD_BATCH = 100
 
 /**
  * Deletes uploads still `pending` after a day (the browser never finished, or never called
- * attach) together with their objects. The object goes first, so if storage is down the row stays
- * and the next run retries it.
+ * attach) together with their objects, oldest first and at most `batchSize` per run. The object
+ * goes first, so if storage is down the row stays and the next run retries it.
  */
-export async function deleteStalePendingUploads(maxAgeMs = STALE_UPLOAD_AGE_MS) {
+export async function deleteStalePendingUploads(
+  maxAgeMs = STALE_UPLOAD_AGE_MS,
+  batchSize = STALE_UPLOAD_BATCH,
+) {
   const stale = await db.upload.findMany({
     where: { status: 'pending', createdAt: { lt: new Date(Date.now() - maxAgeMs) } },
     select: { id: true, key: true },
+    orderBy: { createdAt: 'asc' },
+    take: batchSize,
   })
   let deleted = 0
   for (const upload of stale) {

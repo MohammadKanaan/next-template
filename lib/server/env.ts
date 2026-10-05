@@ -1,10 +1,14 @@
 import 'server-only'
 import { z } from 'zod'
 
+/** An empty variable (`FOO=`, common in compose and CI templates) counts as unset. */
+const emptyToUndefined = (value: unknown) => (value === '' ? undefined : value)
+
 const serverEnvSchema = z.object({
   REDIS_URL: z.string().min(1),
   // Optional: without it the mailer logs emails to the console instead of sending them.
-  RESEND_API_KEY: z.string().min(1).optional(),
+  // Production refuses to send without it (see `sendMail`).
+  RESEND_API_KEY: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
   EMAIL_FROM: z.string().min(1),
   S3_ENDPOINT: z.url(),
   S3_REGION: z.string().min(1),
@@ -12,6 +16,10 @@ const serverEnvSchema = z.object({
   S3_ACCESS_KEY_ID: z.string().min(1),
   S3_SECRET_ACCESS_KEY: z.string().min(1),
   S3_PUBLIC_URL: z.url(),
+  // Optional: the S3 endpoint as the browser reaches it, for presigned uploads. Defaults to
+  // `S3_ENDPOINT`; set it when the server talks to storage over an internal host (e.g. a container
+  // name) the browser cannot resolve.
+  S3_PUBLIC_ENDPOINT: z.preprocess(emptyToUndefined, z.url().optional()),
 })
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>

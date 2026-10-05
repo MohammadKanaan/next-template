@@ -32,6 +32,20 @@ describe('serverEnv', () => {
     expect(serverEnv().RESEND_API_KEY).toBeUndefined()
   })
 
+  it('treats empty optional variables as unset', () => {
+    stubEnv({ ...valid, RESEND_API_KEY: '', S3_PUBLIC_ENDPOINT: '' })
+    expect(serverEnv().RESEND_API_KEY).toBeUndefined()
+    expect(serverEnv().S3_PUBLIC_ENDPOINT).toBeUndefined()
+  })
+
+  it('accepts a browser-facing S3 endpoint and rejects a malformed one', () => {
+    stubEnv({ ...valid, S3_PUBLIC_ENDPOINT: 'https://files.example.com' })
+    expect(serverEnv().S3_PUBLIC_ENDPOINT).toBe('https://files.example.com')
+    resetServerEnv()
+    stubEnv({ ...valid, S3_PUBLIC_ENDPOINT: 'not a url' })
+    expect(() => serverEnv()).toThrow(/S3_PUBLIC_ENDPOINT/)
+  })
+
   it('memoizes the first successful parse', () => {
     stubEnv(valid)
     const first = serverEnv()

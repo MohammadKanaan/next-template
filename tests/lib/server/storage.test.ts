@@ -1,10 +1,16 @@
 // @vitest-environment node
 import { HeadObjectCommand, NotFound, S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { resetServerEnv } from '@/lib/server/env'
 import { createUploadTicket, deleteObject, headObject, publicUrl } from '@/lib/server/storage'
 
 describe('storage', () => {
-  afterEach(() => vi.restoreAllMocks())
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllEnvs()
+    resetServerEnv()
+    delete (globalThis as { s3Public?: unknown }).s3Public
+  })
 
   it('builds the public URL from S3_PUBLIC_URL, which already includes the bucket', () => {
     expect(publicUrl('avatars/u/1')).toBe(`${process.env.S3_PUBLIC_URL}/avatars/u/1`)
@@ -26,6 +32,28 @@ describe('storage', () => {
         { bucket: process.env.S3_BUCKET },
       ]),
     )
+  })
+
+  it('points the presigned POST at S3_PUBLIC_ENDPOINT when it is set', async () => {
+    vi.stubEnv('S3_PUBLIC_ENDPOINT', 'https://files.example.com')
+    resetServerEnv()
+    const ticket = await createUploadTicket({
+      key: 'avatars/u/1',
+      contentType: 'image/png',
+      maxSize: 2048,
+    })
+    expect(ticket.url).toBe(`https://files.example.com/${process.env.S3_BUCKET}`)
+  })
+
+  it('falls back to S3_ENDPOINT for the presigned POST when S3_PUBLIC_ENDPOINT is empty', async () => {
+    vi.stubEnv('S3_PUBLIC_ENDPOINT', '')
+    resetServerEnv()
+    const ticket = await createUploadTicket({
+      key: 'avatars/u/1',
+      contentType: 'image/png',
+      maxSize: 2048,
+    })
+    expect(ticket.url).toBe(`${process.env.S3_ENDPOINT}/${process.env.S3_BUCKET}`)
   })
 
   it('heads an object into its size and content type', async () => {

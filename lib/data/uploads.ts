@@ -81,20 +81,27 @@ export async function attachAvatar(uploadId: string): Promise<CurrentUser> {
   }
 
   const [replaced, user] = await db.$transaction(async (tx) => {
-    const previous = await tx.upload.findMany({
-      where: { userId: viewer.id, purpose: 'avatar', status: 'attached', id: { not: upload.id } },
-      select: { id: true, key: true },
-    })
-    await tx.upload.deleteMany({ where: { id: { in: previous.map((row) => row.id) } } })
-    await tx.upload.update({
-      where: { id: upload.id },
-      data: { status: 'attached', size: head.size, contentType: head.contentType ?? undefined },
-    })
+    // Updating the user first takes its row lock, so two attaches by the same user run one after
+    // the other and the later one sees (and replaces) the earlier avatar.
     const updated = await tx.user.update({
       where: { id: viewer.id },
       data: { image: publicUrl(upload.key) },
       select: currentUserSelect,
     })
+    // Only a still-pending upload can be claimed: a concurrent attach of the same upload matches
+    // nothing here and fails, which rolls back the user update above.
+    const claimed = await tx.upload.updateMany({
+      where: { id: upload.id, status: 'pending' },
+      data: { status: 'attached', size: head.size, contentType: head.contentType ?? undefined },
+    })
+    if (claimed.count === 0) {
+      throw new ValidationError({ uploadId: ['This upload was already used'] })
+    }
+    const previous = await tx.upload.findMany({
+      where: { userId: viewer.id, purpose: 'avatar', status: 'attached', id: { not: upload.id } },
+      select: { id: true, key: true },
+    })
+    await tx.upload.deleteMany({ where: { id: { in: previous.map((row) => row.id) } } })
     return [previous, updated] as const
   })
 

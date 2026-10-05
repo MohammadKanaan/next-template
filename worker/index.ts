@@ -4,6 +4,7 @@ import { handleDeleteObject } from '@/jobs/deleteObject'
 import { getJobDefinition, jobs, type JobName } from '@/jobs/definitions'
 import { handleSendEmail } from '@/jobs/sendEmail'
 import { db } from '@/lib/data/db'
+import { serverEnv } from '@/lib/server/env'
 
 /**
  * Background worker: the one process that owns pg-boss (its `pgboss` schema migrations, queue
@@ -36,6 +37,10 @@ async function register(name: JobName, handler: (payload: unknown) => Promise<vo
 }
 
 async function start() {
+  if (process.env.NODE_ENV === 'production') {
+    // Fail at boot on a bad config instead of on the first job.
+    serverEnv()
+  }
   await boss.start()
 
   for (const name of Object.keys(jobs) as JobName[]) {

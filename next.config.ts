@@ -7,7 +7,6 @@ const scssBreakpoints = Object.entries(BREAKPOINTS)
 
 const nextConfig: NextConfig = {
   cacheComponents: true,
-  output: 'standalone',
   sassOptions: {
     additionalData: scssBreakpoints,
   },

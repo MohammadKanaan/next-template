@@ -214,5 +214,28 @@ describe('uploads DAL', () => {
       await attachAvatar(upload.id)
       await expect(attachAvatar(upload.id)).rejects.toBeInstanceOf(ValidationError)
     })
+
+    it('lets only one of two concurrent attaches of the same upload win', async () => {
+      const user = await createUser({})
+      await signInAs(user)
+      const upload = await pendingUpload(user.id)
+      const results = await Promise.allSettled([attachAvatar(upload.id), attachAvatar(upload.id)])
+      expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1)
+      const failed = results.find((result) => result.status === 'rejected')
+      expect(failed?.reason).toBeInstanceOf(ValidationError)
+      expect(await db.upload.count({ where: { status: 'attached' } })).toBe(1)
+    })
+
+    it('keeps one attached avatar when two different uploads attach concurrently', async () => {
+      const user = await createUser({})
+      await signInAs(user)
+      const first = await pendingUpload(user.id)
+      const second = await pendingUpload(user.id)
+      await Promise.all([attachAvatar(first.id), attachAvatar(second.id)])
+      const attached = await db.upload.findMany({ where: { status: 'attached' } })
+      expect(attached).toHaveLength(1)
+      const { image } = await db.user.findUniqueOrThrow({ where: { id: user.id } })
+      expect(image).toBe(`http://storage.test/bucket/${attached[0].key}`)
+    })
   })
 })

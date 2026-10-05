@@ -9,21 +9,36 @@ import {
 import { createPresignedPost } from '@aws-sdk/s3-presigned-post'
 import { serverEnv } from './env'
 
-const globalForStorage = globalThis as unknown as { s3?: S3Client }
+const globalForStorage = globalThis as unknown as { s3?: S3Client; s3Public?: S3Client }
+
+function createClient(endpoint: string): S3Client {
+  const env = serverEnv()
+  return new S3Client({
+    endpoint,
+    region: env.S3_REGION,
+    credentials: { accessKeyId: env.S3_ACCESS_KEY_ID, secretAccessKey: env.S3_SECRET_ACCESS_KEY },
+    // MinIO and most self-hosted S3 servers address buckets by path, not by subdomain.
+    forcePathStyle: true,
+  })
+}
 
 /** Shared client, created on first use so importing this file never needs the S3 variables. */
 function getClient(): S3Client {
-  if (!globalForStorage.s3) {
-    const env = serverEnv()
-    globalForStorage.s3 = new S3Client({
-      endpoint: env.S3_ENDPOINT,
-      region: env.S3_REGION,
-      credentials: { accessKeyId: env.S3_ACCESS_KEY_ID, secretAccessKey: env.S3_SECRET_ACCESS_KEY },
-      // MinIO and most self-hosted S3 servers address buckets by path, not by subdomain.
-      forcePathStyle: true,
-    })
-  }
+  globalForStorage.s3 ??= createClient(serverEnv().S3_ENDPOINT)
   return globalForStorage.s3
+}
+
+/**
+ * Client whose endpoint is the one the browser reaches (`S3_PUBLIC_ENDPOINT`); only used to build
+ * presigned POST URLs, which are signed for that host. Falls back to the server's own client.
+ */
+function getSigningClient(): S3Client {
+  const publicEndpoint = serverEnv().S3_PUBLIC_ENDPOINT
+  if (!publicEndpoint) {
+    return getClient()
+  }
+  globalForStorage.s3Public ??= createClient(publicEndpoint)
+  return globalForStorage.s3Public
 }
 
 export type PresignedPost = { url: string; fields: Record<string, string> }
@@ -48,7 +63,7 @@ export async function createUploadTicket({
   maxSize,
   expiresIn = 300,
 }: PresignOptions): Promise<PresignedPost> {
-  return createPresignedPost(getClient(), {
+  return createPresignedPost(getSigningClient(), {
     Bucket: serverEnv().S3_BUCKET,
     Key: key,
     Fields: { 'Content-Type': contentType },

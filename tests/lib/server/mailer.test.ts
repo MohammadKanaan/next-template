@@ -41,6 +41,15 @@ describe('sendMail', () => {
     expect(logged).toContain(url)
   })
 
+  it('throws in production without a Resend key and never logs the message', async () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    vi.stubEnv('RESEND_API_KEY', '')
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    await expect(sendMail(mail)).rejects.toThrow('RESEND_API_KEY')
+    expect(send).not.toHaveBeenCalled()
+    expect(log).not.toHaveBeenCalled()
+  })
+
   it('sends rendered html and text through Resend when a key is set', async () => {
     vi.stubEnv('RESEND_API_KEY', 're_test_key')
     send.mockResolvedValue({ data: { id: 'email_1' }, error: null })

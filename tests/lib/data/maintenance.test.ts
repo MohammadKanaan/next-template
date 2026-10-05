@@ -76,6 +76,18 @@ describe('maintenance DAL', () => {
       expect(keys).toEqual(['fresh-pending', 'old-attached'])
     })
 
+    it('handles at most one batch per run, oldest first, and the next run continues', async () => {
+      const user = await createUser({})
+      await upload('c-newest', user.id, 'pending', 26 * hour)
+      await upload('a-oldest', user.id, 'pending', 30 * hour)
+      await upload('b-middle', user.id, 'pending', 28 * hour)
+
+      expect(await deleteStalePendingUploads(undefined, 2)).toEqual({ uploads: 2 })
+      expect((await db.upload.findMany()).map((row) => row.key)).toEqual(['c-newest'])
+      expect(await deleteStalePendingUploads(undefined, 2)).toEqual({ uploads: 1 })
+      expect(await db.upload.count()).toBe(0)
+    })
+
     it('keeps the row when the object cannot be deleted, and carries on', async () => {
       const user = await createUser({})
       await upload('a-broken', user.id, 'pending', 30 * hour)

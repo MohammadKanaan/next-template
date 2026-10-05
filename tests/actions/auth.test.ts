@@ -14,7 +14,7 @@ import { auth, requireUser } from '@/lib/data/auth'
 import { db } from '@/lib/data/db'
 import { UnauthorizedError } from '@/lib/data/errors'
 import { resetRateLimits } from '@/lib/data/rateLimit'
-import type { JobPayload } from '@/jobs/definitions'
+import { jobs, type JobPayload } from '@/jobs/definitions'
 import { enqueue } from '@/lib/server/queue'
 import { cookieJar } from '../helpers/cookies'
 import { createUser, resetDatabase, signInAs, TEST_PASSWORD } from '../helpers/server'
@@ -203,6 +203,20 @@ describe('auth actions', () => {
         props: { name: 'New', url: expect.stringContaining('/verify-email?token=') },
       })
       expect(await db.user.findFirstOrThrow()).toMatchObject({ emailVerified: false })
+    })
+
+    it('emits payloads that pass the schema the real enqueue validates with', async () => {
+      // The global queue mock skips validation, so run what Better Auth produced through the
+      // same schema `enqueue` applies; a drifted payload would otherwise only log "not queued".
+      await signUpAction(newUser)
+      await requestPasswordResetAction({ email: newUser.email })
+      const sent = vi.mocked(enqueue).mock.calls.filter(([name]) => name === 'send-email')
+      expect(
+        sent.map(([, payload]) => (payload as JobPayload<'send-email'>).template).sort(),
+      ).toEqual(['reset-password', 'verify-email'])
+      for (const [name, payload] of sent) {
+        expect(() => jobs[name as 'send-email'].schema.parse(payload)).not.toThrow()
+      }
     })
 
     it('does not block sign-in for an unverified email', async () => {
