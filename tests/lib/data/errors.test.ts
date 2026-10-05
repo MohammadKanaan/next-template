@@ -6,6 +6,7 @@ import {
   ForbiddenError,
   NotFoundError,
   parseInput,
+  RateLimitedError,
   toActionFailure,
   toErrorResponse,
   UnauthorizedError,
@@ -60,6 +61,16 @@ describe('toActionFailure', () => {
   })
 })
 
+describe('RateLimitedError', () => {
+  it('becomes a RATE_LIMITED action failure with the default message', () => {
+    expect(toActionFailure(new RateLimitedError())).toEqual({
+      ok: false,
+      code: 'RATE_LIMITED',
+      message: 'Too many attempts. Try again in a minute.',
+    })
+  })
+})
+
 describe('toErrorResponse', () => {
   it('maps codes to statuses', async () => {
     const cases = [
@@ -67,6 +78,7 @@ describe('toErrorResponse', () => {
       [new ForbiddenError(), 403],
       [new NotFoundError(), 404],
       [new ValidationError({}), 422],
+      [new RateLimitedError(), 429],
     ] as const
     for (const [error, status] of cases) {
       const response = toErrorResponse(error)

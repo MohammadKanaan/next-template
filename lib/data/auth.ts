@@ -4,7 +4,7 @@ import { prismaAdapter } from 'better-auth/adapters/prisma'
 import { nextCookies } from 'better-auth/next-js'
 import { headers } from 'next/headers'
 import { cache } from 'react'
-import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from '@/lib/dto/auth'
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, signUpInput } from '@/lib/dto/auth'
 import { roleSchema, type Role } from '@/lib/dto/users'
 import { db } from './db'
 import { ForbiddenError, UnauthorizedError } from './errors'
@@ -16,9 +16,17 @@ export const auth = betterAuth({
     minPasswordLength: PASSWORD_MIN_LENGTH,
     maxPasswordLength: PASSWORD_MAX_LENGTH,
   },
+  // Better Auth's HTTP router would bypass our rules: sign-up goes only through `signUpAction`
+  // (validated with `signUpInput`), and there is no profile editing yet. `auth.api.*` calls made
+  // directly from server code are unaffected; only the `/api/auth/*` router honours this list.
+  disabledPaths: ['/sign-up/email', '/update-user'],
   user: {
     additionalFields: {
-      username: { type: 'string', required: true },
+      username: {
+        type: 'string',
+        required: true,
+        validator: { input: signUpInput.shape.username },
+      },
       role: { type: ['user', 'admin'], required: false, defaultValue: 'user', input: false },
     },
   },

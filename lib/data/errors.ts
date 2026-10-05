@@ -39,6 +39,12 @@ export class ValidationError extends DataError {
   }
 }
 
+export class RateLimitedError extends DataError {
+  constructor(message = 'Too many attempts. Try again in a minute.') {
+    super('RATE_LIMITED', message)
+  }
+}
+
 export function fieldErrorsFrom(error: z.ZodError): FieldErrors {
   const errors: FieldErrors = {}
   for (const issue of error.issues) {
@@ -62,6 +68,7 @@ const STATUS_BY_CODE: Record<ErrorCode, number> = {
   FORBIDDEN: 403,
   NOT_FOUND: 404,
   VALIDATION: 422,
+  RATE_LIMITED: 429,
 }
 
 function toErrorBody(error: DataError): ErrorBody {

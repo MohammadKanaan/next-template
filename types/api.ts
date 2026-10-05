@@ -1,6 +1,6 @@
 export type FieldErrors = Record<string, string[]>
 
-export type ErrorCode = 'UNAUTHORIZED' | 'FORBIDDEN' | 'NOT_FOUND' | 'VALIDATION'
+export type ErrorCode = 'UNAUTHORIZED' | 'FORBIDDEN' | 'NOT_FOUND' | 'VALIDATION' | 'RATE_LIMITED'
 
 /** Error JSON from Route Handlers; the same fields a failed Server Action returns. */
 export type ErrorBody = {
