@@ -1,0 +1,128 @@
+@use 'sass:color';
+
+/*
+  RAW PALETTE SOURCE OF TRUTH
+  - Add new color scales here (brand, success, warning, etc).
+  - Each scale step creates two CSS vars:
+    1) --<scale>-<step>      (hex value)
+    2) --<scale>-<step>-hsl  (Tailwind alpha-compatible triplet)
+  - Then map these tokens in assets/variables.scss to semantic names.
+*/
+
+$gray-scale: (
+  50: #ffffff,
+  100: #f1f1f1,
+  200: #eaeaeb,
+  300: #d7d7da,
+  400: #c2c2c6,
+  500: #9999a0,
+  600: #808086,
+  700: #666670,
+  800: #323241,
+  900: #191929,
+  950: #11111e,
+);
+
+$primary-scale: (
+  50: #fff9eb,
+  100: #fff1c7,
+  200: #ffe38a,
+  300: #ffd149,
+  400: #f4bd18,
+  500: #d89f00,
+  600: #b88300,
+  700: #946700,
+  800: #755100,
+  900: #5c3f00,
+  950: #342300,
+);
+
+$secondary-scale: (
+  50: #f8fafc,
+  100: #f1f5f9,
+  200: #e2e8f0,
+  300: #cbd5e1,
+  400: #94a3b8,
+  500: #4b5563,
+  600: #374151,
+  700: #1f2937,
+  800: #111827,
+  900: #0b1220,
+  950: #050816,
+);
+
+$tertiary-scale: (
+  50: #f3f8ff,
+  100: #e4efff,
+  200: #c7ddff,
+  300: #9fc3ff,
+  400: #6ea3ff,
+  500: #3f83f8,
+  600: #2f66d5,
+  700: #2552ad,
+  800: #1f448c,
+  900: #1d3b72,
+  950: #16254a,
+);
+
+$success-scale: (
+  50: #ecfdf5,
+  100: #d1fae5,
+  200: #a7f3d0,
+  300: #6ee7b7,
+  400: #34d399,
+  500: #10b981,
+  600: #059669,
+  700: #047857,
+  800: #065f46,
+  900: #064e3b,
+  950: #022c22,
+);
+
+$warning-scale: (
+  50: #fffbeb,
+  100: #fef3c7,
+  200: #fde68a,
+  300: #fcd34d,
+  400: #fbbf24,
+  500: #f59e0b,
+  600: #d97706,
+  700: #b45309,
+  800: #92400e,
+  900: #78350f,
+  950: #451a03,
+);
+
+$danger-scale: (
+  50: #fef2f2,
+  100: #fee2e2,
+  200: #fecaca,
+  300: #fca5a5,
+  400: #f87171,
+  500: #ef4444,
+  600: #dc2626,
+  700: #b91c1c,
+  800: #991b1b,
+  900: #7f1d1d,
+  950: #450a0a,
+);
+
+@mixin emit-color-scale($prefix, $scale) {
+  @each $step, $value in $scale {
+    --#{$prefix}-#{$step}: #{$value};
+    --#{$prefix}-#{$step}-hsl: #{color.channel($value, 'hue', $space: hsl)}
+      #{color.channel($value, 'saturation', $space: hsl)}
+      #{color.channel($value, 'lightness', $space: hsl)};
+  }
+}
+
+:root {
+  /* Palette emission: add your new scale include here if you create one above. */
+  @include emit-color-scale('gray-scale', $gray-scale);
+  @include emit-color-scale('primary-scale', $primary-scale);
+  @include emit-color-scale('secondary-scale', $secondary-scale);
+  @include emit-color-scale('tertiary-scale', $tertiary-scale);
+  @include emit-color-scale('success-scale', $success-scale);
+  @include emit-color-scale('warning-scale', $warning-scale);
+  @include emit-color-scale('danger-scale', $danger-scale);
+}

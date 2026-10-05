@@ -1,0 +1,138 @@
+/*
+  HOW THIS FILE WORKS
+  1) Map semantic colors below (light/dark) to palette tokens from assets/palette.scss.
+  2) Use semantic variables in SCSS: var(--color-primary), var(--color-surface), etc.
+  3) Tailwind/Shadcn classes (bg-primary, text-foreground, border-input...) come from
+     the tailwind token maps below.
+*/
+
+/*
+  Semantic token mapping (LIGHT)
+  Keys become: --color-<key> and --color-<key>-hsl
+*/
+$semantic-light: (
+  'primary': 'primary-scale-500',
+  'secondary': 'secondary-scale-500',
+  'tertiary': 'tertiary-scale-500',
+  'success': 'success-scale-600',
+  'warning': 'warning-scale-600',
+  'danger': 'danger-scale-600',
+  'bg': 'gray-scale-100',
+  'surface': 'gray-scale-50',
+  'surface-2': 'gray-scale-100',
+  'text': 'gray-scale-950',
+  'text-2': 'gray-scale-900',
+  'text-3': 'gray-scale-700',
+  'border': 'gray-scale-200',
+  'border-subtle': 'gray-scale-200',
+);
+
+/*
+  Semantic token mapping (DARK)
+  Only tokens that should differ from light mode.
+*/
+$semantic-dark: (
+  'tertiary': 'tertiary-scale-400',
+  'success': 'success-scale-400',
+  'warning': 'warning-scale-400',
+  'danger': 'danger-scale-400',
+  'bg': 'gray-scale-950',
+  'surface': 'gray-scale-900',
+  'surface-2': 'gray-scale-800',
+  'text': 'gray-scale-50',
+  'text-2': 'gray-scale-200',
+  'text-3': 'gray-scale-400',
+  'border': 'gray-scale-800',
+  'border-subtle': 'gray-scale-700',
+);
+
+/* Global tokens used directly by SCSS components. */
+$foundation-static: (
+  'color-primary-soft-bg': 'rgba(87, 7, 166, 0.1)',
+  'color-primary-soft-text': 'rgba(87, 7, 166, 0.9)',
+  'color-primary-muted': 'rgba(87, 7, 166, 0.6)',
+  'color-overlay': 'rgba(0, 0, 0, 0.5)',
+  'shadow-1': '0 2px 4px rgba(0, 0, 0, 0.1)',
+  'shadow-lg':
+    '0 0.625rem 0.9375rem -0.1875rem hsl(var(--gray-scale-950-hsl) / 0.1), 0 0.25rem 0.375rem -0.25rem hsl(var(--gray-scale-950-hsl) / 0.1)',
+  'font-family-primary': "var(--font-inter), 'Inter', system-ui, -apple-system, sans-serif",
+  'radius': '0.5rem',
+);
+
+/*
+  Tailwind/Shadcn base variables.
+  These power classes like bg-background, text-primary-foreground, border-input, etc.
+*/
+$tailwind-light: (
+  'background': 'var(--color-bg-hsl)',
+  'foreground': 'var(--color-text-hsl)',
+  'primary': 'var(--color-primary-hsl)',
+  'primary-foreground': 'var(--gray-scale-50-hsl)',
+  'secondary': 'var(--secondary-scale-100-hsl)',
+  'secondary-foreground': 'var(--secondary-scale-900-hsl)',
+  'tertiary': 'var(--color-tertiary-hsl)',
+  'tertiary-foreground': 'var(--gray-scale-50-hsl)',
+  'muted': 'var(--gray-scale-200-hsl)',
+  'muted-foreground': 'var(--gray-scale-700-hsl)',
+  'accent': 'var(--secondary-scale-100-hsl)',
+  'accent-foreground': 'var(--secondary-scale-900-hsl)',
+  'success': 'var(--color-success-hsl)',
+  'success-foreground': 'var(--gray-scale-50-hsl)',
+  'warning': 'var(--color-warning-hsl)',
+  'warning-foreground': 'var(--secondary-scale-900-hsl)',
+  'destructive': 'var(--color-danger-hsl)',
+  'destructive-foreground': 'var(--gray-scale-50-hsl)',
+  'border': 'var(--color-border-hsl)',
+  'ring': 'var(--color-primary-hsl)',
+);
+
+/* Dark-mode overrides for Tailwind/Shadcn vars. */
+$tailwind-dark-overrides: (
+  'secondary': 'var(--secondary-scale-800-hsl)',
+  'secondary-foreground': 'var(--secondary-scale-50-hsl)',
+  'muted': 'var(--gray-scale-800-hsl)',
+  'muted-foreground': 'var(--gray-scale-300-hsl)',
+  'accent': 'var(--secondary-scale-800-hsl)',
+  'accent-foreground': 'var(--secondary-scale-50-hsl)',
+  'warning-foreground': 'var(--secondary-scale-950-hsl)',
+  'destructive': 'var(--secondary-scale-950-hsl)',
+);
+
+/* Emits one semantic token as --color-name and --color-name-hsl. */
+@mixin emit-semantic-token($name, $palette-token) {
+  --color-#{$name}: var(--#{$palette-token});
+  --color-#{$name}-hsl: var(--#{$palette-token}-hsl);
+}
+
+/* Emits all semantic tokens from a map. */
+@mixin emit-semantic-map($tokens) {
+  @each $name, $palette-token in $tokens {
+    @include emit-semantic-token($name, $palette-token);
+  }
+}
+
+/* Emits plain CSS vars from a key/value map. */
+@mixin emit-var-map($tokens) {
+  @each $name, $value in $tokens {
+    --#{$name}: #{$value};
+  }
+}
+
+:root {
+  /* 1) Generates semantic SCSS tokens: --color-* and --color-*-hsl (light mode). */
+  @include emit-semantic-map($semantic-light);
+
+  /* 2) Generates shared non-color tokens used in components (radius, shadows, font, overlay...). */
+  @include emit-var-map($foundation-static);
+
+  /* 3) Generates Tailwind/Shadcn runtime tokens: --primary, --background, --ring, etc. */
+  @include emit-var-map($tailwind-light);
+}
+
+.dark {
+  /* Replaces semantic --color-* tokens with dark values. */
+  @include emit-semantic-map($semantic-dark);
+
+  /* Overrides only the Tailwind/Shadcn tokens that need dark-mode changes. */
+  @include emit-var-map($tailwind-dark-overrides);
+}
