@@ -9,7 +9,7 @@ Auth, Server Actions for writes, shared Zod DTOs, schema-first forms, and shadcn
 - Bun as the package manager (scripts run on Node 24)
 - SCSS CSS Modules for all styling; shadcn/ui (Radix) + Tailwind CSS 4 only inside `components/SCN`
 - lucide-react icons, sonner toasts
-- Prisma ORM 7.10 (`prisma-client` generator, `@prisma/adapter-pg`) + PostgreSQL 16
+- Prisma ORM 7.10 (`prisma-client` generator, `@prisma/adapter-pg`) + PostgreSQL 18
 - Better Auth 1.7 (email + password, official Prisma adapter)
 - Server Actions + Zod 4 DTOs; React Hook Form 7 + `@hookform/resolvers`
 - Vitest + Testing Library + jsdom

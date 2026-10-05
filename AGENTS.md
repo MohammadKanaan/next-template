@@ -58,7 +58,7 @@ record-level rules), so a caller that forgets a check cannot bypass it.
 - **UI primitives:** shadcn/ui on Radix, vendored as flat files in `components/SCN/`
 - **Data layer:** server-only DAL in `lib/data`; Zod DTOs in `lib/dto`; Server Actions for writes
 - **HTTP (client reads only):** `fetch` inside a typed facade in `lib/client`, parsed with the shared schema
-- **Database:** Prisma ORM 7.10 (`prisma-client` generator, `@prisma/adapter-pg`) on PostgreSQL 16
+- **Database:** Prisma ORM 7.10 (`prisma-client` generator, `@prisma/adapter-pg`) on PostgreSQL 18
 - **Auth:** Better Auth (email + password, official Prisma adapter, `nextCookies`)
 - **Forms:** React Hook Form + Zod 4
 - **Styling:** Stock shadcn neutral tokens and Tailwind base styles in `styles/global.css`.
