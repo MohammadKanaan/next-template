@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import { env } from '@/lib/env'
+import '@/components/SCN/tailwind/styles.css'
 import '@/styles/global.scss'
 
 const inter = Inter({

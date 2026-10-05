@@ -1,0 +1,27 @@
+.toaster {
+  font-family: var(--font-family-primary);
+
+  [data-sonner-toast][data-styled='true'] {
+    --normal-bg: var(--color-bg);
+    --normal-border: var(--color-border);
+    --normal-text: var(--color-text);
+
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-lg);
+  }
+
+  [data-description] {
+    color: var(--color-text-3);
+  }
+
+  [data-button] {
+    border-radius: var(--radius);
+    background: var(--color-primary);
+    color: hsl(var(--primary-foreground));
+  }
+
+  [data-cancel] {
+    background: hsl(var(--muted));
+    color: hsl(var(--muted-foreground));
+  }
+}
