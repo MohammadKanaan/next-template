@@ -1,20 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import {
-  buildPostAttributes,
-  hydratePostForm,
-  isPostFormField,
-} from '@/components/Posts/Form/utils'
-import type { PostResponse } from '@/services/PostsService'
+import { buildPostAttributes, hydratePostForm } from '@/components/Posts/Form/utils'
+import type { PostDetail } from '@/lib/dto/posts'
 
-const post = {
+const post: PostDetail = {
   id: 1,
-  createdAt: '',
-  updatedAt: '',
-  permissions: { update: true, destroy: true },
   title: 'Hello',
   body: 'World',
-  userId: 1,
-} satisfies PostResponse
+  createdAt: new Date('2026-01-01T00:00:00.000Z'),
+  updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+  author: { id: 'u1', name: 'Leanne Graham', username: 'leanne', website: null },
+  permissions: { update: true, delete: true },
+}
 
 describe('post form utils', () => {
   it('hydrates from a post or empty values', () => {
@@ -31,10 +27,5 @@ describe('post form utils', () => {
       body: 'Changed',
     })
     expect(buildPostAttributes({ title: 'Hello', body: 'World' }, post)).toEqual({})
-  })
-
-  it('recognizes form fields', () => {
-    expect(isPostFormField('title')).toBe(true)
-    expect(isPostFormField('base')).toBe(false)
   })
 })

@@ -1,5 +1,9 @@
 import type { Metadata } from 'next'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
+import { ROUTE_POST_DETAILS } from '@/lib/constants-routes'
+import { loadPage } from '@/lib/data/page'
+import { getPost } from '@/lib/data/posts'
+import { idSchema } from '@/lib/dto/common'
 import { PostDetailView } from './view'
 
 export const metadata: Metadata = {
@@ -8,12 +12,15 @@ export const metadata: Metadata = {
 
 export default async function PostDetailPage({ params }: PageProps<'/posts/[userId]/[id]'>) {
   const { userId, id } = await params
-  const postId = Number(id)
-  const authorId = Number(userId)
-
-  if (!Number.isInteger(postId) || postId < 1 || !Number.isInteger(authorId)) {
+  const postId = idSchema.safeParse(id)
+  if (!postId.success) {
     notFound()
   }
 
-  return <PostDetailView userId={authorId} id={postId} />
+  const post = await loadPage(() => getPost(postId.data), ROUTE_POST_DETAILS(userId, id))
+  if (post.author.id !== userId) {
+    redirect(ROUTE_POST_DETAILS(post.author.id, post.id))
+  }
+
+  return <PostDetailView post={post} />
 }

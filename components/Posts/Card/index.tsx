@@ -1,20 +1,13 @@
 import Link from 'next/link'
 import { ROUTE_POST_DETAILS } from '@/lib/constants-routes'
-import type { PostResponse } from '@/services/PostsService'
+import type { PostSummary } from '@/lib/dto/posts'
 import styles from './styles.module.scss'
 
 type PostsCardProps = {
-  post: PostResponse
-  maxBodyChars?: number
+  post: PostSummary
 }
 
-function truncate(body: string, maxChars: number) {
-  return body.length <= maxChars ? body : `${body.slice(0, maxChars).trimEnd()}…`
-}
-
-export function PostsCard({ post, maxBodyChars = 160 }: PostsCardProps) {
-  const body = truncate(post.body, maxBodyChars)
-
+export function PostsCard({ post }: PostsCardProps) {
   return (
     <article className={styles.card}>
       <div className={styles.cardHeader}>
@@ -22,10 +15,12 @@ export function PostsCard({ post, maxBodyChars = 160 }: PostsCardProps) {
         <span className={styles.pill}>#{post.id}</span>
       </div>
 
-      {body && <p className={styles.body}>{body}</p>}
+      {post.excerpt && <p className={styles.body}>{post.excerpt}</p>}
+
+      <p className={styles.byline}>by {post.author.name}</p>
 
       <div className={styles.actions}>
-        <Link href={ROUTE_POST_DETAILS(post.userId, post.id)} className={styles.link}>
+        <Link href={ROUTE_POST_DETAILS(post.author.id, post.id)} className={styles.link}>
           View
         </Link>
       </div>

@@ -6,27 +6,25 @@ import { PostsGrid } from '@/components/Posts/Grid'
 import { PostsState } from '@/components/Posts/State'
 import { Button } from '@/components/SCN/button'
 import { ROUTE_POSTS, ROUTE_POSTS_CSR } from '@/lib/constants-routes'
-import { listPosts } from '@/server/repositories/posts'
-import { serializePost } from '@/server/serializers/post'
+import { listPosts } from '@/lib/data/posts'
 import styles from '../styles.module.scss'
 
 export const metadata: Metadata = {
   title: 'Posts (SSR)',
-  description: 'Posts rendered on the server from Prisma.',
+  description: 'Posts rendered on the server through the data access layer.',
 }
 
 export default async function PostsSsrPage() {
   // Render at request time so `next build` never queries the database.
   await connection()
 
-  const { posts } = await listPosts({ skip: 0, take: 9 })
-  const list = posts.map((post) => serializePost(post, null))
+  const { items } = await listPosts({ page: 1, perPage: 9 })
 
   return (
     <div className={styles.page}>
       <PageHeader
         title="Posts (SSR)"
-        description="Rendered on the server from Prisma"
+        description="Server Component calling the DAL directly"
         actions={
           <>
             <Button asChild variant="secondary">
@@ -38,8 +36,8 @@ export default async function PostsSsrPage() {
           </>
         }
       />
-      <PostsState empty={list.length === 0} emptyMessage="No posts found.">
-        <PostsGrid posts={list} />
+      <PostsState empty={items.length === 0} emptyMessage="No posts found.">
+        <PostsGrid posts={items} />
       </PostsState>
     </div>
   )

@@ -6,16 +6,16 @@ import { useForm } from 'react-hook-form'
 import { Button } from '@/components/SCN/button'
 import { Input } from '@/components/SCN/input'
 import { Textarea } from '@/components/SCN/textarea'
-import { postFormSchema, type PostFormValues } from '@/lib/validation/posts'
-import type { PostResponse } from '@/services/PostsService'
-import type { ApiResponse } from '@/types/api'
+import { createPostInput, type CreatePostInput, type PostDetail } from '@/lib/dto/posts'
+import { applyActionErrors } from '@/lib/formErrors'
+import type { ActionResult } from '@/types/api'
 import styles from './styles.module.scss'
-import { hydratePostForm, isPostFormField } from './utils'
+import { hydratePostForm, POST_FORM_FIELDS } from './utils'
 
 export type PostFormProps = {
-  post: PostResponse | null
+  post: PostDetail | null
   submitLabel: string
-  onSubmit: (values: PostFormValues) => Promise<ApiResponse<unknown>>
+  onSubmit: (values: CreatePostInput) => Promise<ActionResult<unknown>>
   onCancel?: () => void
 }
 
@@ -26,21 +26,12 @@ export function PostForm({ post, submitLabel, onSubmit, onCancel }: PostFormProp
     handleSubmit,
     setError,
     formState: { errors, isDirty, isSubmitting },
-  } = useForm<PostFormValues>({ resolver: zodResolver(postFormSchema), values })
+  } = useForm<CreatePostInput>({ resolver: zodResolver(createPostInput), values })
 
   const submit = handleSubmit(async (formValues) => {
-    const response = await onSubmit(formValues)
-    if (response.success) {
-      return
-    }
-    const fieldErrors = Object.entries(response.errors ?? {}).filter(([field]) =>
-      isPostFormField(field),
-    )
-    for (const [field, messages] of fieldErrors) {
-      setError(field as keyof PostFormValues, { type: 'server', message: messages[0] })
-    }
-    if (fieldErrors.length === 0) {
-      setError('root.server', { type: 'server', message: response.message })
+    const result = await onSubmit(formValues)
+    if (!result.ok) {
+      applyActionErrors(result, POST_FORM_FIELDS, setError)
     }
   })
 

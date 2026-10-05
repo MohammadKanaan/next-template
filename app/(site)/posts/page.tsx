@@ -24,9 +24,7 @@ export default function PostsPage() {
           <CardHeader>
             <CardTitle>SSR</CardTitle>
           </CardHeader>
-          <CardContent>
-            Server Component reading Prisma directly through a repository and serializer.
-          </CardContent>
+          <CardContent>Server Component calling the DAL directly.</CardContent>
           <CardFooter>
             <Button asChild>
               <Link href={ROUTE_POSTS_SSR}>Open SSR</Link>
@@ -39,7 +37,7 @@ export default function PostsPage() {
             <CardTitle>CSR</CardTitle>
           </CardHeader>
           <CardContent>
-            Client component fetching <code>/api/v1/posts</code> in the browser with TanStack Query.
+            Client component fetching <code>/api/v1/posts</code> through a typed facade.
           </CardContent>
           <CardFooter>
             <Button asChild variant="secondary">
@@ -52,7 +50,7 @@ export default function PostsPage() {
           <CardHeader>
             <CardTitle>Write a post</CardTitle>
           </CardHeader>
-          <CardContent>Create a post with React Hook Form and Zod. Requires a login.</CardContent>
+          <CardContent>Create a post with a Server Action. Requires a login.</CardContent>
           <CardFooter>
             <Button asChild variant="outline">
               <Link href={ROUTE_POST_NEW}>Write a post</Link>

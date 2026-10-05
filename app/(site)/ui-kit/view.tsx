@@ -408,14 +408,14 @@ export function UiKitView() {
         id="forms"
         eyebrow="Application components"
         title="Forms"
-        description="React Hook Form with a Zod schema; the page owns the request."
+        description="React Hook Form with a Zod schema; the page owns the Server Action call."
       >
         <PostForm
           post={null}
           submitLabel="Submit"
           onSubmit={async (values) => {
             toast.success(`Submitted: ${values.title}`)
-            return { success: true, status: 200, message: 'ok', data: null }
+            return { ok: true, data: null }
           }}
         />
       </Section>

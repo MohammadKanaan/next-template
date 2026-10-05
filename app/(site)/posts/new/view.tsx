@@ -1,34 +1,24 @@
 'use client'
 
-import { useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
+import { createPostAction } from '@/actions/posts'
 import { PageHeader } from '@/components/PageHeader'
 import { PostForm } from '@/components/Posts/Form'
-import { buildPostAttributes } from '@/components/Posts/Form/utils'
-import { sFetch } from '@/lib/apiCall'
 import { ROUTE_POST_DETAILS, ROUTE_POSTS } from '@/lib/constants-routes'
-import type { PostFormValues } from '@/lib/validation/posts'
-import PostsService, { type CreatePostAttributes } from '@/services/PostsService'
+import type { CreatePostInput } from '@/lib/dto/posts'
 import styles from '../styles.module.scss'
 
 export function PostNewView() {
   const router = useRouter()
-  const queryClient = useQueryClient()
 
-  const handleSubmit = async (values: PostFormValues) => {
-    const response = await sFetch(
-      () => PostsService.create(buildPostAttributes(values, null) as CreatePostAttributes),
-      { toast: false, throwOnError: false },
-    )
-
-    if (response.success && response.data) {
+  const handleSubmit = async (values: CreatePostInput) => {
+    const result = await createPostAction(values)
+    if (result.ok) {
       toast.success('Post created')
-      await queryClient.invalidateQueries({ queryKey: ['posts'] })
-      router.push(ROUTE_POST_DETAILS(response.data.userId, response.data.id))
+      router.push(ROUTE_POST_DETAILS(result.data.author.id, result.data.id))
     }
-
-    return response
+    return result
   }
 
   return (

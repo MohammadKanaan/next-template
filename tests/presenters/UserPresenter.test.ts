@@ -1,15 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { presentUser } from '@/presenters/UserPresenter'
-import type { UserResponse } from '@/services/UsersService'
+import type { UserProfile } from '@/lib/dto/users'
 
-const user: UserResponse = {
-  id: 1,
+const user: UserProfile = {
+  id: 'u1',
   name: 'Leanne Graham',
   username: 'leanne',
-  phone: null,
   website: 'hildegard.org',
-  createdAt: '2026-01-01T00:00:00.000Z',
-  updatedAt: '2026-01-01T00:00:00.000Z',
 }
 
 describe('presentUser', () => {

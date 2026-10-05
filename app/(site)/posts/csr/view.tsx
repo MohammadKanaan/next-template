@@ -1,37 +1,59 @@
 'use client'
 
 import Link from 'next/link'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { PageHeader } from '@/components/PageHeader'
 import { Pagination } from '@/components/Pagination'
 import { PostsGrid } from '@/components/Posts/Grid'
 import { PostsState } from '@/components/Posts/State'
 import { Button } from '@/components/SCN/button'
-import { useApiData } from '@/hooks/useApiData'
+import { fetchPosts, RequestError } from '@/lib/client/posts'
 import { ROUTE_POSTS, ROUTE_POSTS_SSR } from '@/lib/constants-routes'
-import { queryKeys } from '@/lib/queryKeys'
-import PostsService, { type PostResponse } from '@/services/PostsService'
-import type { Listing } from '@/types/api'
+import type { Page } from '@/lib/dto/common'
+import type { PostSummary } from '@/lib/dto/posts'
 import styles from '../styles.module.scss'
 
 const PER_PAGE = 9
 
+type LoadResult = { key: string; data: Page<PostSummary> | null; errorMessage: string }
+
+function toErrorMessage(error: unknown) {
+  return error instanceof RequestError
+    ? error.message
+    : 'Could not load posts. Check your connection.'
+}
+
 export function PostsCsrView() {
   const [page, setPage] = useState(1)
+  const [attempt, setAttempt] = useState(0)
+  const [result, setResult] = useState<LoadResult | null>(null)
+  const requestKey = `${page}:${attempt}`
 
-  const { data, isLoading, errorMessage, refresh } = useApiData<Listing<PostResponse>>(
-    queryKeys.posts({ page, perPage: PER_PAGE }),
-    (signal) => PostsService.list({ page, perPage: PER_PAGE }, signal),
-    { fallbackErrorMessage: 'Failed to load posts' },
-  )
+  useEffect(() => {
+    const controller = new AbortController()
+    fetchPosts({ page, perPage: PER_PAGE }, controller.signal).then(
+      (data) => setResult({ key: requestKey, data, errorMessage: '' }),
+      (error: unknown) => {
+        if (!controller.signal.aborted) {
+          setResult({ key: requestKey, data: null, errorMessage: toErrorMessage(error) })
+        }
+      },
+    )
+    return () => controller.abort()
+  }, [page, requestKey])
 
-  const posts = data?.list ?? []
+  // A result for an older page/attempt counts as still loading.
+  const loaded = result?.key === requestKey ? result : null
+  const isLoading = loaded === null
+  const data = loaded?.data ?? null
+  const errorMessage = loaded?.errorMessage ?? ''
+  const posts = data?.items ?? []
 
   return (
     <div className={styles.page}>
       <PageHeader
         title="Posts (CSR)"
-        description="Fetched in the browser through the API layer"
+        description="Fetched in the browser through the client facade and Route Handler"
         actions={
           <>
             <Button asChild variant="secondary">
@@ -48,7 +70,7 @@ export function PostsCsrView() {
         empty={!isLoading && !errorMessage && posts.length === 0}
         emptyMessage="No posts found."
         errorMessage={errorMessage}
-        onRetry={() => void refresh()}
+        onRetry={() => setAttempt((value) => value + 1)}
       >
         <PostsGrid posts={posts} />
         <Pagination

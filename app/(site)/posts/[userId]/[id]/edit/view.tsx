@@ -1,95 +1,47 @@
 'use client'
 
-import { useQueryClient } from '@tanstack/react-query'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { Empty } from '@/components/Empty'
+import { updatePostAction } from '@/actions/posts'
 import { PageHeader } from '@/components/PageHeader'
 import { PostForm } from '@/components/Posts/Form'
 import { buildPostAttributes } from '@/components/Posts/Form/utils'
-import { PostsState } from '@/components/Posts/State'
-import { Button } from '@/components/SCN/button'
-import { useApiData } from '@/hooks/useApiData'
-import { sFetch } from '@/lib/apiCall'
 import { ROUTE_POST_DETAILS } from '@/lib/constants-routes'
-import { queryKeys } from '@/lib/queryKeys'
-import type { PostFormValues } from '@/lib/validation/posts'
-import PostsService, { type PostDetailedResponse } from '@/services/PostsService'
+import type { CreatePostInput, PostDetail } from '@/lib/dto/posts'
 import styles from '../styles.module.scss'
 
 type PostEditViewProps = {
-  id: number
+  post: PostDetail
 }
 
-export function PostEditView({ id }: PostEditViewProps) {
+export function PostEditView({ post }: PostEditViewProps) {
   const router = useRouter()
-  const queryClient = useQueryClient()
 
-  const {
-    data: post,
-    isLoading,
-    errorMessage,
-    refresh,
-  } = useApiData<PostDetailedResponse>(
-    queryKeys.post(id),
-    (signal) => PostsService.getById(id, signal),
-    { toast: false },
-  )
-
-  const handleSubmit = async (values: PostFormValues) => {
+  const handleSubmit = async (values: CreatePostInput) => {
     const attributes = buildPostAttributes(values, post)
 
     if (Object.keys(attributes).length === 0) {
       toast('No changes to save')
-      return { success: true, status: 200, message: 'No changes', data: null }
+      return { ok: true, data: null } as const
     }
 
-    const response = await sFetch(() => PostsService.update(id, attributes), {
-      toast: false,
-      throwOnError: false,
-    })
-
-    if (response.success && response.data) {
-      queryClient.setQueryData(queryKeys.post(id), response.data)
-      await queryClient.invalidateQueries({ queryKey: ['posts'] })
+    const result = await updatePostAction(post.id, attributes)
+    if (result.ok) {
       toast.success('Post updated')
-      router.push(ROUTE_POST_DETAILS(response.data.userId, response.data.id))
+      router.push(ROUTE_POST_DETAILS(result.data.author.id, result.data.id))
     }
-
-    return response
+    return result
   }
 
   return (
     <div className={styles.page}>
       <PageHeader title="Edit post" description="Update the title or body." />
-      <PostsState
-        loading={isLoading}
-        empty={!isLoading && !errorMessage && !post}
-        emptyMessage="No post found."
-        errorMessage={errorMessage}
-        onRetry={() => void refresh()}
-      >
-        {post && !post.permissions.update && (
-          <Empty
-            title="You cannot edit this post"
-            description="Only the author can change it."
-            action={
-              <Button asChild variant="secondary">
-                <Link href={ROUTE_POST_DETAILS(post.userId, post.id)}>Back to post</Link>
-              </Button>
-            }
-          />
-        )}
-        {post?.permissions.update && (
-          <PostForm
-            post={post}
-            submitLabel="Save changes"
-            onCancel={() => router.push(ROUTE_POST_DETAILS(post.userId, post.id))}
-            onSubmit={handleSubmit}
-          />
-        )}
-      </PostsState>
+      <PostForm
+        post={post}
+        submitLabel="Save changes"
+        onCancel={() => router.push(ROUTE_POST_DETAILS(post.author.id, post.id))}
+        onSubmit={handleSubmit}
+      />
     </div>
   )
 }

@@ -2,18 +2,18 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { PostForm } from '@/components/Posts/Form'
-import type { PostResponse } from '@/services/PostsService'
+import type { PostDetail } from '@/lib/dto/posts'
 
-const success = { success: true, status: 200, message: 'ok', data: null }
-const post = {
+const success = { ok: true, data: null }
+const post: PostDetail = {
   id: 1,
-  createdAt: '',
-  updatedAt: '',
-  permissions: { update: true, destroy: true },
   title: 'Hello',
   body: 'World',
-  userId: 1,
-} satisfies PostResponse
+  createdAt: new Date('2026-01-01T00:00:00.000Z'),
+  updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+  author: { id: 'u1', name: 'Leanne Graham', username: 'leanne', website: null },
+  permissions: { update: true, delete: true },
+}
 
 describe('PostForm', () => {
   it('shows field errors and does not submit invalid values', async () => {
@@ -37,11 +37,10 @@ describe('PostForm', () => {
 
   it('maps server validation errors onto fields', async () => {
     const onSubmit = vi.fn().mockResolvedValue({
-      success: false,
-      status: 422,
-      message: 'title: Title is taken',
-      data: null,
-      errors: { title: ['Title is taken'] },
+      ok: false,
+      code: 'VALIDATION',
+      message: 'Validation failed',
+      fieldErrors: { title: ['Title is taken'] },
     })
     render(<PostForm post={null} submitLabel="Create post" onSubmit={onSubmit} />)
     await userEvent.type(screen.getByLabelText(/Title/), 'Hello')
@@ -52,10 +51,9 @@ describe('PostForm', () => {
 
   it('shows a form-level error when the server gives no field errors', async () => {
     const onSubmit = vi.fn().mockResolvedValue({
-      success: false,
-      status: 403,
+      ok: false,
+      code: 'FORBIDDEN',
       message: 'You cannot change this post',
-      data: null,
     })
     render(<PostForm post={post} submitLabel="Save" onSubmit={onSubmit} />)
     await userEvent.type(screen.getByLabelText(/Body/), '!')

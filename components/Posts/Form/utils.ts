@@ -1,23 +1,21 @@
-import type { PostFormValues } from '@/lib/validation/posts'
-import type { PostAttributes, PostResponse } from '@/services/PostsService'
+import type { CreatePostInput, PostDetail } from '@/lib/dto/posts'
 
-export const EMPTY_POST_FORM: PostFormValues = { title: '', body: '' }
+export const POST_FORM_FIELDS = ['title', 'body'] as const
 
-export function hydratePostForm(post: PostResponse | null): PostFormValues {
+export const EMPTY_POST_FORM: CreatePostInput = { title: '', body: '' }
+
+export function hydratePostForm(post: PostDetail | null): CreatePostInput {
   return post ? { title: post.title, body: post.body } : { ...EMPTY_POST_FORM }
 }
 
-export function isPostFormField(field: string): field is keyof PostFormValues {
-  return Object.hasOwn(EMPTY_POST_FORM, field)
-}
-
+/** New post: every field. Existing post: only the fields that changed. */
 export function buildPostAttributes(
-  values: PostFormValues,
-  post: PostResponse | null,
-): PostAttributes {
+  values: CreatePostInput,
+  post: PostDetail | null,
+): Partial<CreatePostInput> {
   const original = hydratePostForm(post)
-  const attributes: PostAttributes = {}
-  for (const field of Object.keys(values) as (keyof PostFormValues)[]) {
+  const attributes: Partial<CreatePostInput> = {}
+  for (const field of POST_FORM_FIELDS) {
     if (post === null || values[field] !== original[field]) {
       attributes[field] = values[field]
     }
