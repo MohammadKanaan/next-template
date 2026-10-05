@@ -3,6 +3,7 @@ import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/data/db'
 import { UnauthorizedError } from '@/lib/data/errors'
 import { getCurrentUser, getViewer, isUsernameTaken } from '@/lib/data/users'
+import { cookieJar } from '../../helpers/cookies'
 import { createUser, resetDatabase, signInAs } from '../../helpers/server'
 
 const { cookieStore, requestHeaders } = await vi.hoisted(
@@ -19,6 +20,12 @@ describe('users DAL', () => {
   afterAll(() => db.$disconnect())
 
   it('has no viewer when signed out', async () => {
+    expect(await getViewer()).toBeNull()
+    await expect(getCurrentUser()).rejects.toBeInstanceOf(UnauthorizedError)
+  })
+
+  it('treats a forged or stale session cookie as no viewer', async () => {
+    cookieJar.set('better-auth.session_token', 'forged.value')
     expect(await getViewer()).toBeNull()
     await expect(getCurrentUser()).rejects.toBeInstanceOf(UnauthorizedError)
   })

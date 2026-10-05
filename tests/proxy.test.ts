@@ -19,10 +19,12 @@ describe('proxy', () => {
     expect(proxy(request('/private', SESSION_COOKIE)).headers.get('x-middleware-next')).toBe('1')
   })
 
-  it('keeps signed-in visitors off the guest-only pages', () => {
-    const response = proxy(request('/signup', SESSION_COOKIE))
-    expect(response.status).toBe(307)
-    expect(response.headers.get('location')).toBe('http://localhost/')
+  it('does not redirect guest-only pages: a stale cookie must not lock anyone out', () => {
+    for (const path of ['/login', '/signup']) {
+      const response = proxy(request(path, SESSION_COOKIE))
+      expect(response.headers.get('x-middleware-next')).toBe('1')
+      expect(response.headers.get('location')).toBeNull()
+    }
   })
 
   it('lets anyone through to public pages', () => {
