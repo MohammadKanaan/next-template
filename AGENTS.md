@@ -283,6 +283,12 @@ How the DAL caches:
 - **Invalidate inside the DAL**, right after the write succeeds, so a caller cannot forget
   (`createPost` / `updatePost` / `deletePost`, `attachAvatar`; Better Auth user updates via its
   database hook). Actions still call `revalidatePath` / `refresh()` for the router cache.
+- Cache keys are built from unambiguous parts (`JSON.stringify([...])`, as `listPosts` does), never
+  by joining user-controlled strings, and every input that reaches a key is bounded in its DTO
+  (`page`, `authorId`), so a caller cannot collide with another entry or mint unlimited keys.
+- Redis must be >= 7 (the rate limiter uses `PEXPIRE ... NX`). Run it with `maxmemory` and
+  `maxmemory-policy volatile-lru`, as `docker-compose.yml` does: tag versions have no TTL and must
+  not be evicted.
 - Redis is an optimization, never a dependency: read, write, and invalidation errors are logged
   and the request falls through to the database. A `load()` that throws (e.g. `NotFoundError`) is
   never cached.
@@ -317,14 +323,16 @@ Background work runs on pg-boss (the same PostgreSQL, `pgboss` schema) in a sepa
 
 - `lib/server/mailer.ts`: `sendMail({ to, subject, react })` renders HTML and plain text with React
   Email. With `RESEND_API_KEY` set it sends through Resend (a Resend error throws, so pg-boss
-  retries); without it, it logs the recipient, subject and rendered text, so links show up in the
-  worker console in development.
+  retries); without it, outside production, it logs the recipient, subject and rendered text, so
+  links show up in the worker console in development. In production a missing key throws and
+  nothing from the message is logged (the text carries live reset and verification links).
 - Templates live in `emails/` (`VerifyEmail`, `ResetPassword`, shared `EmailLayout`). Email markup
   uses inline styles because mail clients need them; the no-inline-style rule is for the web UI.
 - Nothing sends mail directly. Callers `enqueue('send-email', { template, to, props })`;
   `jobs/sendEmail.ts` maps the `template` of the discriminated-union payload to a component and a
   subject. A new email is a new union member, a new template, and a new case in the handler.
-- Links are built from `BETTER_AUTH_URL`; the worker must have the same value as the web process.
+- Links are built in the web process (by Better Auth, from `BETTER_AUTH_URL`) and travel in the job
+  payload; the worker never reads `BETTER_AUTH_URL`.
 
 ## Uploads
 
@@ -459,13 +467,15 @@ records the result.
 - `DATABASE_URL`, `BETTER_AUTH_SECRET`, and `BETTER_AUTH_URL` live in `.env` (dev) and `.env.test`
   (tests). Both are untracked; update the `*.example` files when adding a variable.
 - Server-only config (`REDIS_URL`, `RESEND_API_KEY` (optional), `EMAIL_FROM`, `S3_ENDPOINT`,
-  `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_PUBLIC_URL`) is read
-  through `serverEnv()` in `lib/server/env.ts`: Zod-validated, parsed on first use (so `next build`
-  works without it), one error listing every bad variable. Never read these from `process.env`
-  elsewhere.
+  `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_PUBLIC_URL`,
+  `S3_PUBLIC_ENDPOINT` (optional: the endpoint as the browser reaches it, for presigned uploads;
+  defaults to `S3_ENDPOINT`)) is read through `serverEnv()` in `lib/server/env.ts`: Zod-validated,
+  parsed on first use (so `next build` works without it), one error listing every bad variable. An
+  empty optional variable counts as unset. In production `instrumentation.ts` and the worker's
+  start call it at boot, so a bad config fails loudly instead of degrading the rate limiter or
+  cache. Never read these from `process.env` elsewhere.
 - `.env.test` points `REDIS_URL` at **database 15**; the test helpers flush it and refuse to run
-  against any other database. The web process and the worker need the same `BETTER_AUTH_URL`
-  (email links are built from it).
+  against any other database.
 
 ## Verifying Changes
 

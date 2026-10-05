@@ -31,18 +31,32 @@ bun run dev:worker                # in a second terminal: background jobs (email
 Open http://localhost:3000 and log in as `leanne@example.com` / `password123` (admin:
 `admin@example.com` / `password123`), or create an account at `/signup`.
 
-The app needs three services: **PostgreSQL >= 15** (18 in `docker-compose.yml`), **Redis**, and an
+The app needs three services: **PostgreSQL >= 15** (18 in `docker-compose.yml`), **Redis >= 7**, and an
 **S3-compatible store** (MinIO, bucket `next-template`, `avatars/` publicly readable). Compose
 starts all three (the MinIO images are Chainguard builds that have not been verified end to end).
 If you run them yourself, create the `next_template_dev` and `next_template_test` databases, point
 `REDIS_URL` and the `S3_*` variables in `.env` at your services, and put the matching values in
-`.env.test` (Redis **database 15**: the tests flush it).
+`.env.test` (Redis **database 15**: the tests flush it). Redis 7 is a hard minimum: the rate limiter
+uses `PEXPIRE ... NX`, which Redis 6 rejects. The compose Redis sets `maxmemory` with the
+`volatile-lru` policy; use the same on a shared instance so only expiring keys can be evicted.
+
+Uploads go from the browser straight to the bucket. If the server reaches storage over an internal
+host (for example `S3_ENDPOINT=http://minio:9000` in containers), set `S3_PUBLIC_ENDPOINT` to the
+address the browser uses; it defaults to `S3_ENDPOINT`. On real S3, add a bucket CORS rule that
+allows `POST` from your site's origin (`AllowedMethods: ["POST"]`, `AllowedOrigins: [your origin]`,
+`AllowedHeaders: ["*"]`); MinIO allows all origins by default.
+
+`db:seed` and `db:reset` write straight to PostgreSQL and do not flush the Redis cache, so `/posts`
+can show pre-reset data for up to 5 minutes. Wait it out or flush Redis yourself
+(`redis-cli -n 0 flushdb`).
 
 The **worker** is a second process (`bun run worker`, or `dev:worker` to restart on changes). Without
 it, jobs pile up in the queue: no verification or reset emails are sent and cleanup does not run.
 With `RESEND_API_KEY` unset, emails are printed in the worker console instead of sent, so the
-verification and reset links are right there. Give the worker the same `BETTER_AUTH_URL` as the web
-process.
+verification and reset links are right there. That fallback is for development only: with
+`NODE_ENV=production` the send job fails (and is retried) until the key is set, and nothing is
+logged. The web process builds the links from `BETTER_AUTH_URL` and puts them in the job, so the
+worker does not need that variable.
 
 **Existing checkouts:** the dev database from before the Prisma 7 / Better Auth refactor holds the
 old Prisma 8 schema. Run `bun run db:reset` once; it drops, re-migrates, and re-seeds the dev
@@ -94,7 +108,8 @@ dependency, no error text); point a load balancer or container probe at it.
 
 Docker images for the web and worker processes are a planned follow-up. For now run `bun run build`
 then `bun run start` for the web process and `bun run worker` for the worker, both with the same
-environment. `next.config.ts` already sets `output: 'standalone'` for the future image.
+environment. In production both validate the server env at boot (`instrumentation.ts`, and the
+worker's start) and exit on a bad value. `output: 'standalone'` returns with the Dockerfile.
 
 ## Architecture
 
