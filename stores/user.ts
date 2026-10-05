@@ -1,13 +1,12 @@
 import { create } from 'zustand'
 import { sFetch } from '@/lib/apiCall'
-import { UserPresenter } from '@/presenters/User/UserPresenter'
 import AuthService, { type SessionResponse } from '@/services/AuthService'
-import MeService, { type MeResponse } from '@/services/MeService'
+import MeService, { type CurrentUserResponse, type MeResponse } from '@/services/MeService'
 import type { ApiResponse } from '@/types/api'
 
 type UserState = {
   profile: MeResponse | null
-  user: UserPresenter | null
+  user: CurrentUserResponse | null
   isUserLoading: boolean
   hasLoadedProfile: boolean
   setProfile: (profile: MeResponse | null) => void
@@ -29,8 +28,7 @@ export const useUserStore = create<UserState>()((set, get) => {
     isUserLoading: false,
     hasLoadedProfile: false,
 
-    setProfile: (profile) =>
-      set({ profile, user: profile ? new UserPresenter(profile.user) : null }),
+    setProfile: (profile) => set({ profile, user: profile?.user ?? null }),
 
     fetchProfile: async () => {
       const response = await sFetch(() => MeService.getProfile(), quiet)

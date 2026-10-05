@@ -7,12 +7,12 @@ export function serializePost(post: PostRow, viewerId: number | null): PostRespo
   const isOwner = viewerId === post.userId
   return {
     id: post.id,
-    created_at: toIsoString(post.createdAt),
-    updated_at: toIsoString(post.updatedAt),
-    permissions: { update: isOwner, destroy: isOwner },
     title: post.title,
     body: post.body,
-    user_id: post.userId,
+    userId: post.userId,
+    createdAt: toIsoString(post.createdAt),
+    updatedAt: toIsoString(post.updatedAt),
+    permissions: { update: isOwner, destroy: isOwner },
   }
 }
 

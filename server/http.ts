@@ -35,10 +35,7 @@ function positiveInt(value: string | null, fallback: number) {
 
 export function parsePagination(searchParams: URLSearchParams) {
   const page = positiveInt(searchParams.get('page'), 1)
-  const perPage = Math.min(
-    positiveInt(searchParams.get('per_page'), DEFAULT_PER_PAGE),
-    MAX_PER_PAGE,
-  )
+  const perPage = Math.min(positiveInt(searchParams.get('perPage'), DEFAULT_PER_PAGE), MAX_PER_PAGE)
   return { page, perPage, skip: (page - 1) * perPage }
 }
 
@@ -51,13 +48,13 @@ export function toListing<T>(list: T[], totalCount: number, page: number, perPag
   const totalPages = Math.max(1, Math.ceil(totalCount / perPage))
   const listing: Listing<T> = {
     list,
-    extra_data: {},
-    limit_value: perPage,
-    total_pages: totalPages,
-    total_count: totalCount,
-    current_page: page,
-    next_page: page < totalPages ? page + 1 : null,
-    prev_page: page > 1 ? page - 1 : null,
+    extraData: {},
+    limitValue: perPage,
+    totalPages,
+    totalCount,
+    currentPage: page,
+    nextPage: page < totalPages ? page + 1 : null,
+    prevPage: page > 1 ? page - 1 : null,
   }
   return listing
 }

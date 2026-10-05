@@ -25,7 +25,7 @@ export function PostNewView() {
     if (response.success && response.data) {
       toast.success('Post created')
       await queryClient.invalidateQueries({ queryKey: ['posts'] })
-      router.push(ROUTE_POST_DETAILS(response.data.user_id, response.data.id))
+      router.push(ROUTE_POST_DETAILS(response.data.userId, response.data.id))
     }
 
     return response

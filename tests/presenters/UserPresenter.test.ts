@@ -1,31 +1,39 @@
 import { describe, expect, it } from 'vitest'
-import { UserPresenter } from '@/presenters/User/UserPresenter'
+import { presentUser } from '@/presenters/UserPresenter'
 import type { UserResponse } from '@/services/UsersService'
 
 const user: UserResponse = {
   id: 1,
-  created_at: '2026-01-01T00:00:00.000Z',
-  updated_at: '2026-01-01T00:00:00.000Z',
   name: 'Leanne Graham',
   username: 'leanne',
   phone: null,
   website: 'hildegard.org',
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
 }
 
-describe('UserPresenter', () => {
-  it('keeps backend fields and derives initials', () => {
-    const presenter = new UserPresenter(user)
-    expect(presenter.username).toBe('leanne')
-    expect(presenter.initials).toBe('LG')
+describe('presentUser', () => {
+  it('turns a bare domain into a linkable URL', () => {
+    expect(presentUser(user).website).toBe('https://hildegard.org')
   })
 
-  it('normalizes the website into a URL', () => {
-    expect(new UserPresenter(user).website_url).toBe('https://hildegard.org')
-    expect(new UserPresenter({ ...user, website: 'http://x.dev' }).website_url).toBe('http://x.dev')
-    expect(new UserPresenter({ ...user, website: null }).website_url).toBeNull()
+  it('keeps URLs that already have a scheme', () => {
+    expect(presentUser({ ...user, website: 'http://x.dev' }).website).toBe('http://x.dev')
+    expect(presentUser({ ...user, website: 'HTTPS://x.dev' }).website).toBe('HTTPS://x.dev')
   })
 
-  it('falls back to the username for initials', () => {
-    expect(new UserPresenter({ ...user, name: '  ' }).initials).toBe('L')
+  it('keeps a missing website missing', () => {
+    expect(presentUser({ ...user, website: null }).website).toBeNull()
+    expect(presentUser({ ...user, website: '' }).website).toBeNull()
+  })
+
+  it('passes every other field through untouched', () => {
+    const { website: _website, ...rest } = presentUser(user)
+    const { website: _original, ...expected } = user
+    expect(rest).toEqual(expected)
+  })
+
+  it('preserves extra fields such as the current user email', () => {
+    expect(presentUser({ ...user, email: 'leanne@example.com' }).email).toBe('leanne@example.com')
   })
 })

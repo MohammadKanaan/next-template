@@ -6,12 +6,12 @@ import { toIsoString, type UserRow } from '@/server/models'
 export function serializeUser(user: UserRow): UserResponse {
   return {
     id: user.id,
-    created_at: toIsoString(user.createdAt),
-    updated_at: toIsoString(user.updatedAt),
     name: user.name,
     username: user.username,
     phone: user.phone,
     website: user.website,
+    createdAt: toIsoString(user.createdAt),
+    updatedAt: toIsoString(user.updatedAt),
   }
 }
 

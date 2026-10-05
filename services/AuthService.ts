@@ -1,9 +1,9 @@
 import API from './api'
 import type { CurrentUserResponse } from './MeService'
 
-export interface SessionResponse {
+export type SessionResponse = {
   user: CurrentUserResponse
-  expires_at: string
+  expiresAt: string
 }
 
 class AuthService extends API {

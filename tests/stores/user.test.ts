@@ -1,19 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import AuthService from '@/services/AuthService'
-import MeService from '@/services/MeService'
-import { UserPresenter } from '@/presenters/User/UserPresenter'
+import MeService, { type MeResponse } from '@/services/MeService'
 import { useUserStore } from '@/stores/user'
 
-const me = {
+const me: MeResponse = {
   user: {
     id: 1,
-    created_at: '2026-01-01T00:00:00.000Z',
-    updated_at: '2026-01-01T00:00:00.000Z',
     name: 'Leanne Graham',
     username: 'leanne',
     email: 'leanne@example.com',
     phone: null,
     website: null,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
   },
 }
 
@@ -28,7 +27,7 @@ describe('user store', () => {
     })
   })
 
-  it('loads the profile into a presenter', async () => {
+  it('loads the profile and exposes its user', async () => {
     vi.spyOn(MeService, 'getProfile').mockResolvedValue({
       success: true,
       status: 200,
@@ -37,7 +36,7 @@ describe('user store', () => {
     })
     await useUserStore.getState().fetchProfile()
     const state = useUserStore.getState()
-    expect(state.user).toBeInstanceOf(UserPresenter)
+    expect(state.user).toEqual(me.user)
     expect(state.profile?.user.email).toBe('leanne@example.com')
     expect(state.hasLoadedProfile).toBe(true)
     expect(state.isUserLoading).toBe(false)

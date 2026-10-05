@@ -1,11 +1,10 @@
+import type { UserModel } from '@/types/models'
 import API from './api'
-import type { UserResponse } from './UsersService'
 
-export interface CurrentUserResponse extends UserResponse {
-  email: string
-}
+/** The signed-in user sees their own full record, including `email`. */
+export type CurrentUserResponse = UserModel
 
-export interface MeResponse {
+export type MeResponse = {
   user: CurrentUserResponse
 }
 

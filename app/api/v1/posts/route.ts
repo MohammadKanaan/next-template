@@ -7,7 +7,7 @@ import { serializePost, serializePostDetailed } from '@/server/serializers/post'
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const { page, perPage, skip } = parsePagination(searchParams)
-  const userIdParam = searchParams.get('user_id')
+  const userIdParam = searchParams.get('userId')
   const userId = userIdParam === null ? null : parseId(userIdParam)
 
   const [{ posts, totalCount }, session] = await Promise.all([

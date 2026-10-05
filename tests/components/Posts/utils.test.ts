@@ -8,12 +8,12 @@ import type { PostResponse } from '@/services/PostsService'
 
 const post = {
   id: 1,
-  created_at: '',
-  updated_at: '',
+  createdAt: '',
+  updatedAt: '',
   permissions: { update: true, destroy: true },
   title: 'Hello',
   body: 'World',
-  user_id: 1,
+  userId: 1,
 } satisfies PostResponse
 
 describe('post form utils', () => {

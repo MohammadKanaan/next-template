@@ -1,6 +1,6 @@
 # Next Template
 
-A reusable Next.js baseline: App Router, a typed client API layer with presenters, Route Handlers
+A reusable Next.js baseline: App Router, a typed client API layer with Prisma-derived DTOs, Route Handlers
 backed by Prisma and PostgreSQL, schema-first forms, and shadcn/ui with SCSS everywhere else.
 
 ## Stack
@@ -62,12 +62,14 @@ touch the dev database. Component, store, presenter and service tests need no da
 ## Architecture
 
 ```
+prisma/contract.prisma ──contract:emit──▶ prisma/contract.d.ts ──▶ types/models.ts ──▶ service DTOs
+
 Client view ──useApiData / sFetch──▶ XService (API, axios) ──HTTP──▶ app/api/v1 Route Handler
      ▲                                                                   │ zod validate
-     │ presenter (new XPresenter(response))                              ▼
+     │ presentX(dto) only where a view needs overrides                   ▼
      └──────────────── ApiResponse<XResponse> ◀── serializer ◀── repository (Prisma) ──▶ PostgreSQL
 
-Server page ──▶ repository ──▶ serializer ──▶ presenter ──▶ server-rendered components
+Server page ──▶ repository ──▶ serializer ──▶ DTO props ──▶ server or client components
 ```
 
 **Styling and `components/SCN`.** Design tokens live in `styles/palette.scss` and
@@ -80,7 +82,9 @@ controls own their `label`, `required` and `error` props. Read `AGENTS.md` for t
 **Services and `ApiResponse`.** `services/*Service.ts` (PascalCase, default-exported classes) extend
 the static `API` class in `services/api.ts`. Every method resolves to `ApiResponse<T>` (`success`,
 `status`, `message`, `data`, optional `errors` keyed by field); they do not throw and do not toast.
-`*Response`, `*Attributes` and `*ListParams` types live next to their service.
+`*Response`, `*Attributes` and `*ListParams` types live next to their service and are derived from
+the generated Prisma models in `types/models.ts` (`Omit<UserModel, 'email'>`,
+`PostModel & { permissions }`) — never hand-written copies of the columns.
 
 **`sFetch` / `sData` / `mFetch` / `mData`.** `lib/apiCall.ts` standardizes loading toggling, toast
 errors and throwing:
@@ -108,19 +112,19 @@ page needs to inspect field errors itself.
 `lib/queryKeys.ts` so mutations can invalidate by prefix (`['posts']`). The client defaults to
 `retry: false` and no refetch on window focus (`app/providers.tsx`).
 
-**Presenters.** `presenters/<Domain>/<Name>Presenter.ts` are view models (`Object.assign` of the
-response plus derived frontend properties and nested presenters). They are built where the data is
-consumed: in a store setter, a client view or a server page. They never cross the Server to Client
-boundary, so pass `*Response` objects to client components and construct inside them.
+**Presenters.** Types are the source of truth; presenters exist only for overrides. A presenter is
+a plain function that spreads the DTO and replaces just the fields a view needs reshaped
+(`presentUser` turns a bare `website` domain into a linkable URL). Apply it where the data is
+consumed, such as a view's `useMemo`. If the DTO already fits the view, use it directly.
 
-**Stores.** Zustand (`stores/user.ts`) holds the signed-in profile and a `UserPresenter`.
+**Stores.** Zustand (`stores/user.ts`) holds the signed-in profile and its `user`.
 `UserBootstrap` loads the profile once. Select state per slice (`useUserStore((s) => s.user)`),
 never with an object-literal selector.
 
 **Route Handlers, repositories, serializers.** `app/api/v1/**/route.ts` stay thin: validate with Zod
 (`lib/validation/*`), call a repository in `server/repositories`, serialize rows into the same
-`*Response` types the services declare (`server/serializers`). JSON keys are `snake_case`; Prisma
-fields are `camelCase` with `@map`. Server Components call repositories and serializers directly,
+`*Response` types the services declare (`server/serializers`). JSON keys are the Prisma model's
+camelCase field names; columns are snake_case through `@map`. Server Components call repositories and serializers directly,
 never their own HTTP API. The Prisma 8 setup is contract-first: `prisma/contract.prisma` is the
 source, `prisma/contract.json` and `prisma/contract.d.ts` are emitted and committed, queries run
 through `db.orm.public.<Model>` (`server/db.ts`), and timestamps come back as Postgres text (convert
@@ -147,12 +151,13 @@ the first `/api/v1/me` call.
 2. Add a repository in `server/repositories/<name>.ts` using `db.orm.public.<Model>`; export row
    types from `server/models.ts` if needed.
 3. Add a serializer in `server/serializers/<name>.ts` that maps a row to the `*Response` contract
-   (ISO timestamps, `snake_case` keys, `permissions`).
-4. Add `services/<Name>Service.ts` (default-exported class extending `API`) with its `*Response`,
-   `*Attributes` and `*ListParams` types, plus keys in `lib/queryKeys.ts`.
+   (pick public columns, ISO timestamps, computed fields such as `permissions`).
+4. Export the model from `types/models.ts`, then add `services/<Name>Service.ts`
+   (default-exported class extending `API`) with `*Response`, `*Attributes` and `*ListParams`
+   types derived from it, plus keys in `lib/queryKeys.ts`.
 5. Add Zod schemas in `lib/validation/<name>.ts` and the Route Handlers under
    `app/api/v1/<name>/`, with tests in `tests/server/` against the test DB.
-6. Add a presenter in `presenters/<Name>/<Name>Presenter.ts`.
+6. Only if a view needs reshaped fields, add `presentX` in `presenters/<Name>Presenter.ts`.
 7. Add the pages (`page.tsx` + `view.tsx`), the form component and routes in
    `lib/constants-routes.ts` (decide whether they are public or private).
 

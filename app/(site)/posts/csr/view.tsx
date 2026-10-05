@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { PageHeader } from '@/components/PageHeader'
 import { Pagination } from '@/components/Pagination'
 import { PostsGrid } from '@/components/Posts/Grid'
@@ -10,7 +10,6 @@ import { Button } from '@/components/SCN/button'
 import { useApiData } from '@/hooks/useApiData'
 import { ROUTE_POSTS, ROUTE_POSTS_SSR } from '@/lib/constants-routes'
 import { queryKeys } from '@/lib/queryKeys'
-import { PostPresenter } from '@/presenters/Post/PostPresenter'
 import PostsService, { type PostResponse } from '@/services/PostsService'
 import type { Listing } from '@/types/api'
 import styles from '../styles.module.scss'
@@ -21,12 +20,12 @@ export function PostsCsrView() {
   const [page, setPage] = useState(1)
 
   const { data, isLoading, errorMessage, refresh } = useApiData<Listing<PostResponse>>(
-    queryKeys.posts({ page, per_page: PER_PAGE }),
-    (signal) => PostsService.list({ page, per_page: PER_PAGE }, signal),
+    queryKeys.posts({ page, perPage: PER_PAGE }),
+    (signal) => PostsService.list({ page, perPage: PER_PAGE }, signal),
     { fallbackErrorMessage: 'Failed to load posts' },
   )
 
-  const posts = useMemo(() => (data?.list ?? []).map((post) => new PostPresenter(post)), [data])
+  const posts = data?.list ?? []
 
   return (
     <div className={styles.page}>
@@ -54,7 +53,7 @@ export function PostsCsrView() {
         <PostsGrid posts={posts} />
         <Pagination
           page={page}
-          totalPages={data?.total_pages ?? 1}
+          totalPages={data?.totalPages ?? 1}
           onPageChange={setPage}
           disabled={isLoading}
         />

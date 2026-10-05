@@ -1,14 +1,8 @@
+import type { UserModel } from '@/types/models'
 import API from './api'
 
-export interface UserResponse {
-  id: number
-  created_at: string
-  updated_at: string
-  name: string
-  username: string
-  phone: string | null
-  website: string | null
-}
+/** Public profile: every user column except `email`. */
+export type UserResponse = Omit<UserModel, 'email'>
 
 class UsersService extends API {
   public static getById(id: number, signal?: AbortSignal) {

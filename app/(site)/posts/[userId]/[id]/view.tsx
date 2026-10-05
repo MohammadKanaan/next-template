@@ -10,7 +10,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/SCN/card'
 import { useApiData } from '@/hooks/useApiData'
 import { ROUTE_POST_DETAILS, ROUTE_POST_EDIT, ROUTE_POSTS } from '@/lib/constants-routes'
 import { queryKeys } from '@/lib/queryKeys'
-import { PostPresenter } from '@/presenters/Post/PostPresenter'
+import { getInitials } from '@/lib/utils'
+import { presentUser } from '@/presenters/UserPresenter'
 import PostsService, { type PostDetailedResponse } from '@/services/PostsService'
 import styles from './styles.module.scss'
 
@@ -22,18 +23,22 @@ type PostDetailViewProps = {
 export function PostDetailView({ userId, id }: PostDetailViewProps) {
   const router = useRouter()
 
-  const { data, isLoading, errorMessage, refresh } = useApiData<PostDetailedResponse>(
+  const {
+    data: post,
+    isLoading,
+    errorMessage,
+    refresh,
+  } = useApiData<PostDetailedResponse>(
     queryKeys.post(id),
     (signal) => PostsService.getById(id, signal),
     { toast: false },
   )
 
-  const post = useMemo(() => (data ? new PostPresenter(data) : null), [data])
-  const author = post?.user
+  const author = useMemo(() => (post ? presentUser(post.user) : null), [post])
 
   useEffect(() => {
-    if (post && post.user_id !== userId) {
-      router.replace(ROUTE_POST_DETAILS(post.user_id, post.id))
+    if (post && post.userId !== userId) {
+      router.replace(ROUTE_POST_DETAILS(post.userId, post.id))
     }
   }, [post, userId, router])
 
@@ -52,7 +57,7 @@ export function PostDetailView({ userId, id }: PostDetailViewProps) {
             </Button>
             {post?.permissions.update && (
               <Button asChild variant="outline">
-                <Link href={ROUTE_POST_EDIT(post.user_id, post.id)}>Edit</Link>
+                <Link href={ROUTE_POST_EDIT(post.userId, post.id)}>Edit</Link>
               </Button>
             )}
           </>
@@ -73,10 +78,10 @@ export function PostDetailView({ userId, id }: PostDetailViewProps) {
                 <CardTitle>Post</CardTitle>
               </CardHeader>
               <CardContent>
-                <h2 className={styles.postTitle}>{post.display_title}</h2>
+                <h2 className={styles.postTitle}>{post.title}</h2>
                 {post.body && <p className={styles.postBody}>{post.body}</p>}
                 <p className={styles.meta}>
-                  <strong>Post ID:</strong> {post.id} • <strong>User ID:</strong> {post.user_id}
+                  <strong>Post ID:</strong> {post.id} • <strong>User ID:</strong> {post.userId}
                 </p>
               </CardContent>
             </Card>
@@ -89,7 +94,7 @@ export function PostDetailView({ userId, id }: PostDetailViewProps) {
                 {author ? (
                   <>
                     <p className={styles.meta}>
-                      <strong>Initials:</strong> {author.initials}
+                      <strong>Initials:</strong> {getInitials(author.name || author.username)}
                     </p>
                     <p className={styles.meta}>
                       <strong>Name:</strong> {author.name}
@@ -97,11 +102,11 @@ export function PostDetailView({ userId, id }: PostDetailViewProps) {
                     <p className={styles.meta}>
                       <strong>Username:</strong> {author.username}
                     </p>
-                    {author.website_url && (
+                    {author.website && (
                       <p className={styles.meta}>
                         <strong>Website:</strong>{' '}
                         <a
-                          href={author.website_url}
+                          href={author.website}
                           className={styles.link}
                           target="_blank"
                           rel="noreferrer"

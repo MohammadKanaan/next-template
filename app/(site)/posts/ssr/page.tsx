@@ -6,7 +6,6 @@ import { PostsGrid } from '@/components/Posts/Grid'
 import { PostsState } from '@/components/Posts/State'
 import { Button } from '@/components/SCN/button'
 import { ROUTE_POSTS, ROUTE_POSTS_CSR } from '@/lib/constants-routes'
-import { PostPresenter } from '@/presenters/Post/PostPresenter'
 import { listPosts } from '@/server/repositories/posts'
 import { serializePost } from '@/server/serializers/post'
 import styles from '../styles.module.scss'
@@ -21,7 +20,7 @@ export default async function PostsSsrPage() {
   await connection()
 
   const { posts } = await listPosts({ skip: 0, take: 9 })
-  const presenters = posts.map((post) => new PostPresenter(serializePost(post, null)))
+  const list = posts.map((post) => serializePost(post, null))
 
   return (
     <div className={styles.page}>
@@ -39,8 +38,8 @@ export default async function PostsSsrPage() {
           </>
         }
       />
-      <PostsState empty={presenters.length === 0} emptyMessage="No posts found.">
-        <PostsGrid posts={presenters} />
+      <PostsState empty={list.length === 0} emptyMessage="No posts found.">
+        <PostsGrid posts={list} />
       </PostsState>
     </div>
   )

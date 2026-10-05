@@ -15,7 +15,7 @@ export async function POST(request: Request) {
     return fail(401, 'No account found for that email')
   }
   const { expiresAt } = await startSession(user.id)
-  return ok({ user: serializeCurrentUser(user), expires_at: expiresAt.toISOString() }, 201)
+  return ok({ user: serializeCurrentUser(user), expiresAt: expiresAt.toISOString() }, 201)
 }
 
 export async function GET(_request: Request) {
@@ -25,7 +25,7 @@ export async function GET(_request: Request) {
   }
   return ok({
     user: serializeCurrentUser(session.user),
-    expires_at: session.expiresAt.toISOString(),
+    expiresAt: session.expiresAt.toISOString(),
   })
 }
 

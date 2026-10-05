@@ -27,15 +27,15 @@ describe('posts API', () => {
     for (const n of [1, 2, 3]) {
       await db.orm.public.Post.create({ title: `Post ${n}`, body: 'Body', userId: user.id })
     }
-    const response = await listPosts(jsonRequest('/api/v1/posts?page=1&per_page=2', 'GET'))
+    const response = await listPosts(jsonRequest('/api/v1/posts?page=1&perPage=2', 'GET'))
     const listing = await response.json()
     expect(listing).toMatchObject({
-      total_count: 3,
-      total_pages: 2,
-      current_page: 1,
-      next_page: 2,
-      prev_page: null,
-      limit_value: 2,
+      totalCount: 3,
+      totalPages: 2,
+      currentPage: 1,
+      nextPage: 2,
+      prevPage: null,
+      limitValue: 2,
     })
     expect(listing.list.map((post: { title: string }) => post.title)).toEqual(['Post 3', 'Post 2'])
     expect(listing.list[0].permissions).toEqual({ update: false, destroy: false })
@@ -69,7 +69,9 @@ describe('posts API', () => {
     )
     expect(created.status).toBe(201)
     const post = await created.json()
-    expect(post).toMatchObject({ title: 'Hello', user_id: user.id, user: { id: user.id } })
+    expect(post).toMatchObject({ title: 'Hello', userId: user.id, user: { id: user.id } })
+    expect(post.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/)
+    expect(post.user.updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/)
     expect(post.permissions).toEqual({ update: true, destroy: true })
     expect(post.user).not.toHaveProperty('email')
 

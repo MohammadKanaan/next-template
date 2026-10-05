@@ -1,6 +1,6 @@
 export type ValidationErrors = Record<string, string[]>
 
-export interface ApiResponse<T> {
+export type ApiResponse<T> = {
   success: boolean
   data: T | null
   status: number
@@ -8,23 +8,23 @@ export interface ApiResponse<T> {
   errors?: ValidationErrors
 }
 
-export interface Listing<T, E = Record<string, unknown>> {
+export type Listing<T, E = Record<string, unknown>> = {
   list: T[]
-  extra_data: E
-  limit_value: number
-  total_pages: number
-  total_count: number
-  current_page: number
-  next_page: number | null
-  prev_page: number | null
+  extraData: E
+  limitValue: number
+  totalPages: number
+  totalCount: number
+  currentPage: number
+  nextPage: number | null
+  prevPage: number | null
 }
 
-export interface Permissions {
+export type Permissions = {
   update: boolean
   destroy: boolean
 }
 
-export interface ApiErrorBody {
+export type ApiErrorBody = {
   message: string
   errors?: ValidationErrors
 }

@@ -1,33 +1,25 @@
 import type { Permissions } from '@/types/api'
+import type { PostModel } from '@/types/models'
 import API, { type Listing } from './api'
 import type { UserResponse } from './UsersService'
 
-export interface PostResponse {
-  id: number
-  created_at: string
-  updated_at: string
+export type PostResponse = PostModel & {
   permissions: Permissions
-  title: string
-  body: string
-  user_id: number
 }
 
-export interface PostDetailedResponse extends PostResponse {
+export type PostDetailedResponse = PostResponse & {
   user: UserResponse
 }
 
 export type PostListParams = Partial<{
   page: number
-  per_page: number
-  user_id: number
+  perPage: number
+  userId: number
 }>
 
-export type PostAttributes = Partial<{
-  title: string
-  body: string
-}>
+export type CreatePostAttributes = Pick<PostModel, 'title' | 'body'>
 
-export type CreatePostAttributes = PostAttributes & { title: string; body: string }
+export type PostAttributes = Partial<CreatePostAttributes>
 
 class PostsService extends API {
   public static list(params?: PostListParams, signal?: AbortSignal) {

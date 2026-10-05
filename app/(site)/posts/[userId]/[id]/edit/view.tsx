@@ -54,7 +54,7 @@ export function PostEditView({ id }: PostEditViewProps) {
       queryClient.setQueryData(queryKeys.post(id), response.data)
       await queryClient.invalidateQueries({ queryKey: ['posts'] })
       toast.success('Post updated')
-      router.push(ROUTE_POST_DETAILS(response.data.user_id, response.data.id))
+      router.push(ROUTE_POST_DETAILS(response.data.userId, response.data.id))
     }
 
     return response
@@ -76,7 +76,7 @@ export function PostEditView({ id }: PostEditViewProps) {
             description="Only the author can change it."
             action={
               <Button asChild variant="secondary">
-                <Link href={ROUTE_POST_DETAILS(post.user_id, post.id)}>Back to post</Link>
+                <Link href={ROUTE_POST_DETAILS(post.userId, post.id)}>Back to post</Link>
               </Button>
             }
           />
@@ -85,7 +85,7 @@ export function PostEditView({ id }: PostEditViewProps) {
           <PostForm
             post={post}
             submitLabel="Save changes"
-            onCancel={() => router.push(ROUTE_POST_DETAILS(post.user_id, post.id))}
+            onCancel={() => router.push(ROUTE_POST_DETAILS(post.userId, post.id))}
             onSubmit={handleSubmit}
           />
         )}

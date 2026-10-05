@@ -1,9 +1,9 @@
 import { PostsCard } from '@/components/Posts/Card'
-import type { PostPresenter } from '@/presenters/Post/PostPresenter'
+import type { PostResponse } from '@/services/PostsService'
 import styles from './styles.module.scss'
 
 type PostsGridProps = {
-  posts: PostPresenter[]
+  posts: PostResponse[]
 }
 
 export function PostsGrid({ posts }: PostsGridProps) {
