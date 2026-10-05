@@ -1,5 +1,5 @@
 import 'server-only'
-import type { Prisma } from '@/generated/prisma/client'
+import { Prisma } from '@/generated/prisma/client'
 import { toPage, type Page } from '@/lib/dto/common'
 import {
   POST_EXCERPT_LENGTH,
@@ -106,6 +106,14 @@ export async function createPost(input: CreatePostInput): Promise<PostDetail> {
   return toPostDetail(row, viewer)
 }
 
+/** The post vanished between the access check and the write (e.g. a concurrent delete). */
+function mapMissingRecord(error: unknown): never {
+  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+    throw new NotFoundError('Post not found')
+  }
+  throw error
+}
+
 /** Signed in, post exists, and the viewer may change it — in that order. */
 async function requirePostChange(id: number) {
   const viewer = await requireUser()
@@ -121,11 +129,13 @@ async function requirePostChange(id: number) {
 
 export async function updatePost(id: number, input: UpdatePostInput): Promise<PostDetail> {
   const viewer = await requirePostChange(id)
-  const row = await db.post.update({ where: { id }, data: input, select: postDetailSelect })
+  const row = await db.post
+    .update({ where: { id }, data: input, select: postDetailSelect })
+    .catch(mapMissingRecord)
   return toPostDetail(row, viewer)
 }
 
 export async function deletePost(id: number): Promise<void> {
   await requirePostChange(id)
-  await db.post.delete({ where: { id } })
+  await db.post.delete({ where: { id } }).catch(mapMissingRecord)
 }

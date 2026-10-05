@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/data/db'
 import { ForbiddenError, NotFoundError, UnauthorizedError } from '@/lib/data/errors'
 import { createPost, deletePost, getPost, listPosts, toExcerpt, updatePost } from '@/lib/data/posts'
@@ -21,6 +21,7 @@ async function seedPost(userId: string, title = 'Post', body = 'Body') {
 describe('posts DAL', () => {
   beforeEach(resetDatabase)
   afterAll(() => db.$disconnect())
+  afterEach(() => vi.restoreAllMocks())
 
   it('lists newest first as a Page of summaries with an excerpt and author', async () => {
     const author = await createUser({ name: 'Leanne Graham' })
@@ -121,5 +122,27 @@ describe('posts DAL', () => {
   it('truncates long bodies and trims whitespace before the ellipsis', () => {
     expect(toExcerpt('short')).toBe('short')
     expect(toExcerpt('abc   def', 6)).toBe('abc…')
+  })
+
+  it('reports a post that vanishes between the access check and the write as not found', async () => {
+    const owner = await createUser({})
+    const post = await seedPost(owner.id)
+    await signInAs(owner)
+    // A genuine P2025 from Prisma: deleting a row that does not exist.
+    const vanished = await db.post
+      .delete({ where: { id: 999_999 } })
+      .catch((error: unknown) => error)
+    vi.spyOn(db.post, 'update').mockImplementation(() => Promise.reject(vanished) as never)
+    vi.spyOn(db.post, 'delete').mockImplementation(() => Promise.reject(vanished) as never)
+    await expect(updatePost(post.id, { title: 'x' })).rejects.toBeInstanceOf(NotFoundError)
+    await expect(deletePost(post.id)).rejects.toBeInstanceOf(NotFoundError)
+  })
+
+  it('rethrows other database errors', async () => {
+    const owner = await createUser({})
+    const post = await seedPost(owner.id)
+    await signInAs(owner)
+    vi.spyOn(db.post, 'delete').mockImplementation(() => Promise.reject(new Error('boom')) as never)
+    await expect(deletePost(post.id)).rejects.toThrow('boom')
   })
 })
