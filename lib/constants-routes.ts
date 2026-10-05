@@ -4,6 +4,7 @@ const encode = (value: RouteParameter) => encodeURIComponent(String(value))
 
 export const ROUTE_HOME = '/'
 export const ROUTE_LOGIN = '/login'
+export const ROUTE_SIGNUP = '/signup'
 export const ROUTE_PRIVATE = '/private'
 export const ROUTE_POSTS = '/posts'
 export const ROUTE_POSTS_SSR = `${ROUTE_POSTS}/ssr`
@@ -11,13 +12,21 @@ export const ROUTE_POSTS_CSR = `${ROUTE_POSTS}/csr`
 export const ROUTE_POST_NEW = `${ROUTE_POSTS}/new`
 export const ROUTE_UI_KIT = '/ui-kit'
 
+export const loginPath = (next: string) => `${ROUTE_LOGIN}?next=${encodeURIComponent(next)}`
+
 export const ROUTE_POST_DETAILS = (userId: RouteParameter, postId: RouteParameter) =>
   `${ROUTE_POSTS}/${encode(userId)}/${encode(postId)}`
 
 export const ROUTE_POST_EDIT = (userId: RouteParameter, postId: RouteParameter) =>
   `${ROUTE_POST_DETAILS(userId, postId)}/edit`
 
-export const PUBLIC_ROUTES = [ROUTE_HOME, ROUTE_LOGIN, ROUTE_POSTS, ROUTE_UI_KIT] as const
+export const PUBLIC_ROUTES = [
+  ROUTE_HOME,
+  ROUTE_LOGIN,
+  ROUTE_SIGNUP,
+  ROUTE_POSTS,
+  ROUTE_UI_KIT,
+] as const
 
 const AUTHORING_ROUTE_PATTERN = /^\/posts\/(?:new|[^/]+\/[^/]+\/edit)\/?$/
 

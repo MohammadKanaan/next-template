@@ -4,6 +4,7 @@ import {
   ROUTE_POST_EDIT,
   isPrivateRoute,
   isPublicRoute,
+  loginPath,
   safeRedirectPath,
 } from '@/lib/constants-routes'
 
@@ -14,7 +15,15 @@ describe('route helpers', () => {
   })
 
   it('treats listing and detail pages as public', () => {
-    for (const path of ['/', '/login', '/posts', '/posts/ssr', '/posts/1/2', '/ui-kit']) {
+    for (const path of [
+      '/',
+      '/login',
+      '/signup',
+      '/posts',
+      '/posts/ssr',
+      '/posts/1/2',
+      '/ui-kit',
+    ]) {
       expect(isPublicRoute(path)).toBe(true)
     }
   })
@@ -23,6 +32,10 @@ describe('route helpers', () => {
     for (const path of ['/posts/new', '/posts/1/2/edit', '/private', '/anything']) {
       expect(isPrivateRoute(path)).toBe(true)
     }
+  })
+
+  it('builds a login path that carries the return target', () => {
+    expect(loginPath('/posts/new?x=1')).toBe('/login?next=%2Fposts%2Fnew%3Fx%3D1')
   })
 
   it('only accepts same-origin relative redirect targets', () => {
