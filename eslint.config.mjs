@@ -3,6 +3,16 @@ import nextVitals from 'eslint-config-next/core-web-vitals'
 import nextTs from 'eslint-config-next/typescript'
 import prettier from 'eslint-config-prettier/flat'
 
+const prismaImportPattern = {
+  group: ['@/generated/*', '**/generated/prisma/*', '@prisma/*'],
+  message: 'Only lib/data may use Prisma. Call a DAL function instead.',
+}
+
+const serverImportPattern = {
+  group: ['@/lib/server/*'],
+  message: 'lib/server is server-only infrastructure. Reach it through the DAL (lib/data).',
+}
+
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
@@ -28,12 +38,28 @@ const eslintConfig = defineConfig([
       'no-restricted-imports': [
         'error',
         {
-          patterns: [
-            {
-              group: ['@/generated/*', '**/generated/prisma/*', '@prisma/*'],
-              message: 'Only lib/data may use Prisma. Call a DAL function instead.',
-            },
-          ],
+          patterns: [prismaImportPattern],
+        },
+      ],
+    },
+  },
+  // UI and request-edge code never imports lib/server directly (it is also guarded at runtime by
+  // `server-only`). A later block replaces the rule above, so it repeats the Prisma pattern.
+  {
+    files: [
+      'app/**/*.{ts,tsx}',
+      'actions/**/*.ts',
+      'components/**/*.{ts,tsx}',
+      'hooks/**/*.{ts,tsx}',
+      'presenters/**/*.ts',
+      'lib/client/**/*.ts',
+      'lib/dto/**/*.ts',
+    ],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [prismaImportPattern, serverImportPattern],
         },
       ],
     },
