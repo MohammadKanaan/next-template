@@ -15,6 +15,12 @@ describe('proxy', () => {
     expect(response.headers.get('location')).toBe('http://localhost/login?next=%2Fprivate')
   })
 
+  it('sends signed-out visitors from the admin page to login', () => {
+    const response = proxy(request('/admin?q=ada'))
+    expect(response.status).toBe(307)
+    expect(response.headers.get('location')).toBe('http://localhost/login?next=%2Fadmin%3Fq%3Dada')
+  })
+
   it('lets a visitor with a session cookie through to private pages', () => {
     expect(proxy(request('/private', SESSION_COOKIE)).headers.get('x-middleware-next')).toBe('1')
   })

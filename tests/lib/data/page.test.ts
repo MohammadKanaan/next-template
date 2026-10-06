@@ -44,8 +44,16 @@ describe('loadPage', () => {
     ).rejects.toThrow('NOT_FOUND')
   })
 
+  it('renders not-found for a page the viewer may not see, so the admin area stays hidden', async () => {
+    await expect(
+      loadPage(async () => {
+        throw new ForbiddenError()
+      }, '/admin'),
+    ).rejects.toThrow('NOT_FOUND')
+  })
+
   it('lets other errors through', async () => {
-    const error = new ForbiddenError()
+    const error = new Error('database down')
     await expect(
       loadPage(async () => {
         throw error

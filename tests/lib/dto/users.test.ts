@@ -1,8 +1,14 @@
 import { describe, expect, it } from 'vitest'
+import { MAX_PAGE } from '@/lib/dto/common'
 import {
+  adminUserSchema,
+  listUsersQuery,
   sessionIdSchema,
   sessionSummarySchema,
+  setUserRoleInput,
   updateProfileInput,
+  USER_SEARCH_MAX_LENGTH,
+  usersUrlQuery,
   WEBSITE_MAX_LENGTH,
 } from '@/lib/dto/users'
 
@@ -63,5 +69,46 @@ describe('sessions', () => {
     })
     expect(summary.createdAt).toEqual(new Date('2026-10-05T10:00:00.000Z'))
     expect(summary).not.toHaveProperty('token')
+  })
+})
+
+describe('admin user list', () => {
+  it('turns ISO strings back into Dates', () => {
+    const user = adminUserSchema.parse({
+      id: 'u1',
+      name: 'Ada',
+      username: 'ada',
+      email: 'ada@example.com',
+      emailVerified: true,
+      role: 'admin',
+      createdAt: '2026-10-05T10:00:00.000Z',
+      postCount: 3,
+    })
+    expect(user.createdAt).toEqual(new Date('2026-10-05T10:00:00.000Z'))
+  })
+
+  it('bounds and trims the search, and defaults the paging', () => {
+    expect(listUsersQuery.parse({})).toMatchObject({ page: 1 })
+    expect(listUsersQuery.parse({ q: '  ada ' }).q).toBe('ada')
+    expect(listUsersQuery.safeParse({ q: 'a'.repeat(USER_SEARCH_MAX_LENGTH + 1) }).success).toBe(
+      false,
+    )
+    expect(listUsersQuery.safeParse({ page: String(MAX_PAGE + 1) }).success).toBe(false)
+  })
+
+  it('parses any URL by falling back per field', () => {
+    expect(usersUrlQuery.parse({})).toEqual({ page: 1, q: '' })
+    expect(usersUrlQuery.parse({ page: 'abc', q: 'a'.repeat(101) })).toEqual({ page: 1, q: '' })
+    expect(usersUrlQuery.parse({ page: '2', q: ' ada ' })).toEqual({ page: 2, q: 'ada' })
+  })
+
+  it('accepts a user id and a known role only', () => {
+    expect(setUserRoleInput.parse({ id: 'abc-123', role: 'admin' })).toEqual({
+      id: 'abc-123',
+      role: 'admin',
+    })
+    expect(setUserRoleInput.safeParse({ id: 'abc-123', role: 'owner' }).success).toBe(false)
+    expect(setUserRoleInput.safeParse({ id: 'a b', role: 'user' }).success).toBe(false)
+    expect(setUserRoleInput.safeParse({ id: '', role: 'user' }).success).toBe(false)
   })
 })

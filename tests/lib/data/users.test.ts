@@ -2,9 +2,21 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { auth } from '@/lib/data/auth'
 import { db } from '@/lib/data/db'
-import { UnauthorizedError, ValidationError } from '@/lib/data/errors'
+import {
+  ForbiddenError,
+  NotFoundError,
+  UnauthorizedError,
+  ValidationError,
+} from '@/lib/data/errors'
 import { listPosts } from '@/lib/data/posts'
-import { getCurrentUser, getViewer, isUsernameTaken, updateProfile } from '@/lib/data/users'
+import {
+  getCurrentUser,
+  getViewer,
+  isUsernameTaken,
+  listUsers,
+  setUserRole,
+  updateProfile,
+} from '@/lib/data/users'
 import { enqueue } from '@/lib/server/queue'
 import { cookieJar } from '../../helpers/cookies'
 import { createUser, resetDatabase, signInAs } from '../../helpers/server'
@@ -172,6 +184,149 @@ describe('users DAL', () => {
       expect((await getViewer())?.name).toBe('After')
       const author = (await listPosts({ page: 1, perPage: 10 })).items[0].author
       expect(author).toMatchObject({ name: 'After', username: 'after_name' })
+    })
+  })
+
+  describe('listUsers', () => {
+    const all = { page: 1, perPage: 10 }
+
+    it('requires an admin: 401 signed out, 403 for a regular user', async () => {
+      await expect(listUsers(all)).rejects.toBeInstanceOf(UnauthorizedError)
+      const member = await createUser({})
+      await signInAs(member)
+      await expect(listUsers(all)).rejects.toBeInstanceOf(ForbiddenError)
+    })
+
+    it('lists every user with their post count, newest first', async () => {
+      const first = await createUser({ name: 'First', username: 'first_u' })
+      const second = await createUser({ name: 'Second', username: 'second_u' })
+      const admin = await createUser({ name: 'Admin', username: 'admin_u', role: 'admin' })
+      await db.post.createMany({
+        data: [
+          { userId: first.id, title: 'A', body: 'b' },
+          { userId: first.id, title: 'B', body: 'b' },
+        ],
+      })
+      await signInAs(admin)
+
+      const page = await listUsers(all)
+      expect(page).toMatchObject({ page: 1, perPage: 10, totalItems: 3, totalPages: 1 })
+      expect(page.items.map((user) => user.username)).toEqual(['admin_u', 'second_u', 'first_u'])
+      expect(page.items.find((user) => user.id === first.id)).toEqual({
+        id: first.id,
+        name: 'First',
+        username: 'first_u',
+        email: first.email,
+        emailVerified: false,
+        role: 'user',
+        createdAt: expect.any(Date),
+        postCount: 2,
+      })
+      expect(page.items.find((user) => user.id === second.id)?.postCount).toBe(0)
+      expect(page.items[0]).not.toHaveProperty('_count')
+    })
+
+    it('paginates', async () => {
+      for (const n of [1, 2, 3, 4, 5]) {
+        await createUser({ username: `user_${n}` })
+      }
+      const admin = await createUser({ username: 'the_admin', role: 'admin' })
+      await signInAs(admin)
+      const first = await listUsers({ page: 1, perPage: 4 })
+      const second = await listUsers({ page: 2, perPage: 4 })
+      expect(first).toMatchObject({ totalItems: 6, totalPages: 2 })
+      expect(first.items).toHaveLength(4)
+      expect(second.items).toHaveLength(2)
+      expect(new Set([...first.items, ...second.items].map((user) => user.id)).size).toBe(6)
+    })
+
+    it('searches name, username and email case-insensitively, and treats wildcards literally', async () => {
+      await createUser({ name: 'Ada Lovelace', username: 'countess', email: 'a1@example.com' })
+      await createUser({ name: 'Grace', username: 'admiral_g', email: 'grace@navy.test' })
+      await createUser({ name: 'Alan', username: 'alan_t', email: 'turing@example.com' })
+      const admin = await createUser({ name: 'Root', username: 'root_u', role: 'admin' })
+      await signInAs(admin)
+
+      const names = async (q: string) =>
+        (await listUsers({ ...all, q })).items.map((user) => user.name).sort()
+      expect(await names('LOVELACE')).toEqual(['Ada Lovelace'])
+      expect(await names('ADMIRAL')).toEqual(['Grace'])
+      expect(await names('turing@')).toEqual(['Alan'])
+      expect(await names('nobody')).toEqual([])
+      expect(await names('%')).toEqual([])
+      // Ada, Alan and the admin (the generated address ends in example.com too), not Grace.
+      expect((await listUsers({ ...all, q: 'example.com' })).totalItems).toBe(3)
+    })
+
+    it('is never served from a cache: a role change shows at once', async () => {
+      const member = await createUser({ username: 'member_u' })
+      const admin = await createUser({ username: 'boss_u', role: 'admin' })
+      await signInAs(admin)
+      const roleOf = async () =>
+        (await listUsers(all)).items.find((user) => user.id === member.id)?.role
+      expect(await roleOf()).toBe('user')
+      await db.user.update({ where: { id: member.id }, data: { role: 'admin' } })
+      expect(await roleOf()).toBe('admin')
+    })
+  })
+
+  describe('setUserRole', () => {
+    it('requires an admin: 401 signed out, 403 for a regular user, role unchanged', async () => {
+      const target = await createUser({})
+      await expect(setUserRole(target.id, 'admin')).rejects.toBeInstanceOf(UnauthorizedError)
+      const member = await createUser({})
+      await signInAs(member)
+      await expect(setUserRole(target.id, 'admin')).rejects.toBeInstanceOf(ForbiddenError)
+      await expect(setUserRole(member.id, 'admin')).rejects.toBeInstanceOf(ForbiddenError)
+      expect(await db.user.findUniqueOrThrow({ where: { id: target.id } })).toMatchObject({
+        role: 'user',
+      })
+      expect(await db.user.findUniqueOrThrow({ where: { id: member.id } })).toMatchObject({
+        role: 'user',
+      })
+    })
+
+    it('reports a missing user as not found', async () => {
+      const admin = await createUser({ role: 'admin' })
+      await signInAs(admin)
+      await expect(setUserRole('missing-id', 'admin')).rejects.toBeInstanceOf(NotFoundError)
+    })
+
+    it('refuses to change the admin’s own role', async () => {
+      const admin = await createUser({ role: 'admin' })
+      await signInAs(admin)
+      await expect(setUserRole(admin.id, 'user')).rejects.toBeInstanceOf(ForbiddenError)
+      expect(await db.user.findUniqueOrThrow({ where: { id: admin.id } })).toMatchObject({
+        role: 'admin',
+      })
+    })
+
+    it('changes another user’s role and returns the updated row', async () => {
+      const target = await createUser({ name: 'Target' })
+      await db.post.create({ data: { userId: target.id, title: 'T', body: 'b' } })
+      const admin = await createUser({ role: 'admin' })
+      await signInAs(admin)
+
+      const promoted = await setUserRole(target.id, 'admin')
+      expect(promoted).toMatchObject({ id: target.id, name: 'Target', role: 'admin', postCount: 1 })
+      expect(await db.user.findUniqueOrThrow({ where: { id: target.id } })).toMatchObject({
+        role: 'admin',
+      })
+
+      expect((await setUserRole(target.id, 'user')).role).toBe('user')
+    })
+
+    it('applies on the target’s next request and refreshes their cached viewer', async () => {
+      const target = await createUser({})
+      const admin = await createUser({ role: 'admin' })
+      await signInAs(target)
+      expect((await getViewer())?.role).toBe('user')
+      await signInAs(admin)
+      await setUserRole(target.id, 'admin')
+
+      await signInAs(target)
+      expect((await getViewer())?.role).toBe('admin')
+      await expect(listUsers({ page: 1, perPage: 10 })).resolves.toBeDefined()
     })
   })
 })

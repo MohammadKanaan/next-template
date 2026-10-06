@@ -16,6 +16,7 @@ import { invalidateTags, remember } from '@/lib/server/cache'
 import { getSessionUser, requireUser, type SessionUser } from './auth'
 import { POSTS_TAG, postTag } from './cacheTags'
 import { db } from './db'
+import { escapeLike } from './escapeLike'
 import { ForbiddenError, NotFoundError } from './errors'
 import { userProfileSelect } from './users'
 
@@ -41,11 +42,6 @@ const postDetailSelect = {
 
 type PostSummaryRow = Prisma.PostGetPayload<{ select: typeof postSummarySelect }>
 type PostDetailRow = Prisma.PostGetPayload<{ select: typeof postDetailSelect }>
-
-/** Prisma's `contains` does not escape LIKE wildcards; a search for "100%" must not match everything. */
-function escapeLike(value: string) {
-  return value.replace(/[\\%_]/g, (character) => `\\${character}`)
-}
 
 export function toExcerpt(body: string, maxLength = POST_EXCERPT_LENGTH) {
   return body.length <= maxLength ? body : `${body.slice(0, maxLength).trimEnd()}…`

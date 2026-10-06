@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { refresh, revalidatePath } from 'next/cache'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { updateProfileAction } from '@/actions/users'
+import { setUserRoleAction, updateProfileAction } from '@/actions/users'
 import { db } from '@/lib/data/db'
 import { resetRateLimits } from '@/lib/data/rateLimit'
 import { createUser, resetDatabase, signInAs } from '../helpers/server'
@@ -81,5 +81,63 @@ describe('updateProfileAction', () => {
       expect(await updateProfileAction(input)).toMatchObject({ ok: true })
     }
     expect(await updateProfileAction(input)).toMatchObject({ ok: false, code: 'RATE_LIMITED' })
+  })
+})
+
+describe('setUserRoleAction', () => {
+  beforeEach(async () => {
+    await resetDatabase()
+    vi.mocked(refresh).mockClear()
+  })
+  afterAll(() => db.$disconnect())
+
+  it('requires an admin', async () => {
+    const target = await createUser({})
+    expect(await setUserRoleAction({ id: target.id, role: 'admin' })).toMatchObject({
+      ok: false,
+      code: 'UNAUTHORIZED',
+    })
+    const member = await createUser({})
+    await signInAs(member)
+    expect(await setUserRoleAction({ id: target.id, role: 'admin' })).toMatchObject({
+      ok: false,
+      code: 'FORBIDDEN',
+    })
+    expect(refresh).not.toHaveBeenCalled()
+  })
+
+  it('validates the input', async () => {
+    const admin = await createUser({ role: 'admin' })
+    await signInAs(admin)
+    expect(await setUserRoleAction({ id: 'a b', role: 'owner' as never })).toMatchObject({
+      ok: false,
+      code: 'VALIDATION',
+      fieldErrors: { id: expect.any(Array), role: expect.any(Array) },
+    })
+  })
+
+  it('changes the role, refreshes and returns the updated user', async () => {
+    const target = await createUser({ name: 'Target' })
+    const admin = await createUser({ role: 'admin' })
+    await signInAs(admin)
+    expect(await setUserRoleAction({ id: target.id, role: 'admin' })).toMatchObject({
+      ok: true,
+      data: { id: target.id, role: 'admin' },
+    })
+    expect(refresh).toHaveBeenCalledTimes(1)
+  })
+
+  it('refuses the admin’s own account and reports a missing user', async () => {
+    const admin = await createUser({ role: 'admin' })
+    await signInAs(admin)
+    expect(await setUserRoleAction({ id: admin.id, role: 'user' })).toEqual({
+      ok: false,
+      code: 'FORBIDDEN',
+      message: 'You cannot change your own role',
+    })
+    expect(await setUserRoleAction({ id: 'missing-id', role: 'user' })).toMatchObject({
+      ok: false,
+      code: 'NOT_FOUND',
+    })
   })
 })

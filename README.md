@@ -191,6 +191,10 @@ consumed, such as a view's `useMemo`.
 checks cookie presence, so the `/login` and `/signup` pages redirect signed-in users themselves (a
 stale cookie must not lock anyone out). The DAL does the real check on every read and write.
 
+`/admin` (admins only; anyone else gets the not-found page, signed-out visitors go to login) lists
+users with search and pagination and lets an admin change another user's role; the admin cannot
+change their own. Its DAL functions call `requireAdmin()` themselves.
+
 Better Auth's HTTP routes `/api/auth/sign-up/email`, `/api/auth/update-user` and
 `/api/auth/delete-user` are disabled (`disabledPaths`): they would bypass our validation or the
 password check. Sign-up goes through `signUpAction`, profile edits through `updateProfile`, and

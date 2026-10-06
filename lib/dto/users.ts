@@ -1,9 +1,16 @@
 import { z } from 'zod'
 import { signUpInput } from './auth'
+import { pageQuerySchema } from './common'
 
 export const roleSchema = z.enum(['user', 'admin'])
 
 export type Role = z.infer<typeof roleSchema>
+
+/**
+ * A user id: Better Auth's generated ids are 32 alphanumeric characters and the seed uses UUIDs, so
+ * letters, digits and hyphens up to a sane length cover both and nothing that could alter a cache key.
+ */
+export const userIdSchema = z.string().regex(/^[A-Za-z0-9-]{1,64}$/, 'Invalid user id')
 
 /** What anyone may see about a user (e.g. a post's author). */
 export const userProfileSchema = z.object({
@@ -68,3 +75,38 @@ export const sessionSummarySchema = z.object({
 })
 
 export type SessionSummary = z.infer<typeof sessionSummarySchema>
+
+export const USER_SEARCH_MAX_LENGTH = 100
+
+/** One row of the admin user list. Admin-only: it carries the email. */
+export const adminUserSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  username: z.string(),
+  email: z.string(),
+  emailVerified: z.boolean(),
+  role: roleSchema,
+  createdAt: z.coerce.date(),
+  postCount: z.number().int(),
+})
+
+export type AdminUser = z.infer<typeof adminUserSchema>
+
+export const listUsersQuery = pageQuerySchema.extend({
+  /** Matches name, username or email, case-insensitively; bounded because it is free text. */
+  q: z.string().trim().max(USER_SEARCH_MAX_LENGTH).optional(),
+})
+
+export type ListUsersQuery = z.infer<typeof listUsersQuery>
+
+/** The tolerant URL contract of the admin list (see `postsUrlQuery`): any query string parses. */
+export const usersUrlQuery = z.object({
+  page: pageQuerySchema.shape.page.catch(1),
+  q: z.string().trim().max(USER_SEARCH_MAX_LENGTH).catch(''),
+})
+
+export type UsersUrlQuery = z.infer<typeof usersUrlQuery>
+
+export const setUserRoleInput = z.object({ id: userIdSchema, role: roleSchema })
+
+export type SetUserRoleInput = z.infer<typeof setUserRoleInput>

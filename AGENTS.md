@@ -196,7 +196,17 @@ docs/DECISIONS.md        # Framework and library choices, with reasons
   `requireAdmin()`, `getViewer()`.
 - `requireUser()` always **throws** `UnauthorizedError`; it never redirects. Pages wrap their reads
   in `loadPage(load, path)` (`lib/data/page.ts`), which turns `UnauthorizedError` into a redirect to
-  `/login?next=…` and `NotFoundError` into `notFound()`.
+  `/login?next=…` and `NotFoundError` **and `ForbiddenError`** into `notFound()`, so a page the
+  viewer may not see (the admin area) looks like one that does not exist.
+- **Admin** (`/admin`, `ROUTE_ADMIN`, private by default): the first live use of `requireAdmin()`.
+  `listUsers(query)` (name/username/email search, paginated, `postCount`) is never cached because
+  it is viewer-restricted and carries emails; `setUserRole(id, role)` checks admin (401/403) →
+  exists (404) → not the admin's own account (403) → update → `invalidateTags(userTag(id))`.
+  Roles are read from the database session on every request, so a change applies on the target's
+  next request. `setUserRoleAction` is the write; `page.tsx` reads `searchParams` with
+  `usersUrlQuery` inside `<Suspense>` and `view.tsx` (table, role `Select`, search, `Pagination`)
+  writes through `useUrlState`. `NavBar` shows an "Admin" link to admins only (cosmetic; the DAL is
+  the guard). Better Auth's `admin` plugin is deliberately not used (see `docs/DECISIONS.md`).
 - `proxy.ts` is optimistic only: it checks cookie _presence_ (`getSessionCookie`) to redirect
   private pages to `/login?next=…`. It has no guest-only redirect, because a stale cookie must not
   lock anyone out of `/login`; the `/login` and `/signup` pages call `getViewer()` and redirect
@@ -275,8 +285,8 @@ catch (error) { return toActionFailure(error) }`. Return `ActionResult<T>`; neve
   (all `DataError`s with a `code`). Anything else is a bug and propagates.
 - Each caller translates once: Server Action → `toActionFailure` (`ActionResult` with `code`,
   `message`, optional `fieldErrors`; Next redirect/not-found errors are rethrown); Route Handler →
-  `toErrorResponse` (401 / 403 / 404 / 422 with `ErrorBody`); page → `loadPage` (redirect to login or
-  `notFound()`).
+  `toErrorResponse` (401 / 403 / 404 / 422 with `ErrorBody`); page → `loadPage` (redirect to login, or
+  `notFound()` for missing or forbidden).
 - Forms map failures with `applyActionErrors` (`lib/formErrors.ts`): field errors land on their
   fields, anything else on `root.server`.
 

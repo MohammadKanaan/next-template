@@ -9,6 +9,7 @@ export const ROUTE_FORGOT_PASSWORD = '/forgot-password'
 export const ROUTE_RESET_PASSWORD = '/reset-password'
 export const ROUTE_PRIVATE = '/private'
 export const ROUTE_SETTINGS = '/settings'
+export const ROUTE_ADMIN = '/admin'
 export const ROUTE_POSTS = '/posts'
 export const ROUTE_POSTS_SSR = `${ROUTE_POSTS}/ssr`
 export const ROUTE_POSTS_CSR = `${ROUTE_POSTS}/csr`

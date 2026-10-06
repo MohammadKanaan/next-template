@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { pageQuerySchema, pageSchema, permissionsSchema } from './common'
-import { userProfileSchema } from './users'
+import { userIdSchema, userProfileSchema } from './users'
 
 export const POST_TITLE_MAX_LENGTH = 200
 export const POST_BODY_MAX_LENGTH = 5000
@@ -38,12 +38,6 @@ export const updatePostInput = createPostInput
   .refine((value) => Object.keys(value).length > 0, 'Provide at least one attribute')
 
 export type UpdatePostInput = z.infer<typeof updatePostInput>
-
-/**
- * A user id: Better Auth's generated ids are 32 alphanumeric characters and the seed uses UUIDs, so
- * letters, digits and hyphens up to a sane length cover both and nothing that could alter a cache key.
- */
-export const userIdSchema = z.string().regex(/^[A-Za-z0-9-]{1,64}$/, 'Invalid user id')
 
 export const postsSortSchema = z.enum(['newest', 'oldest'])
 

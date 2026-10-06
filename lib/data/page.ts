@@ -2,11 +2,12 @@ import 'server-only'
 import { notFound, redirect } from 'next/navigation'
 import { connection } from 'next/server'
 import { loginPath } from '@/lib/constants-routes'
-import { NotFoundError, UnauthorizedError } from './errors'
+import { ForbiddenError, NotFoundError, UnauthorizedError } from './errors'
 
 /**
  * Runs a DAL read for a Server Component page. Signed out → login (returning to `path`),
- * missing record → the not-found page. Other errors propagate to the error boundary.
+ * missing record or not allowed → the not-found page (a page the viewer may not see, such as the
+ * admin area, looks the same as one that does not exist). Other errors propagate to the error boundary.
  * Waits for a real request first, so no page read ever runs while `next build` prerenders.
  * Call it from a component wrapped in `<Suspense>`.
  */
@@ -18,7 +19,7 @@ export async function loadPage<T>(load: () => Promise<T>, path: string): Promise
     if (error instanceof UnauthorizedError) {
       redirect(loginPath(path))
     }
-    if (error instanceof NotFoundError) {
+    if (error instanceof NotFoundError || error instanceof ForbiddenError) {
       notFound()
     }
     throw error

@@ -12,6 +12,7 @@ import { UserAvatar } from '@/components/UserAvatar'
 import { useScrollLock } from '@/hooks/useScrollLock'
 import { BREAKPOINTS } from '@/lib/constants-breakpoints'
 import {
+  ROUTE_ADMIN,
   ROUTE_HOME,
   ROUTE_LOGIN,
   ROUTE_POSTS,
@@ -31,15 +32,21 @@ const NAV_LINKS = [
   { label: 'Private', href: ROUTE_PRIVATE },
 ]
 
+/** Only for admins; the page itself is guarded by the DAL, this just hides the link. */
+const ADMIN_LINK = { label: 'Admin', href: ROUTE_ADMIN }
+
+type NavLink = (typeof NAV_LINKS)[number]
+
 type NavLinksProps = {
+  links: NavLink[]
   pathname: string | null
 }
 
-function NavLinks({ pathname }: NavLinksProps) {
+function NavLinks({ links, pathname }: NavLinksProps) {
   const isActive = (href: string) =>
     pathname !== null && (pathname === href || pathname.startsWith(`${href}/`))
 
-  return NAV_LINKS.map((link) => (
+  return links.map((link) => (
     <Link
       key={link.href}
       href={link.href}
@@ -51,8 +58,8 @@ function NavLinks({ pathname }: NavLinksProps) {
 }
 
 /** Reads the pathname, which is not known while prerendering a route with dynamic params. */
-function ActiveNavLinks() {
-  return <NavLinks pathname={usePathname()} />
+function ActiveNavLinks({ links }: Pick<NavLinksProps, 'links'>) {
+  return <NavLinks links={links} pathname={usePathname()} />
 }
 
 type AccountActionsProps = {
@@ -90,6 +97,7 @@ type NavBarProps = {
 
 export function NavBar({ user, pending = false }: NavBarProps) {
   const { lockScroll, unlockScroll } = useScrollLock()
+  const links = user?.role === 'admin' ? [...NAV_LINKS, ADMIN_LINK] : NAV_LINKS
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
 
   const closeMobileMenu = useCallback(() => {
@@ -137,8 +145,8 @@ export function NavBar({ user, pending = false }: NavBarProps) {
         </button>
 
         <div className={styles.desktopNav}>
-          <Suspense fallback={<NavLinks pathname={null} />}>
-            <ActiveNavLinks />
+          <Suspense fallback={<NavLinks links={links} pathname={null} />}>
+            <ActiveNavLinks links={links} />
           </Suspense>
           <div className={styles.accountArea}>
             <ThemeToggle />
@@ -159,7 +167,7 @@ export function NavBar({ user, pending = false }: NavBarProps) {
         >
           <div className={styles.mobileNavHeader}>{env.appName}</div>
           <div className={styles.mobileNavLinks}>
-            {NAV_LINKS.map((link) => (
+            {links.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
