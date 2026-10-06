@@ -161,6 +161,9 @@ docs/DECISIONS.md        # Framework and library choices, with reasons
 - `components/SCN` contains official CLI-generated primitives. Keep them unchanged apart from
   Prettier formatting, including long class strings and upstream inline styles. Update/reinstall
   with `bunx shadcn@latest add <names> --overwrite --yes`, not local rewrites.
+- The `chart` primitive (`components/SCN/chart.tsx`, Recharts) was added with
+  `bunx shadcn@latest add chart`; chart colours come from the `--chart-*` tokens in
+  `styles/global.css`. A chart is a client component, so keep it a small leaf (`PostsPerDayChart`).
 - Application callers do not pass `className`/`style` to reusable components. Put composition and
   named variants in application wrappers, not generated primitives.
 - Form controls in `components/Form/Input` and `components/Form/Textarea` own `label`, `required`,
@@ -218,6 +221,17 @@ docs/DECISIONS.md        # Framework and library choices, with reasons
   `usersUrlQuery` and `view.tsx` (table, role `Select`, search, `Pagination`)
   writes through `useUrlState`. `NavBar` shows an "Admin" link to admins only (cosmetic; the DAL is
   the guard). Better Auth's `admin` plugin is deliberately not used (see `docs/DECISIONS.md`).
+- **Dashboard** (`/dashboard`, `ROUTE_DASHBOARD`, private; the default target after sign-in): the
+  worked example of aggregate queries, in `lib/data/stats.ts` with DTOs in `lib/dto/stats.ts`.
+  `getSiteStats()` (published posts, comments on them, tags in use) is public and cached under
+  `POSTS_TAG`. `getMyStats()` requires a session (checked before the cache is touched) and returns
+  the viewer's posts per status through Prisma `groupBy` (every status present, zero when empty) and
+  the comments other people left on their posts; its key is per user (`user:<id>:stats`, tags
+  `POSTS_TAG` + the user's tag), so one viewer's numbers never reach another. `getPostsPerDay(days)`
+  is public: published posts per UTC day, zero-filled, oldest first, `days` 1 to 90 (default 30,
+  validated so the cache key is bounded). The page loads all three in one `Promise.all` inside
+  `loadPage`; `StatCard` (server) and `PostsPerDayChart` (the only client component, on the shadcn
+  `chart` primitive over Recharts) render them.
 - `proxy.ts` is optimistic only: it checks cookie _presence_ (`getSessionCookie`) to redirect
   private pages to `/login?next=…`. It has no guest-only redirect, because a stale cookie must not
   lock anyone out of `/login`; the `/login` and `/signup` pages call `getViewer()` and redirect
@@ -313,6 +327,13 @@ The posts example carries the domain patterns an app needs (all in `lib/data/pos
   rules (e.g. a post may be changed by its author or an admin). For writes the order is signed in
   (401) → exists (404) → allowed (403).
 - Failures are typed errors (see **Errors**), not return codes.
+- **Raw SQL** (`db.$queryRaw`) is for what Prisma cannot express (today: `generate_series` in
+  `getPostsPerDay`). Use the tagged template only, so every value is a bound parameter; never
+  build SQL from strings, and never `$queryRawUnsafe`. Parse the rows with a Zod schema before they
+  leave the DAL (counts come back as `bigint`). The Prisma client runs its session in UTC
+  (`options: '-c timezone=UTC'` in `lib/data/db.ts`, and in the seed) because the adapter reads and
+  writes `timestamptz` as wall-clock values in the session time zone; keep that when you add a
+  client, or raw day grouping will disagree with Prisma.
 - Server Components call the DAL directly (wrapped in `loadPage` when they need the redirect /
   not-found behaviour). They never fetch the app's own Route Handlers. `loadPage` awaits
   `connection()` before it loads, so a page is never prerendered (and frozen) by `next build`,

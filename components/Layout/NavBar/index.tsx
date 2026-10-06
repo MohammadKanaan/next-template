@@ -17,7 +17,7 @@ import {
   ROUTE_LOGIN,
   ROUTE_POSTS,
   ROUTE_POSTS_MINE,
-  ROUTE_PRIVATE,
+  ROUTE_DASHBOARD,
   ROUTE_SETTINGS,
   ROUTE_UI_KIT,
 } from '@/lib/constants-routes'
@@ -30,7 +30,7 @@ const MOBILE_NAV_ID = 'mobile-nav'
 const NAV_LINKS = [
   { label: 'Posts', href: ROUTE_POSTS },
   { label: 'UI Kit', href: ROUTE_UI_KIT },
-  { label: 'Private', href: ROUTE_PRIVATE },
+  { label: 'Dashboard', href: ROUTE_DASHBOARD },
 ]
 
 /** Only for signed-in users; `/posts/mine` is private (the proxy and the DAL both guard it). */

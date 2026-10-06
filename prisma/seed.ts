@@ -78,8 +78,10 @@ const SEED_USERS: {
 
 // The script owns its client (and disconnects it); `lib/data/db.ts` is server-only.
 const db = new PrismaClient({
-  adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
+  adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL, options: '-c timezone=UTC' }),
 })
+
+const daysAgo = (days: number) => new Date(Date.now() - days * 24 * 60 * 60 * 1000)
 
 try {
   const password = await hashPassword(SEED_PASSWORD)
@@ -108,7 +110,8 @@ try {
                 'It exists so the posts pages have something realistic to render.',
               ].join(' '),
               status,
-              publishedAt: status === 'draft' ? null : new Date(),
+              // Spread over the last two weeks so the dashboard chart has something to show.
+              publishedAt: status === 'draft' ? null : daysAgo(index % 14),
               tags: {
                 create: seedTags(userIndex, index).map((name) => ({
                   tag: { connectOrCreate: { where: { name }, create: { name } } },

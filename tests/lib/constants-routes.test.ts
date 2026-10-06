@@ -37,7 +37,7 @@ describe('route helpers', () => {
       '/posts/new',
       '/posts/mine',
       '/posts/1/2/edit',
-      '/private',
+      '/dashboard',
       '/admin',
       '/anything',
     ]) {
@@ -72,15 +72,15 @@ describe('route helpers', () => {
       '/a/..//evil.example',
       '/./\\evil.example',
     ]) {
-      expect(safeRedirectPath(value)).toBe('/private')
+      expect(safeRedirectPath(value)).toBe('/dashboard')
     }
   })
 
   it('only accepts same-origin relative redirect targets', () => {
     expect(safeRedirectPath('/posts/new')).toBe('/posts/new')
     expect(safeRedirectPath('/posts/new?x=1#h')).toBe('/posts/new?x=1#h')
-    expect(safeRedirectPath('//evil.example')).toBe('/private')
-    expect(safeRedirectPath('https://evil.example')).toBe('/private')
+    expect(safeRedirectPath('//evil.example')).toBe('/dashboard')
+    expect(safeRedirectPath('https://evil.example')).toBe('/dashboard')
     expect(safeRedirectPath(undefined, '/')).toBe('/')
   })
 })

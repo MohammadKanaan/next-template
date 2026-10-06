@@ -16,6 +16,7 @@ import { PostForm } from '@/components/Posts/Form'
 import { PostStatusBadge } from '@/components/Posts/StatusBadge'
 import { PostTags } from '@/components/Posts/Tags'
 import { AvatarUploader } from '@/components/Settings/AvatarUploader'
+import { StatCard } from '@/components/Stats/StatCard'
 import {
   Avatar,
   AvatarBadge,
@@ -550,6 +551,18 @@ export const UiKitView = () => {
             ))}
           </div>
           <PostTags tags={['news', 'tips', 'typescript']} />
+        </div>
+      </Section>
+
+      <Section
+        id="stat-card"
+        eyebrow="Application components"
+        title="StatCard"
+        description="A label, a number and an optional hint; a Server Component that the dashboard lays out in a grid."
+      >
+        <div className={styles.row}>
+          <StatCard label="Published posts" value={12} />
+          <StatCard label="Comments received" value={34} hint="From other people" />
         </div>
       </Section>
 

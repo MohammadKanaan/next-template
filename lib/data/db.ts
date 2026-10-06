@@ -4,7 +4,13 @@ import { PrismaClient } from '@/generated/prisma/client'
 
 const createClient = () => {
   return new PrismaClient({
-    adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
+    // The session runs in UTC: the adapter writes and reads `timestamptz` as wall-clock values in
+    // the session time zone, so a server in another zone would store shifted instants, and raw SQL
+    // that groups by UTC day (`getPostsPerDay`) would disagree with what Prisma returns.
+    adapter: new PrismaPg({
+      connectionString: process.env.DATABASE_URL,
+      options: '-c timezone=UTC',
+    }),
   })
 }
 

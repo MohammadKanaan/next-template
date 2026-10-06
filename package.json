@@ -46,6 +46,7 @@
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-hook-form": "^7.89.0",
+    "recharts": "3.8.0",
     "resend": "^6.32.0",
     "server-only": "^0.0.1",
     "sonner": "^2.0.8",

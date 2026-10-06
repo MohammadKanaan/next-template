@@ -7,7 +7,7 @@ export const ROUTE_LOGIN = '/login'
 export const ROUTE_SIGNUP = '/signup'
 export const ROUTE_FORGOT_PASSWORD = '/forgot-password'
 export const ROUTE_RESET_PASSWORD = '/reset-password'
-export const ROUTE_PRIVATE = '/private'
+export const ROUTE_DASHBOARD = '/dashboard'
 export const ROUTE_SETTINGS = '/settings'
 export const ROUTE_ADMIN = '/admin'
 export const ROUTE_POSTS = '/posts'
@@ -53,7 +53,7 @@ const REDIRECT_BASE = 'http://localhost'
  * Dot segments can also normalise to a `//` path (`/.//evil.example`), which a browser would treat
  * as protocol-relative, so the resolved path is checked too.
  */
-export const safeRedirectPath = (value: string | null | undefined, fallback = ROUTE_PRIVATE) => {
+export const safeRedirectPath = (value: string | null | undefined, fallback = ROUTE_DASHBOARD) => {
   if (!value || !value.startsWith('/')) {
     return fallback
   }

@@ -10,9 +10,9 @@ const SESSION_COOKIE = 'better-auth.session_token=abc.def'
 
 describe('proxy', () => {
   it('sends signed-out visitors from private pages to login with a return path', () => {
-    const response = proxy(request('/private'))
+    const response = proxy(request('/dashboard'))
     expect(response.status).toBe(307)
-    expect(response.headers.get('location')).toBe('http://localhost/login?next=%2Fprivate')
+    expect(response.headers.get('location')).toBe('http://localhost/login?next=%2Fdashboard')
   })
 
   it('sends signed-out visitors from the admin page to login', () => {
@@ -22,7 +22,7 @@ describe('proxy', () => {
   })
 
   it('lets a visitor with a session cookie through to private pages', () => {
-    expect(proxy(request('/private', SESSION_COOKIE)).headers.get('x-middleware-next')).toBe('1')
+    expect(proxy(request('/dashboard', SESSION_COOKIE)).headers.get('x-middleware-next')).toBe('1')
   })
 
   it('does not redirect guest-only pages: a stale cookie must not lock anyone out', () => {

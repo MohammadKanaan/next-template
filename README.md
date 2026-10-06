@@ -200,6 +200,14 @@ enforces auth itself with `requireUser()` / `requireAdmin()` plus record-level r
 changed by its author or an admin). It also validates its own inputs with the `lib/dto` schema
 (`parseInput`), so the rules hold whichever caller reaches it.
 
+**Aggregates.** `/dashboard` shows stat cards and a posts-per-day chart. `lib/data/stats.ts` has
+the three flavours side by side: plain counts, Prisma `groupBy` (the viewer's posts per status), and
+one raw SQL query (`generate_series` + `date_trunc`, via the `$queryRaw` tagged template, rows
+parsed with a Zod schema). Site-wide numbers and the series are cached under `POSTS_TAG`; the
+viewer's own numbers under a per-user key. The chart is shadcn's `chart` primitive (Recharts) and
+the only client component on the page. The Prisma client sets its session time zone to UTC so the
+raw day grouping matches what Prisma returns.
+
 **Server Actions.** Writes live in `actions/`: call the DAL (it validates),
 `revalidatePath` / `refresh`, and return an `ActionResult<T>`. Forms map failures onto fields with
 `applyActionErrors`.

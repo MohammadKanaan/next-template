@@ -1,0 +1,11 @@
+.chart {
+  width: 100%;
+  min-width: 0;
+
+  // The stock container is 16:9, which makes a full-width bar chart very tall; give it a fixed
+  // height instead (the primitive itself stays untouched).
+  > :global([data-slot='chart']) {
+    height: 18rem;
+    aspect-ratio: auto;
+  }
+}
