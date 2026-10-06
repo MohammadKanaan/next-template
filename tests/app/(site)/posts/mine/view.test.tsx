@@ -69,6 +69,20 @@ describe('MyPostsView', () => {
     expect(screen.getByRole('link', { name: 'Write a post' })).toHaveAttribute('href', '/posts/new')
   })
 
+  it('does not say "No posts yet" on a page past the end when posts exist', () => {
+    search.value = 'page=2'
+    render(
+      <MyPostsView
+        posts={{ items: [], page: 2, perPage: 10, totalItems: 4, totalPages: 1 }}
+        tags={[]}
+      />,
+    )
+    expect(screen.queryByText('No posts yet')).not.toBeInTheDocument()
+    expect(screen.getByText('No posts on this page')).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Status' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Previous page' })).toBeEnabled()
+  })
+
   it('shows the filters with the status select above the posts', () => {
     render(<MyPostsView posts={page([draft])} tags={[{ name: 'news', postCount: 1 }]} />)
     expect(screen.getByRole('combobox', { name: 'Status' })).toBeInTheDocument()

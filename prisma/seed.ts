@@ -110,7 +110,7 @@ try {
                 'It exists so the posts pages have something realistic to render.',
               ].join(' '),
               status,
-              // Spread over the last two weeks so the dashboard chart has something to show.
+              // Each user's four posts fall on the last four days, so the dashboard chart has something to show.
               publishedAt: status === 'draft' ? null : daysAgo(index % 14),
               tags: {
                 create: seedTags(userIndex, index).map((name) => ({

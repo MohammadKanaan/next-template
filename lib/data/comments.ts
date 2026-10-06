@@ -13,7 +13,7 @@ import { getSessionUser, requireUser, type SessionUser } from './auth'
 import { commentsTag, POSTS_TAG, postTag } from './cacheTags'
 import { db } from './db'
 import { ForbiddenError, NotFoundError, parseInput } from './errors'
-import { canViewPost, getPostBase } from './posts'
+import { canViewPost, getPost } from './posts'
 import { userProfileSelect } from './users'
 
 const COMMENTS_CACHE_TTL = 300
@@ -53,11 +53,9 @@ const invalidateComments = (postId: number) => {
  * account drops every cached copy.
  */
 export const listComments = async (postId: number | string): Promise<Comment[]> => {
-  const post = await getPostBase(postId)
+  // `getPost` applies the visibility rule (not found for a post the viewer may not see).
+  const post = await getPost(postId)
   const viewer = await getSessionUser()
-  if (!canViewPost(viewer, post)) {
-    throw new NotFoundError('Post not found')
-  }
   const comments = await remember(
     `comments:${post.id}`,
     {
@@ -116,7 +114,10 @@ export const createComment = async (
   }
 }
 
-/** Signed in (401) → the comment exists (404) → its author, the post's author or an admin (403). */
+/**
+ * Signed in (401) → the comment exists (404) → its author, the post's author or an admin (403). A
+ * stranger gets 403, not 404, for a comment on a draft: writes do not hide existence.
+ */
 export const deleteComment = async (id: number | string): Promise<void> => {
   const viewer = await requireUser()
   const commentId = parseInput(idSchema, id)

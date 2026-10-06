@@ -24,8 +24,12 @@ import styles from './styles.module.scss'
 
 const SEARCH_DEBOUNCE_MS = 300
 
-/** Select items cannot have an empty value, so "no filter" is this word in the control. */
-const ALL = 'all'
+/**
+ * Select items cannot have an empty value, so "no filter" is this sentinel in the control. Tag
+ * names are lowercased (`tagNameSchema`), so an uppercase value can never equal one; a plain `all`
+ * would collide with a tag of that name.
+ */
+const ALL = '__ALL__'
 
 export type PostsFiltersPatch = {
   q?: string

@@ -37,7 +37,8 @@ export const MyPostsView = ({ posts, tags }: MyPostsViewProps) => {
   const { state, setState, isPending } = useUrlState(postsUrlQuery)
   const filtering = hasActivePostFilters(state)
 
-  if (posts.items.length === 0 && !filtering) {
+  // `totalItems`, not the page's items: a page past the end is empty while posts exist.
+  if (posts.totalItems === 0 && !filtering) {
     return (
       <Empty
         title="No posts yet"
@@ -64,10 +65,17 @@ export const MyPostsView = ({ posts, tags }: MyPostsViewProps) => {
         onChange={(patch) => setState({ ...patch, page: 1 })}
       />
       {posts.items.length === 0 ? (
-        <Empty
-          title="No matching posts"
-          description="No post matches these filters. Clear them to see all your posts."
-        />
+        posts.totalItems === 0 ? (
+          <Empty
+            title="No matching posts"
+            description="No post matches these filters. Clear them to see all your posts."
+          />
+        ) : (
+          <Empty
+            title="No posts on this page"
+            description="This page is past the end of the list. Go back to see your posts."
+          />
+        )
       ) : (
         <Table>
           <TableHeader>

@@ -81,6 +81,16 @@ describe('/api/v1/posts/[id]/comments', () => {
       expect(await db.comment.count()).toBe(0)
     })
 
+    it('answers 401, not 422, to an anonymous caller whatever the body or content type', async () => {
+      const author = await createUser({})
+      const post = await seedPost(author.id)
+      expect((await create(post.id, {})).status).toBe(401)
+      expect((await create(post.id, 'body=Hi', 'application/x-www-form-urlencoded')).status).toBe(
+        401,
+      )
+      expect(await db.comment.count()).toBe(0)
+    })
+
     it('creates the comment and answers 201 with it', async () => {
       const author = await createUser({})
       const commenter = await createUser({})

@@ -142,6 +142,20 @@ describe('PostsFilters', () => {
       expect(onChange).toHaveBeenCalledWith({ tag: '' })
     })
 
+    it('treats a tag named "all" as that tag, not as "All tags"', async () => {
+      vi.useRealTimers()
+      const onChange = vi.fn()
+      render(<Filters tags={[{ name: 'all', postCount: 2 }]} onChange={onChange} />)
+      await userEvent.click(screen.getByRole('combobox', { name: 'Tag' }))
+      await userEvent.click(await screen.findByRole('option', { name: 'all (2)' }))
+      expect(onChange).toHaveBeenCalledWith({ tag: 'all' })
+    })
+
+    it('still shows a selected tag named "all" as selected', () => {
+      render(<Filters tags={[{ name: 'all', postCount: 2 }]} tag="all" />)
+      expect(screen.getByRole('combobox', { name: 'Tag' })).toHaveTextContent('all (2)')
+    })
+
     it('still shows a selected tag that no published post uses', () => {
       render(<Filters tags={tags} tag="gone" />)
       expect(screen.getByRole('combobox', { name: 'Tag' })).toHaveTextContent('gone (0)')

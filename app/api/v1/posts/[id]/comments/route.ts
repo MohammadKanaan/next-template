@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { requireUser } from '@/lib/data/auth'
 import { createComment, listComments } from '@/lib/data/comments'
 import { parseInput, readJsonBody, toErrorResponse } from '@/lib/data/errors'
 import { createCommentInput } from '@/lib/dto/comments'
@@ -20,6 +21,8 @@ export const POST = async (
   context: RouteContext<'/api/v1/posts/[id]/comments'>,
 ) => {
   try {
+    // Signed in (401) comes before the body is read or decoded (422).
+    await requireUser()
     const { id } = await context.params
     const comment = await createComment(
       id,

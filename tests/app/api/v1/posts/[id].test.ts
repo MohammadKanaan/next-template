@@ -79,6 +79,16 @@ describe('/api/v1/posts/[id]', () => {
       expect((await db.post.findUniqueOrThrow({ where: { id: post.id } })).title).toBe('Title')
     })
 
+    it('answers 401, not 422, to an anonymous caller whatever the body or content type', async () => {
+      const author = await createUser({})
+      const post = await seedPost(author.id)
+      expect((await patch(post.id, {})).status).toBe(401)
+      expect((await patch(post.id, 'title=T', 'application/x-www-form-urlencoded')).status).toBe(
+        401,
+      )
+      expect((await db.post.findUniqueOrThrow({ where: { id: post.id } })).title).toBe('Title')
+    })
+
     it('lets the author change title, body and tags, answering 200 with the detail', async () => {
       const author = await createUser({})
       const post = await seedPost(author.id)

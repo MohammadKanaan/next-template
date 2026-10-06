@@ -11,9 +11,11 @@ import styles from './styles.module.scss'
 type LoginViewProps = {
   nextPath: string
   googleEnabled: boolean
+  /** The provider sign-in came back with an error (`?error=` on the page). */
+  signInFailed?: boolean
 }
 
-export const LoginView = ({ nextPath, googleEnabled }: LoginViewProps) => {
+export const LoginView = ({ nextPath, googleEnabled, signInFailed }: LoginViewProps) => {
   const router = useRouter()
 
   const handleSubmit = async (values: SignInInput) => {
@@ -33,6 +35,11 @@ export const LoginView = ({ nextPath, googleEnabled }: LoginViewProps) => {
             <CardDescription>Use your email and password.</CardDescription>
           </CardHeader>
           <CardContent>
+            {signInFailed && (
+              <p className={styles.error} role="alert">
+                Sign-in with Google could not be completed. Try again or use your password.
+              </p>
+            )}
             <LoginForm onSubmit={handleSubmit} />
             {googleEnabled && <GoogleButton nextPath={nextPath} />}
           </CardContent>

@@ -78,7 +78,9 @@ const canModify = (viewer: SessionUser | null, authorId: string) => {
 
 /**
  * Record-level rule: only published posts are public. A draft or archived post is visible to its
- * author and to admins; for everyone else it does not exist.
+ * author and to admins; reads (`getPost`, `listComments`, `createComment`) answer not found for
+ * everyone else. Exported for `createComment`, which reads its row straight from the database; a
+ * pure predicate that returns no data.
  */
 export const canViewPost = (
   viewer: SessionUser | null,
@@ -207,11 +209,11 @@ export const listPosts = async (params: ListPostsParams): Promise<Page<PostSumma
 }
 
 /**
- * The viewer-independent part of a post, cached for everyone, whatever its status. Callers must
- * apply `canViewPost` before they hand any of it to a viewer. `id` may come straight from a route
- * param; one that is not a valid id is simply not found.
+ * The viewer-independent part of a post, cached for everyone, whatever its status. Private to this
+ * file: `getPost` applies `canViewPost` before any of it reaches a viewer. `id` may come straight
+ * from a route param; one that is not a valid id is simply not found.
  */
-export const getPostBase = async (id: number | string): Promise<PostDetailBase> => {
+const getPostBase = async (id: number | string): Promise<PostDetailBase> => {
   const parsedId = idSchema.safeParse(id)
   if (!parsedId.success) {
     throw new NotFoundError('Post not found')
@@ -232,7 +234,9 @@ export const getPostBase = async (id: number | string): Promise<PostDetailBase> 
 
 /**
  * A post the viewer may see: a draft or archived post that is not theirs (and they are not an
- * admin) is reported as not found, so its existence does not leak.
+ * admin) is reported as not found, the same answer as a missing post. This is for reads only; a
+ * write on someone else's post follows exists (404) → allowed (403), so a stranger who tries to
+ * change a draft gets 403.
  */
 export const getPost = async (id: number | string): Promise<PostDetail> => {
   // Cached for everyone; the visibility check and `permissions` follow per viewer, never cached.
@@ -263,19 +267,17 @@ export const listTags = async (): Promise<TagSummary[]> => {
 
 /**
  * Makes `names` the post's tags: missing tag rows are created, links that are no longer wanted
- * are dropped. Runs inside the caller's transaction so a post is never left half-tagged. Names are
- * handled in sorted order so concurrent transactions lock tag rows in the same order.
+ * are dropped. Runs inside the caller's transaction so a post is never left half-tagged. Safe under
+ * concurrency: `createMany` with `skipDuplicates` is one `INSERT ... ON CONFLICT DO NOTHING`, so two
+ * transactions adding the same new tag cannot fail on the unique `name` (an upsert is a select then
+ * an insert and can). The ids are read back afterwards, whoever inserted the rows.
  */
 const replacePostTags = async (tx: Prisma.TransactionClient, postId: number, names: string[]) => {
-  const tagIds: number[] = []
-  for (const name of [...names].sort()) {
-    const tag = await tx.tag.upsert({
-      where: { name },
-      create: { name },
-      update: {},
-      select: { id: true },
-    })
-    tagIds.push(tag.id)
+  let tagIds: number[] = []
+  if (names.length > 0) {
+    await tx.tag.createMany({ data: names.map((name) => ({ name })), skipDuplicates: true })
+    const tags = await tx.tag.findMany({ where: { name: { in: names } }, select: { id: true } })
+    tagIds = tags.map((tag) => tag.id)
   }
   await tx.postTag.deleteMany({ where: { postId, tagId: { notIn: tagIds } } })
   await tx.postTag.createMany({
@@ -310,7 +312,10 @@ const mapMissingRecord = (error: unknown): never => {
   throw error
 }
 
-/** The post exists and the viewer may change it — in that order. */
+/**
+ * The post exists and the viewer may change it — in that order, so a stranger gets 403 (not 404)
+ * for an existing post, draft or not.
+ */
 const requirePostChange = async (viewer: SessionUser, id: number) => {
   const post = await db.post.findUnique({
     where: { id },

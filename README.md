@@ -132,7 +132,9 @@ to a local-only secret when they are unset. Every other container variable is fi
 `docker-compose.yml`, so the `localhost` URLs in your `.env` never leak into the containers. Set a
 real `BETTER_AUTH_SECRET` for anything beyond a local try-out. The containers run with
 `NODE_ENV=production`, so without `RESEND_API_KEY` the email jobs fail and are retried (nothing is
-logged); sign-in with the seeded accounts does not need email.
+logged); sign-in with the seeded accounts does not need email. The image's `bun run build` step gets
+a build-only placeholder `BETTER_AUTH_SECRET` inline (not as `ENV`, so it is not in the image),
+because the auth module refuses to load without a secret in production mode; CI does the same.
 
 `NEXT_PUBLIC_*` values are baked into the bundle at build time (build args); everything else is read
 at runtime. The seed replaces the seeded rows, so it is an explicit command and not part of
@@ -274,15 +276,15 @@ authorizes. Authentication is the session cookie; writes require `Content-Type: 
 (a cross-site form cannot send it without a CORS preflight, which together with the `SameSite=Lax`
 cookie is the CSRF guard).
 
-| Method   | Path                          | Auth                                          | Success                                                                                                    |
-| -------- | ----------------------------- | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `GET`    | `/api/v1/posts`               | none (drafts only for the author listing own) | 200 `Page<PostSummary>`; filters `q`, `sort`, `tag`, `status`, `from`, `to`, `authorId`, `page`, `perPage` |
-| `POST`   | `/api/v1/posts`               | signed in                                     | 201 `PostDetail` (a draft)                                                                                 |
-| `GET`    | `/api/v1/posts/{id}`          | none for published; author or admin otherwise | 200 `PostDetail`                                                                                           |
-| `PATCH`  | `/api/v1/posts/{id}`          | author or admin                               | 200 `PostDetail` (`title`, `body`, `tags`; no status)                                                      |
-| `DELETE` | `/api/v1/posts/{id}`          | author or admin                               | 204, empty body                                                                                            |
-| `GET`    | `/api/v1/posts/{id}/comments` | none for published; author or admin otherwise | 200 `Comment[]`, oldest first                                                                              |
-| `POST`   | `/api/v1/posts/{id}/comments` | signed in; post must be published             | 201 `Comment`                                                                                              |
+| Method   | Path                          | Auth                                            | Success                                                                                                    |
+| -------- | ----------------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `GET`    | `/api/v1/posts`               | none (drafts: own list, or admin with `status`) | 200 `Page<PostSummary>`; filters `q`, `sort`, `tag`, `status`, `from`, `to`, `authorId`, `page`, `perPage` |
+| `POST`   | `/api/v1/posts`               | signed in                                       | 201 `PostDetail` (a draft)                                                                                 |
+| `GET`    | `/api/v1/posts/{id}`          | none for published; author or admin otherwise   | 200 `PostDetail`                                                                                           |
+| `PATCH`  | `/api/v1/posts/{id}`          | author or admin                                 | 200 `PostDetail` (`title`, `body`, `tags`; no status)                                                      |
+| `DELETE` | `/api/v1/posts/{id}`          | author or admin                                 | 204, empty body                                                                                            |
+| `GET`    | `/api/v1/posts/{id}/comments` | none for published; author or admin otherwise   | 200 `Comment[]`, oldest first                                                                              |
+| `POST`   | `/api/v1/posts/{id}/comments` | signed in; post must be published               | 201 `Comment`                                                                                              |
 
 Errors are `{ code, message, fieldErrors? }` with 401, 403, 404, 422 (validation, including a
 non-JSON content type or malformed JSON) or 429. Status transitions (publish, archive) are

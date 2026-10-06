@@ -54,4 +54,8 @@ jobs:
       - run: bun run lint
       - run: bun run typecheck
       - run: bun run test
+      # The build imports the auth module, which refuses to load without a secret in production
+      # mode. This value is a placeholder: nothing at build time uses it.
       - run: bun run build
+        env:
+          BETTER_AUTH_SECRET: build-only-placeholder-never-used-at-runtime

@@ -730,6 +730,19 @@ describe('posts DAL', () => {
       expect(await db.postTag.count()).toBe(2)
     })
 
+    it('survives concurrent creates that share a brand-new tag', async () => {
+      await signInAs(await createUser({}))
+      const results = await Promise.allSettled(
+        Array.from({ length: 8 }, (_, n) =>
+          createPost({ title: `Post ${n}`, body: 'B', tags: ['fresh', `own${n}`] }),
+        ),
+      )
+      expect(results.map((result) => result.status)).toEqual(Array(8).fill('fulfilled'))
+      expect(await db.post.count()).toBe(8)
+      expect(await db.tag.count({ where: { name: 'fresh' } })).toBe(1)
+      expect(await db.postTag.count({ where: { tag: { name: 'fresh' } } })).toBe(8)
+    })
+
     it('creates a post without tags when none are given', async () => {
       await signInAs(await createUser({}))
       expect((await createPost({ title: 'T', body: 'B' })).tags).toEqual([])

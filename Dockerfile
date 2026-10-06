@@ -38,7 +38,10 @@ ARG NEXT_PUBLIC_APP_NAME
 ARG NEXT_PUBLIC_API_BASE_URL
 ENV NEXT_PUBLIC_APP_NAME=$NEXT_PUBLIC_APP_NAME \
   NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
-RUN bun run build
+# `next build` runs in production mode and imports the auth module, which refuses to load without a
+# secret. This build-only value is set on this command, not as ENV, so it is not in the image; the
+# runtime stage gets the real BETTER_AUTH_SECRET from the container environment.
+RUN BETTER_AUTH_SECRET=build-only-placeholder-never-used-at-runtime bun run build
 
 FROM base AS runtime
 ENV NODE_ENV=production

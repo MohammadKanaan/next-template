@@ -90,6 +90,19 @@ describe('POST /api/v1/posts', () => {
     expect(await db.post.count()).toBe(0)
   })
 
+  it('answers 401, not 422, to an anonymous caller whatever the body or content type', async () => {
+    expect((await POST(jsonRequest({}))).status).toBe(401)
+    const wrongType = await POST(
+      new Request('http://localhost/api/v1/posts', {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: 'title=T&body=B',
+      }),
+    )
+    expect(wrongType.status).toBe(401)
+    expect(await db.post.count()).toBe(0)
+  })
+
   it('creates a draft and answers 201 with the detail', async () => {
     const author = await createUser({})
     await signInAs(author)

@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 }
 
 const LoginPage = async ({ searchParams }: PageProps<'/login'>) => {
-  const { next } = await searchParams
+  const { next, error } = await searchParams
   const nextPath = safeRedirectPath(typeof next === 'string' ? next : undefined)
 
   // A real session (not just a cookie) has nothing to do here.
@@ -18,7 +18,13 @@ const LoginPage = async ({ searchParams }: PageProps<'/login'>) => {
     redirect(nextPath)
   }
 
-  return <LoginView nextPath={nextPath} googleEnabled={isGoogleAuthEnabled()} />
+  // Better Auth sends a failed provider sign-in back here with `?error=<code>`. Only whether it is
+  // there is used; the value is never shown.
+  const failed = typeof error === 'string' && error !== ''
+
+  return (
+    <LoginView nextPath={nextPath} googleEnabled={isGoogleAuthEnabled()} signInFailed={failed} />
+  )
 }
 
 export default LoginPage

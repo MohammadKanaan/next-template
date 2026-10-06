@@ -286,8 +286,12 @@ The posts example carries the domain patterns an app needs (all in `lib/data/pos
   that existed before the workflow to `published`.
 - **Visibility:** only `published` posts are public. A draft or archived post is visible to its
   author and to admins; for anyone else `getPost` throws `NotFoundError`, the same answer as a
-  missing post. `getPost` caches the viewer-independent part (`getPostBase`) and applies
-  `canViewPost` and `permissions` after the cache read. `listPosts` shows `published` only,
+  missing post. `getPost` caches the viewer-independent part (`getPostBase`, private to
+  `lib/data/posts.ts`, so nothing outside it can read a draft) and applies `canViewPost` and
+  `permissions` after the cache read; `listComments` goes through `getPost` for the same reason,
+  and `canViewPost` is exported only as a pure predicate for `createComment`'s database read. Reads
+  of an invisible post answer 404, but writes follow exists (404) → allowed (403), so a stranger who
+  tries to change or delete a draft gets 403. `listPosts` shows `published` only,
   except to an author listing their own posts (`authorId` equals their id), who sees every status
   unless they pass `status`. An admin is not special on a general list: it is `published` only too,
   but an admin may pass `status` (and so may the author); anyone else's `status` other than
@@ -387,8 +391,9 @@ catch (error) { return toActionFailure(error) }`. Return `ActionResult<T>`; neve
   not call `fetch` directly.
 - `/posts/csr` is the single live example of this path and has an end-to-end test.
 - **REST API (`app/api/v1/posts`):** `GET`/`POST /posts`, `GET`/`PATCH`/`DELETE /posts/[id]`,
-  `GET`/`POST /posts/[id]/comments` (table in the README). Auth is the session cookie. Writes call
-  `readJsonBody(request)` (`lib/data/errors.ts`), which rejects a content type other than
+  `GET`/`POST /posts/[id]/comments` (table in the README). Auth is the session cookie. A write handler
+  first calls `requireUser()` (so an anonymous caller gets 401 whatever the body or content type),
+  then reads the body with `readJsonBody(request)` (`lib/data/errors.ts`), which rejects a content type other than
   `application/json` and maps malformed JSON to a `ValidationError` (both 422); that requirement
   plus the `SameSite=Lax` cookie is the CSRF guard, since a cross-site form cannot send JSON without
   a CORS preflight. Handlers type their context with the generated `RouteContext<'/api/v1/posts/[id]'>`,
@@ -541,7 +546,9 @@ records the result.
 - `docker-compose.yml` provides Postgres, Redis and MinIO for development (`docker compose up -d`).
   Under `profiles: ['app']` it also builds the single `Dockerfile` (`node:24-slim` + bun 1.3.10, no
   `output: 'standalone'`) and runs `migrate` (one-shot: `db:deploy`, then the `pgboss` schema), `web`
-  (`bun run start`, healthcheck on `/api/health`) and `worker` (`bun run worker`) from it. The
+  (`bun run start`, healthcheck on `/api/health`) and `worker` (`bun run worker`) from it. The image's
+  `bun run build` and the CI build step get a build-only placeholder `BETTER_AUTH_SECRET` (inline on
+  the command, never `ENV`), because the auth module refuses to load without one. The
   containers get every `serverEnv()` variable with service hosts and `S3_PUBLIC_ENDPOINT`. CI is
   `.github/workflows/ci.yml` (Postgres 18 + Redis 7 services, `.env.test` from the example).
 
