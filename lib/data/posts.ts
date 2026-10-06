@@ -270,12 +270,17 @@ export const listTags = async (): Promise<TagSummary[]> => {
  * are dropped. Runs inside the caller's transaction so a post is never left half-tagged. Safe under
  * concurrency: `createMany` with `skipDuplicates` is one `INSERT ... ON CONFLICT DO NOTHING`, so two
  * transactions adding the same new tag cannot fail on the unique `name` (an upsert is a select then
- * an insert and can). The ids are read back afterwards, whoever inserted the rows.
+ * an insert and can). The ids are read back afterwards, whoever inserted the rows. Names are
+ * inserted in sorted order so two transactions that share new tags wait on each other in the same
+ * order and cannot deadlock.
  */
 const replacePostTags = async (tx: Prisma.TransactionClient, postId: number, names: string[]) => {
   let tagIds: number[] = []
   if (names.length > 0) {
-    await tx.tag.createMany({ data: names.map((name) => ({ name })), skipDuplicates: true })
+    await tx.tag.createMany({
+      data: [...names].sort().map((name) => ({ name })),
+      skipDuplicates: true,
+    })
     const tags = await tx.tag.findMany({ where: { name: { in: names } }, select: { id: true } })
     tagIds = tags.map((tag) => tag.id)
   }
