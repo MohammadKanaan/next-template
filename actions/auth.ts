@@ -3,21 +3,29 @@
 import { APIError } from 'better-auth/api'
 import { refresh } from 'next/cache'
 import { headers } from 'next/headers'
-import { ROUTE_RESET_PASSWORD } from '@/lib/constants-routes'
-import { auth } from '@/lib/data/auth'
+import { ROUTE_RESET_PASSWORD, ROUTE_SETTINGS } from '@/lib/constants-routes'
+import { auth, requireUser } from '@/lib/data/auth'
 import { parseInput, toActionFailure, ValidationError } from '@/lib/data/errors'
 import { consumeRateLimit, getClientIp, isRateLimitEnabled } from '@/lib/data/rateLimit'
+import { revokeOtherSessions, revokeSession } from '@/lib/data/sessions'
 import { getCurrentUser, isUsernameTaken } from '@/lib/data/users'
 import {
+  changeEmailInput,
+  changePasswordInput,
+  deleteAccountInput,
   requestPasswordResetInput,
   resetPasswordInput,
   signInInput,
   signUpInput,
+  type ChangeEmailInput,
+  type ChangePasswordInput,
+  type DeleteAccountInput,
   type RequestPasswordResetInput,
   type ResetPasswordInput,
   type SignInInput,
   type SignUpInput,
 } from '@/lib/dto/auth'
+import { sessionIdSchema } from '@/lib/dto/users'
 import type { ActionResult } from '@/types/api'
 
 export async function signInAction(input: SignInInput): Promise<ActionResult<null>> {
@@ -153,6 +161,124 @@ export async function resendVerificationAction(): Promise<ActionResult<null>> {
     }
     if (error instanceof APIError) {
       return { ok: false, code: 'VALIDATION', message: 'Could not send the email. Try again.' }
+    }
+    return toActionFailure(error)
+  }
+}
+
+/** Changes the password and signs every other session out; this one stays signed in. */
+export async function changePasswordAction(
+  input: ChangePasswordInput,
+): Promise<ActionResult<null>> {
+  try {
+    const body = parseInput(changePasswordInput, input)
+    const viewer = await requireUser()
+    if (isRateLimitEnabled()) {
+      await consumeRateLimit(`change-password:user:${viewer.id}`, { max: 5, windowMs: 60_000 })
+    }
+    await auth.api.changePassword({
+      body: {
+        currentPassword: body.currentPassword,
+        newPassword: body.newPassword,
+        revokeOtherSessions: true,
+      },
+      headers: await headers(),
+    })
+    refresh()
+    return { ok: true, data: null }
+  } catch (error) {
+    if (error instanceof APIError && error.body?.code === 'INVALID_PASSWORD') {
+      return toActionFailure(
+        new ValidationError({ currentPassword: ['Current password is incorrect'] }),
+      )
+    }
+    if (error instanceof APIError) {
+      return {
+        ok: false,
+        code: 'VALIDATION',
+        message: 'Could not change your password. Try again.',
+      }
+    }
+    return toActionFailure(error)
+  }
+}
+
+/**
+ * Starts an email change. Always `ok` for a different, well-formed address, whether or not it is
+ * taken, so the form cannot be used to find out who has an account. The confirmation (to the
+ * current address) and then the verification (to the new one) are sent by background jobs.
+ */
+export async function changeEmailAction(input: ChangeEmailInput): Promise<ActionResult<null>> {
+  try {
+    const body = parseInput(changeEmailInput, input)
+    const user = await getCurrentUser()
+    if (body.newEmail === user.email) {
+      throw new ValidationError({ newEmail: ['That is already your email address'] })
+    }
+    if (isRateLimitEnabled()) {
+      await consumeRateLimit(`change-email:user:${user.id}`, { max: 3, windowMs: 60_000 })
+    }
+    await auth.api.changeEmail({
+      body: { newEmail: body.newEmail, callbackURL: ROUTE_SETTINGS },
+      headers: await headers(),
+    })
+    return { ok: true, data: null }
+  } catch (error) {
+    if (error instanceof APIError) {
+      return { ok: false, code: 'VALIDATION', message: 'Could not change your email. Try again.' }
+    }
+    return toActionFailure(error)
+  }
+}
+
+/** Signs one of the viewer's own sessions out. */
+export async function revokeSessionAction(id: string): Promise<ActionResult<null>> {
+  try {
+    const sessionId = parseInput(sessionIdSchema, id)
+    const viewer = await requireUser()
+    if (isRateLimitEnabled()) {
+      await consumeRateLimit(`revoke-session:user:${viewer.id}`, { max: 20, windowMs: 60_000 })
+    }
+    await revokeSession(sessionId)
+    refresh()
+    return { ok: true, data: null }
+  } catch (error) {
+    return toActionFailure(error)
+  }
+}
+
+/** Signs every session of the viewer out except this one. */
+export async function revokeOtherSessionsAction(): Promise<ActionResult<null>> {
+  try {
+    const viewer = await requireUser()
+    if (isRateLimitEnabled()) {
+      await consumeRateLimit(`revoke-sessions:user:${viewer.id}`, { max: 5, windowMs: 60_000 })
+    }
+    await revokeOtherSessions()
+    refresh()
+    return { ok: true, data: null }
+  } catch (error) {
+    return toActionFailure(error)
+  }
+}
+
+/** Deletes the viewer's account (posts, sessions and uploads with it); needs the password. */
+export async function deleteAccountAction(input: DeleteAccountInput): Promise<ActionResult<null>> {
+  try {
+    const body = parseInput(deleteAccountInput, input)
+    const viewer = await requireUser()
+    if (isRateLimitEnabled()) {
+      await consumeRateLimit(`delete-account:user:${viewer.id}`, { max: 3, windowMs: 60_000 })
+    }
+    await auth.api.deleteUser({ body: { password: body.password }, headers: await headers() })
+    refresh()
+    return { ok: true, data: null }
+  } catch (error) {
+    if (error instanceof APIError && error.body?.code === 'INVALID_PASSWORD') {
+      return toActionFailure(new ValidationError({ password: ['Password is incorrect'] }))
+    }
+    if (error instanceof APIError) {
+      return { ok: false, code: 'VALIDATION', message: 'Could not delete your account. Try again.' }
     }
     return toActionFailure(error)
   }

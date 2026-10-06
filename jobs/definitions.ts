@@ -15,6 +15,11 @@ export const sendEmailPayload = z.discriminatedUnion('template', [
     to: emailAddress,
     props: z.object({ name: z.string(), url: z.url() }),
   }),
+  z.object({
+    template: z.literal('confirm-email-change'),
+    to: emailAddress,
+    props: z.object({ name: z.string(), newEmail: emailAddress, url: z.url() }),
+  }),
 ])
 
 export type JobDefinition = {

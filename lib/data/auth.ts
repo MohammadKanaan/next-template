@@ -10,7 +10,7 @@ import { roleSchema, type Role } from '@/lib/dto/users'
 import { invalidateTags } from '@/lib/server/cache'
 import { logger } from '@/lib/server/logger'
 import { enqueue } from '@/lib/server/queue'
-import { userTag } from './cacheTags'
+import { POSTS_TAG, userTag } from './cacheTags'
 import { db } from './db'
 import { ForbiddenError, UnauthorizedError } from './errors'
 
@@ -45,10 +45,48 @@ export const auth = betterAuth({
     },
   },
   // Better Auth's HTTP router would bypass our rules: sign-up goes only through `signUpAction`
-  // (validated with `signUpInput`), and there is no profile editing yet. `auth.api.*` calls made
-  // directly from server code are unaffected; only the `/api/auth/*` router honours this list.
-  disabledPaths: ['/sign-up/email', '/update-user'],
+  // (validated with `signUpInput`), profile edits only through `updateProfile` (same username and
+  // name rules), and deleting an account only through `deleteAccountAction`, which always demands
+  // the password (over HTTP a fresh session alone could delete). `auth.api.*` calls made directly
+  // from server code are unaffected; only the `/api/auth/*` router honours this list.
+  disabledPaths: ['/sign-up/email', '/update-user', '/delete-user'],
   user: {
+    changeEmail: {
+      enabled: true,
+      // A verified user first approves the change from the current address; Better Auth then sends
+      // the new address through `sendVerificationEmail` above. A taken address gets the same
+      // response, so this cannot be used to find out who has an account.
+      sendChangeEmailConfirmation: async ({ user, newEmail, url }) => {
+        queueEmail({
+          template: 'confirm-email-change',
+          to: user.email,
+          props: { name: user.name, newEmail, url },
+        })
+      },
+    },
+    deleteUser: {
+      enabled: true,
+      // Upload rows go with the user (cascade) but their objects would stay in the bucket, so the
+      // keys are read and queued for deletion before the rows disappear.
+      beforeDelete: async (user) => {
+        const uploads = await db.upload.findMany({
+          where: { userId: user.id },
+          select: { key: true },
+        })
+        const results = await Promise.allSettled(
+          uploads.map(({ key }) => enqueue('delete-object', { key })),
+        )
+        for (const result of results) {
+          if (result.status === 'rejected') {
+            log.error({ err: result.reason, userId: user.id }, 'object not queued for deletion')
+          }
+        }
+      },
+      // Posts cascade too: drop the cached lists and the cached viewer.
+      afterDelete: async (user) => {
+        await invalidateTags(POSTS_TAG, userTag(user.id))
+      },
+    },
     additionalFields: {
       username: {
         type: 'string',
@@ -72,7 +110,7 @@ export const auth = betterAuth({
   plugins: [nextCookies()],
 })
 
-export type SessionUser = { id: string; role: Role }
+export type SessionUser = { id: string; role: Role; sessionId: string }
 
 /** The signed-in user, or null. Deduplicated within one React render (not in Route Handlers). */
 export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
@@ -80,7 +118,11 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
   if (!session) {
     return null
   }
-  return { id: session.user.id, role: roleSchema.parse(session.user.role) }
+  return {
+    id: session.user.id,
+    role: roleSchema.parse(session.user.role),
+    sessionId: session.session.id,
+  }
 })
 
 /** Throws `UnauthorizedError` when signed out. Never redirects; pages use `loadPage` for that. */

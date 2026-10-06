@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { ConfirmEmailChange } from '@/emails/ConfirmEmailChange'
 import { ResetPassword } from '@/emails/ResetPassword'
 import { VerifyEmail } from '@/emails/VerifyEmail'
 import { handleSendEmail } from '@/jobs/sendEmail'
@@ -26,6 +27,19 @@ describe('send-email job', () => {
     const [mail] = vi.mocked(sendMail).mock.calls[0]
     expect(mail).toMatchObject({ to: 'ada@example.com', subject: 'Reset your password' })
     expect(mail.react.type).toBe(ResetPassword)
+  })
+
+  it('sends the email-change confirmation to the given (current) address', async () => {
+    const changeProps = { ...props, newEmail: 'new@example.com' }
+    await handleSendEmail({
+      template: 'confirm-email-change',
+      to: 'old@example.com',
+      props: changeProps,
+    })
+    const [mail] = vi.mocked(sendMail).mock.calls[0]
+    expect(mail).toMatchObject({ to: 'old@example.com', subject: 'Confirm your email change' })
+    expect(mail.react.type).toBe(ConfirmEmailChange)
+    expect(mail.react.props).toEqual(changeProps)
   })
 
   it('re-validates the payload and sends nothing when it is invalid', async () => {

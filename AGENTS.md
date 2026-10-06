@@ -171,6 +171,26 @@ docs/DECISIONS.md        # Framework and library choices, with reasons
   `resetPasswordAction`, `resendVerificationAction`; pages `/forgot-password` and
   `/reset-password` in `(minimal)`. Better Auth enqueues emails without awaiting, so response time
   does not reveal whether an account exists.
+- **Account settings** (`/settings`, a stack of cards): `updateProfileAction` (`actions/users.ts`:
+  name, username, website; a taken username is a field error from the DAL), and in
+  `actions/auth.ts` `changePasswordAction` (`auth.api.changePassword` with `revokeOtherSessions`,
+  so this browser stays signed in and every other session ends), `changeEmailAction`,
+  `revokeSessionAction`, `revokeOtherSessionsAction` and `deleteAccountAction`. Each parses its
+  input, requires a session, is rate limited per user and `refresh()`es.
+  - **Change email:** `user.changeEmail` is enabled. A verified user gets a `confirm-email-change`
+    email at the **current** address (`sendChangeEmailConfirmation`); following it makes Better Auth
+    send the usual verification email to the **new** address (`sendVerificationEmail`), and opening
+    that switches the address. An unverified user skips the first step. A taken address gets the
+    same response and no email, so it cannot enumerate accounts; the action itself only rejects the
+    user's own address.
+  - **Delete account:** `user.deleteUser` is enabled. `beforeDelete` queues `delete-object` for each
+    of the user's upload keys (the rows cascade, the objects would be orphaned); `afterDelete`
+    invalidates `POSTS_TAG` and the user's tag. Posts, sessions, accounts and uploads cascade.
+  - **Sessions:** `lib/data/sessions.ts` (`listSessions`, `revokeSession`, `revokeOtherSessions`)
+    works on the plain `sessions` rows, so deleting a row ends that session. `SessionUser` carries
+    `sessionId` to mark the current one. `SessionSummary` never contains the token.
+  - **Profile edits** go through `updateProfile` in `lib/data/users.ts`, which invalidates the cached
+    viewer and `POSTS_TAG` (cached post lists embed the author's name and username).
 - Only `lib/data/auth.ts`, `actions/auth.ts`, `app/api/auth/[...all]`, `proxy.ts`, and
   `prisma/seed.ts` (password hashing via `better-auth/crypto`) import `better-auth`. Everything else asks the DAL: `getSessionUser()`, `requireUser()`,
   `requireAdmin()`, `getViewer()`.
@@ -181,15 +201,20 @@ docs/DECISIONS.md        # Framework and library choices, with reasons
   private pages to `/login?next=…`. It has no guest-only redirect, because a stale cookie must not
   lock anyone out of `/login`; the `/login` and `/signup` pages call `getViewer()` and redirect
   signed-in users themselves. The real check is always in the DAL.
-- Better Auth's HTTP router has `disabledPaths: ['/sign-up/email', '/update-user']` (returns 404):
-  sign-up goes only through `signUpAction` (validated with `signUpInput`, rate limited), and profile
-  editing does not exist yet, so those endpoints would bypass our username and name rules. Direct
-  `auth.api.*` calls from server code are unaffected. Remove an entry only together with the code
-  that validates the same rules. Every other path stays enabled on purpose: the email links need
-  `/verify-email` and `/reset-password/:token`, and both enforce the same password rules.
+- Better Auth's HTTP router has `disabledPaths: ['/sign-up/email', '/update-user', '/delete-user']`
+  (returns 404): sign-up goes only through `signUpAction` (validated with `signUpInput`, rate
+  limited), profile edits only through `updateProfile` (the same username and name rules), and
+  account deletion only through `deleteAccountAction`, because over HTTP a fresh session can delete
+  without a password while the action always demands it. Direct `auth.api.*` calls from server code
+  are unaffected. Remove an entry only together with the code that validates the same rules. Every
+  other path stays enabled on purpose: the email links need `/verify-email` and
+  `/reset-password/:token`, and `/change-password` and `/change-email` enforce the same rules as
+  their actions.
 - Auth and upload actions that an attacker could spam (`signInAction`, `signUpAction`,
   `requestPasswordResetAction`, `resetPasswordAction`, `resendVerificationAction`,
-  `createAvatarUploadAction`) are rate limited in production with `consumeRateLimit`
+  `createAvatarUploadAction`, and per user `updateProfileAction`, `changePasswordAction`,
+  `changeEmailAction`, `revokeSessionAction`, `revokeOtherSessionsAction`, `deleteAccountAction`)
+  are rate limited in production with `consumeRateLimit`
   (`lib/data/rateLimit.ts`, Redis-backed so the limits hold across instances), because Better
   Auth's own limiter only runs in its HTTP router. It fails open: if Redis is down the attempt is
   allowed and the error is logged.
@@ -303,7 +328,8 @@ Background work runs on pg-boss (the same PostgreSQL, `pgboss` schema) in a sepa
 
 - **Definitions** (`jobs/definitions.ts`): one entry per job with its name, Zod payload schema,
   queue `options` (retries, backoff, expiry) and an optional `cron`. Payload types come from
-  `z.infer` (`JobPayload<'send-email'>`). Today: `send-email`, `delete-object`, `cleanup` (hourly).
+  `z.infer` (`JobPayload<'send-email'>`). Today: `send-email`, `delete-object`, `cleanup` (hourly). `delete-object` is also queued when an
+  account is deleted.
 - **Enqueue** (`lib/server/queue.ts`): `enqueue(name, payload)` validates the payload with the job's
   schema and sends it through a lazily started send-only pg-boss instance (`migrate: false`,
   `supervise: false`, `schedule: false`). The web process never runs maintenance. Enqueue from the
@@ -330,7 +356,8 @@ Background work runs on pg-boss (the same PostgreSQL, `pgboss` schema) in a sepa
   retries); without it, outside production, it logs the recipient, subject and rendered text, so
   links show up in the worker console in development. In production a missing key throws and
   nothing from the message is logged (the text carries live reset and verification links).
-- Templates live in `emails/` (`VerifyEmail`, `ResetPassword`, shared `EmailLayout`). Email markup
+- Templates live in `emails/` (`VerifyEmail`, `ResetPassword`, `ConfirmEmailChange`, shared
+  `EmailLayout`). Email markup
   uses inline styles because mail clients need them; the no-inline-style rule is for the web UI.
 - Nothing sends mail directly. Callers `enqueue('send-email', { template, to, props })`;
   `jobs/sendEmail.ts` maps the `template` of the discriminated-union payload to a component and a

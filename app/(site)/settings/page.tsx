@@ -4,6 +4,7 @@ import { PageHeader } from '@/components/PageHeader'
 import { PageLoading } from '@/components/PageLoading'
 import { ROUTE_SETTINGS } from '@/lib/constants-routes'
 import { loadPage } from '@/lib/data/page'
+import { listSessions } from '@/lib/data/sessions'
 import { getCurrentUser } from '@/lib/data/users'
 import { SettingsView } from './view'
 import styles from './styles.module.scss'
@@ -13,8 +14,11 @@ export const metadata: Metadata = {
 }
 
 async function Settings() {
-  const user = await loadPage(getCurrentUser, ROUTE_SETTINGS)
-  return <SettingsView name={user.name} image={user.image} />
+  const { user, sessions } = await loadPage(async () => {
+    const [user, sessions] = await Promise.all([getCurrentUser(), listSessions()])
+    return { user, sessions }
+  }, ROUTE_SETTINGS)
+  return <SettingsView user={user} sessions={sessions} />
 }
 
 export default function SettingsPage() {

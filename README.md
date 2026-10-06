@@ -191,10 +191,17 @@ consumed, such as a view's `useMemo`.
 checks cookie presence, so the `/login` and `/signup` pages redirect signed-in users themselves (a
 stale cookie must not lock anyone out). The DAL does the real check on every read and write.
 
-Better Auth's HTTP routes `/api/auth/sign-up/email` and `/api/auth/update-user` are disabled
-(`disabledPaths`): they would bypass our validation. Sign-up goes through `signUpAction`; sign-in and
-sign-up actions are rate limited in production (Redis-backed, so shared across instances; if Redis
-is down the attempt is allowed).
+Better Auth's HTTP routes `/api/auth/sign-up/email`, `/api/auth/update-user` and
+`/api/auth/delete-user` are disabled (`disabledPaths`): they would bypass our validation or the
+password check. Sign-up goes through `signUpAction`, profile edits through `updateProfile`, and
+account deletion through `deleteAccountAction`. Auth and account actions are rate limited in
+production (Redis-backed, so shared across instances; if Redis is down the attempt is allowed).
+
+`/settings` is the account page: profile photo, profile (name, username, website), email change,
+password change, active sessions (revoke one or all others) and account deletion. Changing the email
+asks the current address to confirm, then verifies the new one; both mails go through the
+`send-email` job. Deleting an account removes its posts and sessions and queues its uploaded files
+for deletion.
 
 Sign-up sends a verification email and the login form links to a password reset, both through the
 `send-email` job. Verification is soft: unverified users can sign in and see a banner with a Resend

@@ -3,9 +3,14 @@ import { APIError } from 'better-auth/api'
 import { refresh } from 'next/cache'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  changeEmailAction,
+  changePasswordAction,
+  deleteAccountAction,
   requestPasswordResetAction,
   resendVerificationAction,
   resetPasswordAction,
+  revokeOtherSessionsAction,
+  revokeSessionAction,
   signInAction,
   signOutAction,
   signUpAction,
@@ -351,6 +356,242 @@ describe('auth actions', () => {
         ok: false,
         code: 'RATE_LIMITED',
         message: 'Too many attempts. Try again in a minute.',
+      })
+    })
+  })
+})
+
+describe('account actions', () => {
+  beforeEach(async () => {
+    await resetDatabase()
+    vi.mocked(refresh).mockClear()
+    vi.mocked(enqueue).mockClear()
+    await resetRateLimits()
+  })
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllEnvs()
+  })
+  afterAll(() => db.$disconnect())
+
+  /** Signs in on one device after creating others, so `createUser` does not drop the cookie. */
+  async function signedInUser(overrides: Parameters<typeof createUser>[0] = {}) {
+    const user = await createUser(overrides)
+    await db.session.deleteMany()
+    await signInAs(user)
+    return user
+  }
+
+  async function addSession(userId: string) {
+    const id = `session-${Math.random().toString(36).slice(2, 10)}`
+    return db.session.create({
+      data: { id, token: `token-${id}`, userId, expiresAt: new Date(Date.now() + 3_600_000) },
+    })
+  }
+
+  describe('changePasswordAction', () => {
+    const input = { currentPassword: TEST_PASSWORD, newPassword: 'a-brand-new-one' }
+
+    it('requires a session', async () => {
+      expect(await changePasswordAction(input)).toMatchObject({ ok: false, code: 'UNAUTHORIZED' })
+    })
+
+    it('validates the new password', async () => {
+      await signedInUser()
+      const result = await changePasswordAction({ ...input, newPassword: 'short' })
+      expect(result).toMatchObject({ ok: false, code: 'VALIDATION' })
+      expect(!result.ok && result.fieldErrors?.newPassword).toHaveLength(1)
+    })
+
+    it('puts a wrong current password on its field and changes nothing', async () => {
+      await signedInUser()
+      expect(await changePasswordAction({ ...input, currentPassword: 'not-it-at-all' })).toEqual({
+        ok: false,
+        code: 'VALIDATION',
+        message: 'Validation failed',
+        fieldErrors: { currentPassword: ['Current password is incorrect'] },
+      })
+      expect(refresh).not.toHaveBeenCalled()
+    })
+
+    it('changes the password, keeps this session and signs the others out', async () => {
+      const user = await signedInUser()
+      const other = await addSession(user.id)
+      expect(await changePasswordAction(input)).toEqual({ ok: true, data: null })
+      expect(refresh).toHaveBeenCalledTimes(1)
+
+      await expect(requireUser()).resolves.toMatchObject({ id: user.id })
+      expect(await db.session.findUnique({ where: { id: other.id } })).toBeNull()
+
+      cookieJar.clear()
+      expect(await signInAction({ email: user.email, password: TEST_PASSWORD })).toMatchObject({
+        ok: false,
+      })
+      expect(await signInAction({ email: user.email, password: input.newPassword })).toEqual({
+        ok: true,
+        data: null,
+      })
+    })
+
+    it('rate limits per user in production', async () => {
+      await signedInUser()
+      vi.stubEnv('NODE_ENV', 'production')
+      const wrong = { ...input, currentPassword: 'not-it-at-all' }
+      for (let n = 0; n < 5; n++) {
+        expect(await changePasswordAction(wrong)).toMatchObject({ code: 'VALIDATION' })
+      }
+      expect(await changePasswordAction(wrong)).toMatchObject({ code: 'RATE_LIMITED' })
+    })
+  })
+
+  describe('changeEmailAction', () => {
+    const emails = () =>
+      vi
+        .mocked(enqueue)
+        .mock.calls.filter(([name]) => name === 'send-email')
+        .map(([, payload]) => payload as JobPayload<'send-email'>)
+
+    it('requires a session', async () => {
+      expect(await changeEmailAction({ newEmail: 'x@example.com' })).toMatchObject({
+        ok: false,
+        code: 'UNAUTHORIZED',
+      })
+    })
+
+    it('rejects a malformed address and the address the user already has', async () => {
+      await signedInUser({ email: 'mine@example.com' })
+      expect(await changeEmailAction({ newEmail: 'nope' })).toMatchObject({
+        fieldErrors: { newEmail: ['Enter a valid email address'] },
+      })
+      expect(await changeEmailAction({ newEmail: 'Mine@Example.com' })).toMatchObject({
+        ok: false,
+        fieldErrors: { newEmail: ['That is already your email address'] },
+      })
+    })
+
+    it('queues the confirmation for the current address of a verified user', async () => {
+      const user = await createUser({ email: 'mine@example.com' })
+      await db.user.update({ where: { id: user.id }, data: { emailVerified: true } })
+      await signInAs(user)
+      vi.mocked(enqueue).mockClear()
+
+      expect(await changeEmailAction({ newEmail: 'Fresh@Example.com' })).toEqual({
+        ok: true,
+        data: null,
+      })
+      expect(emails()).toEqual([
+        expect.objectContaining({
+          template: 'confirm-email-change',
+          to: 'mine@example.com',
+          props: expect.objectContaining({ newEmail: 'fresh@example.com' }),
+        }),
+      ])
+      for (const payload of emails()) {
+        expect(() => jobs['send-email'].schema.parse(payload)).not.toThrow()
+      }
+      expect(await db.user.findUniqueOrThrow({ where: { id: user.id } })).toMatchObject({
+        email: 'mine@example.com',
+      })
+    })
+
+    it('answers ok and sends nothing when the address is taken (no account enumeration)', async () => {
+      await createUser({ email: 'taken@example.com' })
+      const user = await createUser({ email: 'mine@example.com' })
+      await db.user.update({ where: { id: user.id }, data: { emailVerified: true } })
+      await signInAs(user)
+      vi.mocked(enqueue).mockClear()
+
+      expect(await changeEmailAction({ newEmail: 'taken@example.com' })).toEqual({
+        ok: true,
+        data: null,
+      })
+      expect(emails()).toEqual([])
+    })
+  })
+
+  describe('revoking sessions', () => {
+    it('requires a session', async () => {
+      expect(await revokeSessionAction('x')).toMatchObject({ ok: false, code: 'UNAUTHORIZED' })
+      expect(await revokeOtherSessionsAction()).toMatchObject({ ok: false, code: 'UNAUTHORIZED' })
+    })
+
+    it('revokes one of the viewer’s sessions and refreshes', async () => {
+      const user = await signedInUser()
+      const other = await addSession(user.id)
+      expect(await revokeSessionAction(other.id)).toEqual({ ok: true, data: null })
+      expect(await db.session.findUnique({ where: { id: other.id } })).toBeNull()
+      expect(refresh).toHaveBeenCalledTimes(1)
+    })
+
+    it('reports someone else’s session as not found and an invalid id as a validation failure', async () => {
+      const stranger = await createUser({})
+      await signedInUser()
+      const theirs = await addSession(stranger.id)
+      expect(await revokeSessionAction(theirs.id)).toMatchObject({ ok: false, code: 'NOT_FOUND' })
+      expect(await revokeSessionAction('')).toMatchObject({ ok: false, code: 'VALIDATION' })
+      expect(await db.session.findUnique({ where: { id: theirs.id } })).not.toBeNull()
+    })
+
+    it('signs every other session out and keeps this one', async () => {
+      const user = await signedInUser()
+      await addSession(user.id)
+      await addSession(user.id)
+      expect(await revokeOtherSessionsAction()).toEqual({ ok: true, data: null })
+      expect(await db.session.count({ where: { userId: user.id } })).toBe(1)
+      await expect(requireUser()).resolves.toMatchObject({ id: user.id })
+    })
+  })
+
+  describe('deleteAccountAction', () => {
+    it('requires a session', async () => {
+      expect(await deleteAccountAction({ password: TEST_PASSWORD })).toMatchObject({
+        ok: false,
+        code: 'UNAUTHORIZED',
+      })
+    })
+
+    it('requires the password', async () => {
+      await signedInUser()
+      expect(await deleteAccountAction({ password: '' })).toMatchObject({
+        ok: false,
+        fieldErrors: { password: ['Password is required'] },
+      })
+    })
+
+    it('puts a wrong password on its field and keeps the account', async () => {
+      const user = await signedInUser()
+      expect(await deleteAccountAction({ password: 'not-the-password' })).toEqual({
+        ok: false,
+        code: 'VALIDATION',
+        message: 'Validation failed',
+        fieldErrors: { password: ['Password is incorrect'] },
+      })
+      expect(await db.user.count({ where: { id: user.id } })).toBe(1)
+    })
+
+    it('deletes the account with its posts and signs the browser out', async () => {
+      const user = await signedInUser()
+      await db.post.create({ data: { userId: user.id, title: 'T', body: 'B' } })
+      expect(await deleteAccountAction({ password: TEST_PASSWORD })).toEqual({
+        ok: true,
+        data: null,
+      })
+      expect(await db.user.count()).toBe(0)
+      expect(await db.post.count()).toBe(0)
+      expect(refresh).toHaveBeenCalledTimes(1)
+      await expect(requireUser()).rejects.toBeInstanceOf(UnauthorizedError)
+    })
+
+    it('rate limits per user in production', async () => {
+      await signedInUser()
+      vi.stubEnv('NODE_ENV', 'production')
+      for (let n = 0; n < 3; n++) {
+        expect(await deleteAccountAction({ password: 'not-the-password' })).toMatchObject({
+          code: 'VALIDATION',
+        })
+      }
+      expect(await deleteAccountAction({ password: 'not-the-password' })).toMatchObject({
+        code: 'RATE_LIMITED',
       })
     })
   })

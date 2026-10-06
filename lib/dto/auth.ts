@@ -41,6 +41,23 @@ export const signUpInput = z.object({
 
 export type SignUpInput = z.infer<typeof signUpInput>
 
+export const changePasswordInput = z.object({
+  currentPassword: z.string().min(1, 'Current password is required'),
+  newPassword: password,
+})
+
+export type ChangePasswordInput = z.infer<typeof changePasswordInput>
+
+export const changeEmailInput = z.object({ newEmail: email })
+
+export type ChangeEmailInput = z.infer<typeof changeEmailInput>
+
+export const deleteAccountInput = z.object({
+  password: z.string().min(1, 'Password is required'),
+})
+
+export type DeleteAccountInput = z.infer<typeof deleteAccountInput>
+
 export const requestPasswordResetInput = z.object({ email })
 
 export type RequestPasswordResetInput = z.infer<typeof requestPasswordResetInput>

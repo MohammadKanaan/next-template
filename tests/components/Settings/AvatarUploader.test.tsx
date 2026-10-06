@@ -16,6 +16,7 @@ const user: CurrentUser = {
   email: 'ada@example.com',
   emailVerified: true,
   image: 'http://storage.test/bucket/avatars/u1/x',
+  website: null,
   role: 'user',
 }
 

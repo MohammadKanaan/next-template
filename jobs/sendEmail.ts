@@ -1,4 +1,5 @@
 import { createElement } from 'react'
+import { ConfirmEmailChange } from '@/emails/ConfirmEmailChange'
 import { ResetPassword } from '@/emails/ResetPassword'
 import { VerifyEmail } from '@/emails/VerifyEmail'
 import { sendMail } from '@/lib/server/mailer'
@@ -19,6 +20,12 @@ export async function handleSendEmail(payload: unknown) {
         to: email.to,
         subject: 'Reset your password',
         react: createElement(ResetPassword, email.props),
+      })
+    case 'confirm-email-change':
+      return sendMail({
+        to: email.to,
+        subject: 'Confirm your email change',
+        react: createElement(ConfirmEmailChange, email.props),
       })
   }
 }

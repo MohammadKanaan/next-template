@@ -14,6 +14,23 @@ describe('job definitions', () => {
     expect(sendEmailPayload.parse(reset)).toEqual(reset)
   })
 
+  it('accepts an email-change confirmation and requires the new address', () => {
+    const confirm = {
+      template: 'confirm-email-change',
+      to: 'old@example.com',
+      props: { name: 'Ada', newEmail: 'new@example.com', url: verifyEmail.props.url },
+    }
+    expect(sendEmailPayload.parse(confirm)).toEqual(confirm)
+    expect(
+      sendEmailPayload.safeParse({ ...confirm, props: { name: 'Ada', url: verifyEmail.props.url } })
+        .success,
+    ).toBe(false)
+    expect(
+      sendEmailPayload.safeParse({ ...confirm, props: { ...confirm.props, newEmail: 'nope' } })
+        .success,
+    ).toBe(false)
+  })
+
   it('rejects an unknown template, a bad address, and a bad link', () => {
     expect(sendEmailPayload.safeParse({ ...verifyEmail, template: 'newsletter' }).success).toBe(
       false,

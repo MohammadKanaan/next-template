@@ -1,12 +1,12 @@
 import 'server-only'
 import { cache } from 'react'
-import type { Prisma } from '@/generated/prisma/client'
-import { currentUserSchema, type CurrentUser } from '@/lib/dto/users'
-import { remember } from '@/lib/server/cache'
-import { getSessionUser } from './auth'
-import { userTag } from './cacheTags'
+import { Prisma } from '@/generated/prisma/client'
+import { currentUserSchema, type CurrentUser, type UpdateProfileInput } from '@/lib/dto/users'
+import { invalidateTags, remember } from '@/lib/server/cache'
+import { getSessionUser, requireUser } from './auth'
+import { POSTS_TAG, userTag } from './cacheTags'
 import { db } from './db'
-import { UnauthorizedError } from './errors'
+import { UnauthorizedError, ValidationError } from './errors'
 
 /** Selects exactly the `UserProfile` DTO; the row is the DTO, so drift fails to compile. */
 export const userProfileSelect = {
@@ -23,6 +23,7 @@ export const currentUserSelect = {
   email: true,
   emailVerified: true,
   image: true,
+  website: true,
   role: true,
 } satisfies Prisma.UserSelect
 
@@ -56,4 +57,33 @@ export async function getCurrentUser(): Promise<CurrentUser> {
 
 export async function isUsernameTaken(username: string) {
   return (await db.user.count({ where: { username } })) > 0
+}
+
+/**
+ * Edits the viewer's own name, username and website. The username is unique, so a collision (also
+ * from a race with another request) comes back as a field error. Cached post lists embed the
+ * author's name and username, so they are invalidated along with the cached viewer.
+ */
+export async function updateProfile(input: UpdateProfileInput): Promise<CurrentUser> {
+  const viewer = await requireUser()
+  const user = await db.user
+    .update({
+      where: { id: viewer.id },
+      data: {
+        name: input.name,
+        username: input.username,
+        // undefined leaves the website alone; an empty string or null clears it.
+        ...(input.website !== undefined && { website: input.website || null }),
+      },
+      select: currentUserSelect,
+    })
+    .catch((error: unknown) => {
+      // Only `username` is unique among the fields written here.
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new ValidationError({ username: ['That username is taken'] })
+      }
+      throw error
+    })
+  await invalidateTags(userTag(viewer.id), POSTS_TAG)
+  return user
 }
