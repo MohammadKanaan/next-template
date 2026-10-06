@@ -81,16 +81,16 @@ forgets a check cannot bypass it.
 ```
 app/                     # App Router: route groups (site), (minimal); api/auth, api/v1, api/health
   (site)/<route>/        # page.tsx (Server Component) + optional view.tsx ('use client') + styles.module.scss
-actions/                 # 'use server' Server Actions (posts.ts, comments.ts, auth.ts, uploads.ts)
+actions/                 # 'use server' Server Actions (posts, comments, auth, uploads, users)
 components/              # React components (ComponentName/index.tsx + styles.module.scss)
 components/SCN/          # shadcn/ui primitives (the only place Tailwind is allowed)
 hooks/                   # Reusable React hooks (useXxx)
 presenters/              # Override functions for views that need reshaped data
 types/                   # Cross-cutting types (types/api.ts: ActionResult, ErrorBody, FieldErrors)
-lib/                     # Pure helpers, constants, env, formErrors
+lib/                     # Pure helpers, constants, env, formErrors, username derivation
 lib/dto/                 # Zod schemas + inferred types (inputs and outputs); client- and server-safe
-lib/data/                # Server-only DAL: db client, auth, errors, users, posts, comments, uploads, health,
-                         # page loader; maintenance is the system DAL (jobs only)
+lib/data/                # Server-only DAL: db client, auth, errors, users, sessions, posts, comments, stats,
+                         # uploads, health, rateLimit, page loader; maintenance is the system DAL (jobs only)
 lib/server/              # Server-only infrastructure that is not the database: env, redis, cache,
                          # queue, mailer, storage
 jobs/                    # Job definitions (name + Zod payload + options) and handlers
@@ -136,8 +136,8 @@ docs/DECISIONS.md        # Framework and library choices, with reasons
   browser APIs. `page.tsx` is an async Server Component that owns `metadata`, awaits
   `params`/`searchParams` (Promises), calls the DAL through `loadPage` and renders the markup.
 - **Push `'use client'` to the leaves.** A page with nothing interactive of its own has no
-  `view.tsx` (`/posts/[userId]/[id]` renders on the server; only `DeletePostButton` is a client
-  component). Add a sibling `view.tsx` only for the interactive part: handlers that call Server
+  `view.tsx` (`/posts/[userId]/[id]` renders on the server; only the buttons and the comment
+  form, such as `DeletePostButton`, `PostStatusActions` and `CommentForm`, are client components). Add a sibling `view.tsx` only for the interactive part: handlers that call Server
   Actions, toasts, navigation, URL state. When a view wraps content that needs no interactivity,
   the page passes that content as `children` so it stays server-rendered (`/posts/ssr`: the view
   owns filters and pagination, the page renders the list into it).
@@ -430,7 +430,7 @@ How the DAL caches:
   returns the hit parsed with `schema` (the DTO's `z.coerce.date()` restores `Date`s), or runs
   `load()` and stores the JSON with a TTL. `invalidateTags(...tags)` bumps each tag's version, so
   old entries become unreachable at once and age out by TTL.
-- Tags live in `lib/data/cacheTags.ts` (`POSTS_TAG`, `postTag(id)`, `userTag(id)`).
+- Tags live in `lib/data/cacheTags.ts` (`POSTS_TAG`, `postTag(id)`, `commentsTag(id)`, `userTag(id)`).
 - Check auth first, then `remember()` only the viewer-independent part, then compute viewer-specific
   fields (`permissions`) after. Never cache something that varies by viewer under a shared key.
 - **Invalidate inside the DAL**, right after the write succeeds, so a caller cannot forget
@@ -543,7 +543,7 @@ records the result.
   `output: 'standalone'`) and runs `migrate` (one-shot: `db:deploy`, then the `pgboss` schema), `web`
   (`bun run start`, healthcheck on `/api/health`) and `worker` (`bun run worker`) from it. The
   containers get every `serverEnv()` variable with service hosts and `S3_PUBLIC_ENDPOINT`. CI is
-  `.github/workflows/ci.yml` (Postgres 18 + Redis 7 services, `.env.test` from the example)
+  `.github/workflows/ci.yml` (Postgres 18 + Redis 7 services, `.env.test` from the example).
 
 ## Hooks
 

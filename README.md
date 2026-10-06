@@ -3,6 +3,45 @@
 A reusable Next.js baseline: App Router, a server-only Data Access Layer on Prisma and PostgreSQL, Better
 Auth, Server Actions for writes, shared Zod DTOs, schema-first forms, and shadcn/ui with SCSS everywhere else.
 
+## Start here
+
+Using this as the base of a new project? Roughly:
+
+**Keep as is** (the infrastructure, none of it is specific to posts):
+
+- Auth and accounts: Better Auth config, sign-in/sign-up/reset/verify flows, `/settings` (profile,
+  email change, password, sessions, avatar, account deletion), optional Google sign-in, `/admin`
+  (user list and roles), `proxy.ts`, the rate limiter.
+- The layering and its helpers: `lib/dto` conventions, `lib/data` (`db`, `auth`, `errors`, `page`,
+  `rateLimit`, `sessions`, `users`, `uploads`, `health`, `maintenance`), `lib/server/*`, `actions/`
+  conventions, `lib/formErrors.ts`, `types/api.ts`, `hooks/`.
+- Jobs and email (`jobs/`, `worker/`, `emails/`), uploads, `GET /api/health`, logging.
+- Tooling: `Dockerfile`, `docker-compose.yml`, CI, ESLint rules, the test helpers in `tests/helpers`,
+  `components/SCN` plus the small application wrappers (`Form/Input`, `Form/Textarea`,
+  `LoadingButton`, `Pagination`, `PageHeader`, `Empty`).
+
+**Example code to adapt or strip** (it exists to show the patterns in the index below):
+
+- The posts, comments and tags domain: the `Post`, `Comment`, `Tag`, `PostTag` models and their
+  migrations, `lib/dto/posts.ts`, `lib/dto/comments.ts`, `lib/data/posts.ts`, `lib/data/comments.ts`,
+  `actions/posts.ts`, `actions/comments.ts`, `app/(site)/posts/**`, `components/Posts`,
+  `components/Comments`, `components/Form/TagsInput` (reusable; keep it if you want a chips field),
+  the seed data in `prisma/seed.ts`, and their tests. Rename or replace; do not leave half of it.
+  Places outside those files that mention posts and need a look when you remove them: `POSTS_TAG` in
+  `lib/data/auth.ts` (`afterDelete`), `lib/data/users.ts` (`updateProfile`, `postCount` in the admin
+  list), `lib/data/cacheTags.ts`, the NavBar links and `AUTHORING_ROUTE_PATTERN` in
+  `lib/constants-routes.ts`, and `listTags` / `getSiteStats` consumers.
+- `/dashboard` and `lib/data/stats.ts` (aggregate examples; the numbers are about posts).
+- The SSR-vs-CSR comparison pages `/posts/ssr` and `/posts/csr`, with `lib/client/posts.ts` and the
+  `GET /api/v1/posts` handler behind the client one. Keep the facade pattern if a client component
+  of yours must fetch; drop it otherwise. The REST write endpoints under `app/api/v1/posts` are
+  only for HTTP API consumers; no UI calls them.
+- `/ui-kit` (a component catalog) and the home page placeholder (`app/(site)/page.tsx`).
+
+**Order to build a new resource** (details in "Adding a resource" below): schema and migration →
+DTOs → DAL (auth, validation, caching, tests) → Server Actions → pages and forms → seed → route
+constants and navigation. Write the DAL tests before the UI: the DAL is where the rules live.
+
 ## Stack
 
 - Next.js 16 (App Router, Turbopack), React 19 with the React Compiler, TypeScript 5.9
@@ -10,7 +49,7 @@ Auth, Server Actions for writes, shared Zod DTOs, schema-first forms, and shadcn
 - SCSS CSS Modules for all styling; shadcn/ui (Radix) + Tailwind CSS 4 only inside `components/SCN`
 - lucide-react icons, sonner toasts
 - Prisma ORM 7.10 (`prisma-client` generator, `@prisma/adapter-pg`) + PostgreSQL 18
-- Better Auth 1.7 (email + password, official Prisma adapter)
+- Better Auth 1.7 (email + password, optional Google sign-in, official Prisma adapter)
 - Redis (data cache, rate limiter), pg-boss jobs, Resend + React Email, S3-compatible storage (MinIO in dev)
 - Server Actions + Zod 4 DTOs; React Hook Form 7 + `@hookform/resolvers`
 - Vitest + Testing Library + jsdom
@@ -87,7 +126,8 @@ them):
 The containers get every variable the app validates at boot. Hosts are the compose service names
 (`db`, `redis`, `minio`); `S3_PUBLIC_ENDPOINT=http://localhost:9000` is what the browser uses for
 avatar uploads. Compose reads `.env` from the project directory for `BETTER_AUTH_SECRET`,
-`BETTER_AUTH_URL`, `RESEND_API_KEY`, `EMAIL_FROM` and the `NEXT_PUBLIC_*` build args, and falls back
+`BETTER_AUTH_URL`, `RESEND_API_KEY`, `EMAIL_FROM`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and
+the `NEXT_PUBLIC_*` build args, and falls back
 to a local-only secret when they are unset. Every other container variable is fixed in
 `docker-compose.yml`, so the `localhost` URLs in your `.env` never leak into the containers. Set a
 real `BETTER_AUTH_SECRET` for anything beyond a local try-out. The containers run with
@@ -267,8 +307,8 @@ stale cookie must not lock anyone out). The DAL does the real check on every rea
 users with search and pagination and lets an admin change another user's role; the admin cannot
 change their own. Its DAL functions call `requireAdmin()` themselves.
 
-Better Auth's HTTP routes `/api/auth/sign-up/email`, `/api/auth/update-user` and
-`/api/auth/delete-user` are disabled (`disabledPaths`): they would bypass our validation or the
+Better Auth's HTTP routes `/api/auth/sign-up/email`, `/api/auth/update-user`,
+`/api/auth/delete-user` and `/api/auth/delete-user/callback` are disabled (`disabledPaths`): they would bypass our validation or the
 password check. Sign-up goes through `signUpAction`, profile edits through `updateProfile`, and
 account deletion through `deleteAccountAction`. Auth and account actions are rate limited in
 production (Redis-backed, so shared across instances; if Redis is down the attempt is allowed).
@@ -333,6 +373,30 @@ nested comments (`Comment`, with per-viewer delete permission), tags as a many-t
 `/posts/mine`. Because `commentCount` and `tags` live inside cached lists, every comment, tag and
 status write invalidates the tags those entries were cached under. New posts start as drafts.
 
+## Pattern index
+
+Where to look to see each pattern done once, properly.
+
+| Pattern                               | Where it is shown                                                                                                                                                                       |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Server-rendered list with URL filters | `app/(site)/posts/ssr/page.tsx` + `view.tsx`; `hooks/useUrlState.ts`; `postsUrlQuery` in `lib/dto/posts.ts`; `components/Posts/Filters`                                                 |
+| Client-fetched list                   | `app/(site)/posts/csr/page.tsx` + `view.tsx`; facade `lib/client/posts.ts`; handler `app/api/v1/posts/route.ts`                                                                         |
+| Create / edit form with field errors  | `components/Posts/Form/index.tsx` (+ `utils.ts`); `lib/formErrors.ts` (`applyActionErrors`); `actions/posts.ts`; pages `app/(site)/posts/new` and `app/(site)/posts/[userId]/[id]/edit` |
+| Controlled form field                 | `components/Form/TagsInput/index.tsx`, wired through RHF's `Controller` in `components/Posts/Form/index.tsx`                                                                            |
+| Nested resource (comments)            | `lib/data/comments.ts`; `actions/comments.ts`; `components/Comments/Thread`, `Form`, `DeleteButton`; `app/api/v1/posts/[id]/comments/route.ts`                                          |
+| Many-to-many (tags)                   | `Tag` + `PostTag` in `prisma/schema.prisma`; `replacePostTags` and `listTags` in `lib/data/posts.ts`; `tagNameSchema` in `lib/dto/posts.ts`                                             |
+| Multi-table transaction               | `createPost` / `updatePost` with `db.$transaction` and `replacePostTags` in `lib/data/posts.ts`                                                                                         |
+| Status workflow                       | `POST_STATUS_TRANSITIONS` in `lib/dto/posts.ts`; `setPostStatus` in `lib/data/posts.ts`; `components/Posts/StatusActions`; `app/(site)/posts/mine`                                      |
+| Viewer-dependent visibility           | `canViewPost`, `getPost` and `listPosts` in `lib/data/posts.ts` (cache the shared part, check the viewer after)                                                                         |
+| Redis caching and invalidation        | `remember` / `invalidateTags` in `lib/server/cache.ts`; tags in `lib/data/cacheTags.ts`; used throughout `lib/data/posts.ts` and `lib/data/comments.ts`                                 |
+| Multi-filter `where` builder          | `buildPostWhere` in `lib/data/posts.ts`; `listPostsQuery` in `lib/dto/posts.ts`                                                                                                         |
+| REST CRUD handlers                    | `app/api/v1/posts/route.ts`, `app/api/v1/posts/[id]/route.ts`, `app/api/v1/posts/[id]/comments/route.ts`; `readJsonBody` and `toErrorResponse` in `lib/data/errors.ts`                  |
+| Aggregates and raw SQL                | `lib/data/stats.ts` (`getSiteStats`, `getMyStats` with `groupBy`, `getPostsPerDay` with `$queryRaw`); `components/Stats/PostsPerDayChart`; page `app/(site)/dashboard`                  |
+| File upload                           | `lib/data/uploads.ts`; `actions/uploads.ts`; `lib/server/storage.ts`; `lib/client/uploads.ts`; `components/Settings/AvatarUploader`                                                     |
+| Background job and email              | `jobs/definitions.ts`, `jobs/sendEmail.ts`; `lib/server/queue.ts`; `worker/index.ts`; `lib/server/mailer.ts`; `emails/`                                                                 |
+| Admin-only page                       | `app/(site)/admin/page.tsx` + `view.tsx`; `listUsers` / `setUserRole` with `requireAdmin()` in `lib/data/users.ts`                                                                      |
+| OAuth (Google)                        | `lib/data/auth.ts` (`socialProviders`, `isGoogleAuthEnabled`); `signInWithGoogleAction` in `actions/auth.ts`; `lib/username.ts`; `components/Auth/GoogleButton`                         |
+
 ## Design decisions
 
 - **One contract.** Three paths (Server Component, Server Action, client facade → Route Handler)
@@ -354,26 +418,44 @@ status write invalidates the tags those entries were cached under. New posts sta
 - A registry-published image and a deployment target (the Dockerfile and compose `app` profile cover running it locally).
 - Cursor pagination (`CursorPage<T> = { items, nextCursor }`) for feeds.
 - Generate OpenAPI from the Zod schemas if external API consumers appear.
+- Everything the template deliberately leaves out is listed under "Deferred" in
+  [`docs/DECISIONS.md`](docs/DECISIONS.md#deferred).
 
 ## Adding a resource
 
-1. Add the model to `prisma/schema.prisma` (camelCase fields with snake_case `@map`s) and run
-   `bun run db:migrate`.
-2. Add the Zod schemas to `lib/dto/<name>.ts` (inputs and the output variants a view needs).
-3. Add the DAL in `lib/data/<name>.ts`: `import 'server-only'`, select exactly the DTO columns, map
-   rows to DTOs, call `requireUser()` / `requireAdmin()`, validate the input with `parseInput`,
-   enforce record-level rules, throw typed errors.
-4. Add Server Actions in `actions/<name>.ts` (DAL → `revalidatePath` → `ActionResult`). Add a Route Handler under `app/api/v1/<name>/` plus a facade in `lib/client`
-   only if a client component must fetch.
-5. Only if a view needs reshaped fields, add `presentX` in `presenters/<Name>Presenter.ts`.
-6. Add the pages, the form component, and routes in `lib/constants-routes.ts` (decide whether
-   they are public or private). `page.tsx` is an async Server Component that wraps its reads in
-   `loadPage` and renders the markup; add a `'use client'` `view.tsx` beside it only for the
-   interactive part (a form's submit handler, filters, pagination). Caching is optional: if a read
-   is viewer independent and worth it, use `remember()` in the DAL and invalidate its tags in the
-   writes.
-7. Add tests in `tests/lib/data/`, `tests/actions/` (and `tests/app/` or `tests/lib/client/` for a
-   handler) against the test DB.
+The posts domain is the worked example; copy its shape. In this order:
+
+1. **Schema.** Add the model to `prisma/schema.prisma` (camelCase fields with snake_case `@map`s,
+   an index on every foreign key you filter by, `onDelete: Cascade` where the child cannot outlive
+   its parent), then `bun run db:migrate` and `bun run db:test:prepare`. Backfill existing rows in
+   the migration SQL when a new column changes what old rows mean.
+2. **DTOs** in `lib/dto/<name>.ts`: one input schema per write, one output schema per read shape
+   (`...Summary` for lists, `...Detail` for one record), output dates with `z.coerce.date()`, list
+   query schemas with every field bounded. A URL-facing twin (`xxxUrlQuery`) with `.catch()` on
+   every field if the list keeps its filters in the query string.
+3. **DAL** in `lib/data/<name>.ts`: `import 'server-only'`; per function: `requireUser()` /
+   `requireAdmin()`, then `parseInput`, then existence, then permission; select exactly the DTO
+   columns and map rows to DTOs; typed errors only. Use `db.$transaction` when one write touches
+   several tables. Cache with `remember()` only the viewer-independent, bounded reads, and invalidate
+   inside the write functions (new tags go in `lib/data/cacheTags.ts`). Test it first, in
+   `tests/lib/data/<name>.test.ts`, per viewer (signed out, owner, other user, admin).
+4. **Server Actions** in `actions/<name>.ts`: pass the arguments to the DAL untouched, then
+   `revalidatePath` / `refresh`, return `ActionResult<T>` through `toActionFailure`. Add a Route
+   Handler under `app/api/v1/<name>/` (thin: decode with the DTO schema, call the DAL, return JSON
+   or `toErrorResponse`) only for an HTTP API or a client component that must fetch; the latter also
+   gets a facade in `lib/client`.
+5. **Pages and forms.** `page.tsx` is an async Server Component: await `params` / `searchParams`,
+   load through `loadPage`, render. Add a `'use client'` `view.tsx` beside it only for what is
+   interactive. Forms use React Hook Form with the DTO schema, start with the `'use client'` /
+   `'use no memo'` header (copy `components/Settings/ProfileForm`) and map failures with
+   `applyActionErrors`. Styles are an SCSS module with shadcn tokens.
+6. **Routes and navigation.** Add the route constants to `lib/constants-routes.ts` and decide
+   whether each route is public (`PUBLIC_ROUTES`) or private (the default); add the NavBar link.
+7. **Only if a view needs reshaped fields**, add `presentX` in `presenters/<Name>Presenter.ts`.
+8. **Seed and tests.** Extend `prisma/seed.ts`; add `tests/actions/<name>.test.ts`, component tests
+   under `tests/components/`, and handler tests under `tests/app/api/v1/` when there is a handler.
+   Tests that create rows through the DAL need the state they expect (the posts default is
+   `draft`, so tests that want a public post set `status: 'published'`).
 
 ## More
 
