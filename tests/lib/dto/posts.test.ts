@@ -3,6 +3,9 @@ import { MAX_PAGE } from '@/lib/dto/common'
 import {
   createPostInput,
   listPostsQuery,
+  POST_BODY_MAX_LENGTH,
+  POST_TITLE_MAX_LENGTH,
+  postDraftSchema,
   postSummarySchema,
   postsUrlQuery,
   updatePostInput,
@@ -93,6 +96,28 @@ describe('postsUrlQuery', () => {
       q: 'cats',
       sort: 'oldest',
     })
+  })
+})
+
+describe('postDraftSchema', () => {
+  it('accepts a half-typed draft as it is, untrimmed and possibly empty', () => {
+    expect(postDraftSchema.parse({ title: ' Hi ', body: '' })).toEqual({ title: ' Hi ', body: '' })
+  })
+
+  it('caps both fields at the real limits', () => {
+    expect(
+      postDraftSchema.safeParse({
+        title: 'a'.repeat(POST_TITLE_MAX_LENGTH + 1),
+        body: '',
+      }).success,
+    ).toBe(false)
+    expect(
+      postDraftSchema.safeParse({
+        title: '',
+        body: 'a'.repeat(POST_BODY_MAX_LENGTH + 1),
+      }).success,
+    ).toBe(false)
+    expect(postDraftSchema.safeParse({ title: 1, body: '' }).success).toBe(false)
   })
 })
 

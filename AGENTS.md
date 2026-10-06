@@ -394,6 +394,16 @@ records the result.
   page's `searchParams`). `setState(patch)` is one navigation per patch; keys that are empty or
   equal to the default leave the URL, unknown params stay. Scalars only. The component using it
   must sit inside `<Suspense>`. A filter change resets `page` in the same patch.
+- **Browser storage:** `useLocalStorage(key, schema)` / `useSessionStorage(key, schema)` return
+  `{ value, setValue, removeValue }`. They sit on `useSyncExternalStore` with a `null` server
+  snapshot, so `value` is `null` on the server and on the first client render (no hydration
+  mismatch) and also when nothing valid is stored (missing, malformed JSON, or failing the Zod
+  schema). Pass a module-level schema. Quota and private-mode errors are swallowed by
+  `lib/browserStorage.ts`; tabs stay in sync through the `storage` event. Do not render
+  storage-dependent UI as if the value were already known on the first render. Live example: the
+  `/posts/new` draft (`post-draft:v1`, `postDraftSchema`): `PostForm` takes `draft` and
+  `onDraftChange` (debounced; `null` = empty form), seeds with `values` + `keepDirtyValues`, and the
+  view clears the draft when `createPostAction` succeeds.
 - Only write a hook for independent logic or logic shared across components (e.g. `useScrollLock`). Never extract a hook for logic that is married to one component and gains
   nothing from the abstraction.
 

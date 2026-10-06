@@ -1,11 +1,23 @@
-import type { CreatePostInput, PostDetail } from '@/lib/dto/posts'
+import type { CreatePostInput, PostDetail, PostDraft } from '@/lib/dto/posts'
 
 export const POST_FORM_FIELDS = ['title', 'body'] as const
 
 export const EMPTY_POST_FORM: CreatePostInput = { title: '', body: '' }
 
-export function hydratePostForm(post: PostDetail | null): CreatePostInput {
-  return post ? { title: post.title, body: post.body } : { ...EMPTY_POST_FORM }
+/** An existing post wins; a new post starts from the saved draft, if any. */
+export function hydratePostForm(
+  post: PostDetail | null,
+  draft?: PostDraft | null,
+): CreatePostInput {
+  if (post) {
+    return { title: post.title, body: post.body }
+  }
+  return draft ? { title: draft.title, body: draft.body } : { ...EMPTY_POST_FORM }
+}
+
+/** A form with nothing typed has no draft worth keeping. */
+export function isEmptyPostForm(values: CreatePostInput) {
+  return values.title === '' && values.body === ''
 }
 
 /** New post: every field. Existing post: only the fields that changed. */

@@ -12,7 +12,7 @@ beforeAll(() => {
 })
 
 describe('PostsFilters', () => {
-  beforeEach(() => vi.useFakeTimers())
+  beforeEach(() => vi.useFakeTimers({ shouldAdvanceTime: true }))
   afterEach(() => vi.useRealTimers())
 
   it('shows the current search and sort', () => {
