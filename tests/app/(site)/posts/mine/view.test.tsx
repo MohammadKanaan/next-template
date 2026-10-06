@@ -1,13 +1,14 @@
 import { render, screen, within } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MyPostsView } from '@/app/(site)/posts/mine/view'
 import type { Page } from '@/lib/dto/common'
 import type { PostSummary } from '@/lib/dto/posts'
 
+const search = vi.hoisted(() => ({ value: '' }))
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
   usePathname: () => '/posts/mine',
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => new URLSearchParams(search.value),
 }))
 vi.mock('@/actions/posts', () => ({ setPostStatusAction: vi.fn() }))
 
@@ -36,8 +37,12 @@ const page = (items: PostSummary[]): Page<PostSummary> => {
 }
 
 describe('MyPostsView', () => {
+  afterEach(() => {
+    search.value = ''
+  })
+
   it('shows each post with its status, tags, comment count and only the moves it allows', () => {
-    render(<MyPostsView posts={page([draft, published])} />)
+    render(<MyPostsView posts={page([draft, published])} tags={[]} />)
     const draftRow = screen.getByRole('row', { name: /A draft/ })
     expect(within(draftRow).getByText('Draft')).toBeInTheDocument()
     expect(within(draftRow).getByText('news')).toBeInTheDocument()
@@ -59,8 +64,24 @@ describe('MyPostsView', () => {
   })
 
   it('invites the author to write a first post when there are none', () => {
-    render(<MyPostsView posts={page([])} />)
+    render(<MyPostsView posts={page([])} tags={[]} />)
     expect(screen.getByText('No posts yet')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Write a post' })).toHaveAttribute('href', '/posts/new')
+  })
+
+  it('shows the filters with the status select above the posts', () => {
+    render(<MyPostsView posts={page([draft])} tags={[{ name: 'news', postCount: 1 }]} />)
+    expect(screen.getByRole('combobox', { name: 'Status' })).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Tag' })).toBeInTheDocument()
+    expect(screen.getByLabelText('From')).toBeInTheDocument()
+  })
+
+  it('keeps the filters and says nothing matches when a filter finds no posts', () => {
+    search.value = 'status=archived&tag=news'
+    render(<MyPostsView posts={page([])} tags={[{ name: 'news', postCount: 1 }]} />)
+    expect(screen.queryByText('No posts yet')).not.toBeInTheDocument()
+    expect(screen.getByText('No matching posts')).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Status' })).toHaveTextContent('Archived')
+    expect(screen.getByRole('button', { name: 'Clear filters' })).toBeInTheDocument()
   })
 })

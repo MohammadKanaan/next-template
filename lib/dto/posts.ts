@@ -81,11 +81,21 @@ export const postsSortSchema = z.enum(['newest', 'oldest'])
 
 export type PostsSort = z.infer<typeof postsSortSchema>
 
+/** A calendar day as `YYYY-MM-DD` (what a native date input produces); invalid days are rejected. */
+const isoDaySchema = z.iso.date()
+
 export const listPostsQuery = pageQuerySchema.extend({
   authorId: userIdSchema.optional(),
   /** Case-insensitive title search; bounded because it is free text. */
   q: z.string().trim().max(POST_SEARCH_MAX_LENGTH).optional(),
   sort: postsSortSchema.default('newest'),
+  /** Only an admin or an author listing their own posts may choose a status; see `listPosts`. */
+  status: postStatusSchema.optional(),
+  tag: tagNameSchema.optional(),
+  /** Created on or after this day (UTC). */
+  from: isoDaySchema.optional(),
+  /** Created on or before this day (UTC), inclusive. */
+  to: isoDaySchema.optional(),
 })
 
 export type ListPostsQuery = z.infer<typeof listPostsQuery>
@@ -102,9 +112,34 @@ export const postsUrlQuery = z.object({
   page: pageQuerySchema.shape.page.catch(1),
   q: z.string().trim().max(POST_SEARCH_MAX_LENGTH).catch(''),
   sort: postsSortSchema.catch('newest'),
+  /** `''` means no filter, so an absent or garbled param and "all" look the same in the URL. */
+  status: z.union([postStatusSchema, z.literal('')]).catch(''),
+  tag: tagNameSchema.catch(''),
+  from: isoDaySchema.catch(''),
+  to: isoDaySchema.catch(''),
 })
 
 export type PostsUrlQuery = z.infer<typeof postsUrlQuery>
+
+/** True when any filter (everything but `page` and `sort`) is set. */
+export const hasActivePostFilters = (
+  query: Pick<PostsUrlQuery, 'q' | 'status' | 'tag' | 'from' | 'to'>,
+) => {
+  return Boolean(query.q || query.status || query.tag || query.from || query.to)
+}
+
+/** Turns the URL state into list params: `''` (no filter) becomes `undefined`. `perPage` is the caller's. */
+export const toListPostsParams = (query: PostsUrlQuery): Omit<ListPostsParams, 'perPage'> => {
+  return {
+    page: query.page,
+    sort: query.sort,
+    q: query.q || undefined,
+    status: query.status || undefined,
+    tag: query.tag || undefined,
+    from: query.from || undefined,
+    to: query.to || undefined,
+  }
+}
 
 /** List variant: excerpt instead of body. */
 export const postSummarySchema = z.object({

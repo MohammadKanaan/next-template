@@ -257,10 +257,20 @@ The posts example carries the domain patterns an app needs (all in `lib/data/pos
 - **Visibility:** only `published` posts are public. A draft or archived post is visible to its
   author and to admins; for anyone else `getPost` throws `NotFoundError`, the same answer as a
   missing post. `getPost` caches the viewer-independent part (`getPostBase`) and applies
-  `canViewPost` and `permissions` after the cache read. `listPosts` forces `published` unless the
-  viewer is an admin or lists their own posts (`authorId` equals their id); such a viewer-dependent
-  result skips `remember()`. `/posts/mine` (`ROUTE_POSTS_MINE`, private) is the author's own list,
-  every status, with `PostStatusActions` per row.
+  `canViewPost` and `permissions` after the cache read. `listPosts` shows `published` only,
+  except to an author listing their own posts (`authorId` equals their id), who sees every status
+  unless they pass `status`. An admin is not special on a general list: it is `published` only too,
+  but an admin may pass `status` (and so may the author); anyone else's `status` other than
+  `published` is ignored. A result the viewer's identity changed skips `remember()`.
+  `/posts/mine` (`ROUTE_POSTS_MINE`, private) is the author's own list with the filters (including
+  the status select) and `PostStatusActions` per row.
+- **Multi-filter lists:** `listPostsQuery` takes `authorId`, `q`, `sort`, `status`, `tag` and
+  `from` / `to` (UTC `YYYY-MM-DD`, both days inclusive, on `createdAt`); `buildPostWhere` in the DAL
+  composes them. `postsUrlQuery` is the tolerant URL twin (every field `.catch()`es to `''` / its
+  default; `toListPostsParams` turns `''` into `undefined`) shared by the SSR pages and
+  `useUrlState`. `components/Posts/Filters` is one component: tag select (from `listTags`), date
+  inputs, sort, "Clear filters", and a status select only on the page that passes `status`. Any
+  filter change resets `page` to 1 in the same patch.
 - **Status workflow:** `POST_STATUS_TRANSITIONS` in `lib/dto/posts.ts` is the one definition (draft
   → published; published → archived | draft; archived → published). `setPostStatus` enforces it
   (signed in → exists → author or admin → transition allowed, else `ValidationError` on `status`),
@@ -374,9 +384,11 @@ How the DAL caches:
 - **Invalidate inside the DAL**, right after the write succeeds, so a caller cannot forget
   (`createPost` / `updatePost` / `deletePost`, `attachAvatar`; Better Auth user updates via its
   database hook). Actions still call `revalidatePath` / `refresh()` for the router cache.
-- **Free-text search is never cached.** `listPosts` skips `remember()` when `q` is set: search terms
-  are high-cardinality and would mint unbounded keys. Unfiltered and author lists keep the cache
-  (`sort` is part of their key). Search input is escaped for LIKE wildcards in the DAL.
+- **Free-text search and date ranges are never cached.** `listPosts` skips `remember()` when `q`,
+  `from` or `to` is set (high-cardinality, unbounded keys), and also when a viewer-chosen status
+  (anything but `published`) shaped the result. Unfiltered, author and tag lists of published posts
+  keep the cache (`sort` and the validated `tag` are part of their key). Search input is escaped
+  for LIKE wildcards in the DAL.
 - Cache keys are built from unambiguous parts (`JSON.stringify([...])`, as `listPosts` does), never
   by joining user-controlled strings, and every input that reaches a key is bounded in its DTO
   (`page`, `authorId`), so a caller cannot collide with another entry or mint unlimited keys.

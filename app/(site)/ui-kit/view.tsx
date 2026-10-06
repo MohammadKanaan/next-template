@@ -11,7 +11,7 @@ import { LoadingButton } from '@/components/LoadingButton'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { PageHeader } from '@/components/PageHeader'
 import { Pagination } from '@/components/Pagination'
-import { PostsFilters } from '@/components/Posts/Filters'
+import { PostsFilters, type PostsFiltersPatch } from '@/components/Posts/Filters'
 import { PostForm } from '@/components/Posts/Form'
 import { PostStatusBadge } from '@/components/Posts/StatusBadge'
 import { PostTags } from '@/components/Posts/Tags'
@@ -67,7 +67,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/SCN/tooltip'
 import { UserAvatar } from '@/components/UserAvatar'
 import styles from './styles.module.scss'
-import { normalizeTagName, postStatusSchema, type PostsSort } from '@/lib/dto/posts'
+import { normalizeTagName, postStatusSchema } from '@/lib/dto/posts'
 
 type ButtonVariant = NonNullable<ComponentProps<typeof Button>['variant']>
 type ButtonSize = NonNullable<ComponentProps<typeof Button>['size']>
@@ -130,9 +130,13 @@ const Section = ({ id, eyebrow, title, description, children }: SectionProps) =>
 export const UiKitView = () => {
   const [page, setPage] = useState(2)
   const [tags, setTags] = useState(['news', 'tips'])
-  const [filters, setFilters] = useState<{ q: string; sort: PostsSort }>({
+  const [filters, setFilters] = useState<Required<PostsFiltersPatch>>({
     q: '',
     sort: 'newest',
+    status: '',
+    tag: '',
+    from: '',
+    to: '',
   })
 
   return (
@@ -511,15 +515,25 @@ export const UiKitView = () => {
         id="posts-filters"
         eyebrow="Application components"
         title="PostsFilters"
-        description="Debounced title search and sort order; the page decides where the values live (URL state on the post lists)."
+        description="Debounced title search, tag, status (only where the page passes it), date range, sort order and a clear button; the page decides where the values live (URL state on the post lists)."
       >
         <PostsFilters
           q={filters.q}
           sort={filters.sort}
+          tag={filters.tag}
+          from={filters.from}
+          to={filters.to}
+          status={filters.status}
+          tags={[
+            { name: 'news', postCount: 4 },
+            { name: 'tips', postCount: 2 },
+          ]}
           onChange={(patch) => setFilters((current) => ({ ...current, ...patch }))}
         />
         <p>
-          Search: {filters.q || 'none'}, sort: {filters.sort}
+          Search: {filters.q || 'none'}, tag: {filters.tag || 'none'}, status:{' '}
+          {filters.status || 'all'}, from: {filters.from || 'none'}, to: {filters.to || 'none'},
+          sort: {filters.sort}
         </p>
       </Section>
 

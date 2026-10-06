@@ -8,6 +8,7 @@ import {
   type CreatePostParams,
   listPostsQuery,
   type ListPostsParams,
+  type ListPostsQuery,
   postDetailBaseSchema,
   postsPageSchema,
   setPostStatusInput,
@@ -121,22 +122,62 @@ const withPermissions = (post: PostDetailBase, viewer: SessionUser | null): Post
   return { ...post, permissions: { update: allowed, delete: allowed } }
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000
+
 /**
- * Only `published` posts are listed, except for an admin and for an author listing their own
- * posts, who see every status. A result that depends on who is looking never goes through the
- * shared cache.
+ * Which status a list shows (`undefined` is every status). Only an author listing their own posts
+ * and an admin may pick one; the author's own list shows every status unless they narrow it. For
+ * everyone else, an admin browsing other people's posts included, it is `published`, whatever was
+ * asked.
+ */
+const resolveStatusFilter = (
+  viewer: SessionUser | null,
+  authorId: string | undefined,
+  requested: PostStatus | undefined,
+): PostStatus | undefined => {
+  const ownList = viewer !== null && authorId === viewer.id
+  if (!ownList && viewer?.role !== 'admin') {
+    return 'published'
+  }
+  return requested ?? (ownList ? undefined : 'published')
+}
+
+/**
+ * Composes every list condition into one `where`, and returns the status it applied so the caller
+ * can tell whether the result depends on the viewer. `from` and `to` are UTC days, both inclusive.
+ */
+const buildPostWhere = (
+  query: Pick<ListPostsQuery, 'authorId' | 'q' | 'status' | 'tag' | 'from' | 'to'>,
+  viewer: SessionUser | null,
+) => {
+  const status = resolveStatusFilter(viewer, query.authorId, query.status)
+  const createdAt: Prisma.DateTimeFilter = {}
+  if (query.from) {
+    createdAt.gte = new Date(`${query.from}T00:00:00.000Z`)
+  }
+  if (query.to) {
+    createdAt.lt = new Date(Date.parse(`${query.to}T00:00:00.000Z`) + DAY_MS)
+  }
+  const where: Prisma.PostWhereInput = {
+    ...(query.authorId ? { userId: query.authorId } : {}),
+    ...(status ? { status } : {}),
+    ...(query.q ? { title: { contains: escapeLike(query.q), mode: 'insensitive' } } : {}),
+    ...(query.tag ? { tags: { some: { tag: { name: query.tag } } } } : {}),
+    ...(query.from || query.to ? { createdAt } : {}),
+  }
+  return { where, status }
+}
+
+/**
+ * Lists posts, newest first by default, filtered by author, title search, tag, status and a
+ * creation date range. `published` is all anyone sees, except that an author listing their own
+ * posts sees every status and may choose one, and so may an admin (see `resolveStatusFilter`).
  */
 export const listPosts = async (params: ListPostsParams): Promise<Page<PostSummary>> => {
-  const { page, perPage, authorId, q, sort } = parseInput(listPostsQuery, params)
+  const query = parseInput(listPostsQuery, params)
+  const { page, perPage, authorId, tag, sort } = query
   const viewer = await getSessionUser()
-  const seesEveryStatus =
-    viewer !== null &&
-    (viewer.role === 'admin' || (authorId !== undefined && authorId === viewer.id))
-  const where: Prisma.PostWhereInput = {
-    ...(authorId ? { userId: authorId } : {}),
-    ...(seesEveryStatus ? {} : { status: 'published' }),
-    ...(q ? { title: { contains: escapeLike(q), mode: 'insensitive' } } : {}),
-  }
+  const { where, status } = buildPostWhere(query, viewer)
   const load = async () => {
     const [rows, totalItems] = await Promise.all([
       db.post.findMany({
@@ -150,15 +191,16 @@ export const listPosts = async (params: ListPostsParams): Promise<Page<PostSumma
     ])
     return toPage(rows.map(toPostSummary), totalItems, { page, perPage })
   }
-  // Free-text searches are high-cardinality: caching them would mint unbounded keys, so they go
-  // straight to the database. So does anything that varies by viewer (every status visible).
-  // Public lists (published only) and public author lists keep the cache.
-  if (q || seesEveryStatus) {
+  // Only a published-only list without free text or dates is the same for every viewer and has a
+  // bounded key. Search terms and date ranges are high-cardinality, and any other status means the
+  // viewer's identity chose the result, so those go straight to the database.
+  if (query.q || query.from || query.to || status !== 'published') {
     return load()
   }
   return remember(
-    // JSON keeps the parts unambiguous: no author value can spell the unfiltered list's key.
-    JSON.stringify(['posts:list', page, perPage, authorId ?? null, sort]),
+    // JSON keeps the parts unambiguous: no author or tag value can spell another list's key. The
+    // tag passed `tagNameSchema` above, so it is at most `TAG_NAME_MAX_LENGTH` characters.
+    JSON.stringify(['posts:list', page, perPage, authorId ?? null, sort, tag ?? null]),
     { ttl: POSTS_CACHE_TTL, tags: [POSTS_TAG], schema: postsPageSchema },
     load,
   )

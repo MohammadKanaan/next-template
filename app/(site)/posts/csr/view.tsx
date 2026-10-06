@@ -12,7 +12,13 @@ import { useUrlState } from '@/hooks/useUrlState'
 import { fetchPosts, RequestError } from '@/lib/client/posts'
 import { ROUTE_POSTS, ROUTE_POSTS_SSR } from '@/lib/constants-routes'
 import type { Page } from '@/lib/dto/common'
-import { postsUrlQuery, type PostSummary } from '@/lib/dto/posts'
+import {
+  hasActivePostFilters,
+  postsUrlQuery,
+  toListPostsParams,
+  type PostSummary,
+  type TagSummary,
+} from '@/lib/dto/posts'
 import styles from '../styles.module.scss'
 
 const PER_PAGE = 9
@@ -25,16 +31,23 @@ const toErrorMessage = (error: unknown) => {
     : 'Could not load posts. Check your connection.'
 }
 
-export const PostsCsrView = () => {
+type PostsCsrViewProps = {
+  tags: TagSummary[]
+}
+
+export const PostsCsrView = ({ tags }: PostsCsrViewProps) => {
   const { state, setState } = useUrlState(postsUrlQuery)
-  const { page, q, sort } = state
+  const { page, q, sort, status, tag, from, to } = state
   const [attempt, setAttempt] = useState(0)
   const [result, setResult] = useState<LoadResult | null>(null)
-  const requestKey = JSON.stringify([page, q, sort, attempt])
+  const requestKey = JSON.stringify([page, q, sort, status, tag, from, to, attempt])
 
   useEffect(() => {
     const controller = new AbortController()
-    fetchPosts({ page, perPage: PER_PAGE, q, sort }, controller.signal).then(
+    fetchPosts(
+      { ...toListPostsParams({ page, q, sort, status, tag, from, to }), perPage: PER_PAGE },
+      controller.signal,
+    ).then(
       (data) => setResult({ key: requestKey, data, errorMessage: '' }),
       (error: unknown) => {
         if (!controller.signal.aborted) {
@@ -43,7 +56,7 @@ export const PostsCsrView = () => {
       },
     )
     return () => controller.abort()
-  }, [page, q, sort, requestKey])
+  }, [page, q, sort, status, tag, from, to, requestKey])
 
   // A result for an older page/attempt counts as still loading.
   const loaded = result?.key === requestKey ? result : null
@@ -68,11 +81,21 @@ export const PostsCsrView = () => {
           </>
         }
       />
-      <PostsFilters q={q} sort={sort} onChange={(patch) => setState({ ...patch, page: 1 })} />
+      <PostsFilters
+        q={q}
+        sort={sort}
+        tag={tag}
+        from={from}
+        to={to}
+        tags={tags}
+        onChange={(patch) => setState({ ...patch, page: 1 })}
+      />
       <PostsState
         loading={isLoading}
         empty={!isLoading && !errorMessage && posts.length === 0}
-        emptyMessage="No posts found."
+        emptyMessage={
+          hasActivePostFilters(state) ? 'No posts match your filters.' : 'No posts found.'
+        }
         errorMessage={errorMessage}
         onRetry={() => setAttempt((value) => value + 1)}
       >

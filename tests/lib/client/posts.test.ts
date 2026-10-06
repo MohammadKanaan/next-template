@@ -65,6 +65,49 @@ describe('fetchPosts', () => {
     expect(calls[0]).not.toContain('q=')
   })
 
+  it('forwards every defined filter and skips the empty ones', async () => {
+    const calls: string[] = []
+    vi.stubGlobal('fetch', (input: string, init?: RequestInit) => {
+      calls.push(input)
+      return GET(new Request(new URL(input, 'http://localhost'), init))
+    })
+    await fetchPosts({
+      page: 1,
+      perPage: 9,
+      tag: 'news',
+      from: '2026-10-01',
+      to: '2026-10-31',
+      status: 'published',
+      q: undefined,
+    })
+    const params = new URL(calls[0], 'http://localhost').searchParams
+    expect(Object.fromEntries(params)).toEqual({
+      page: '1',
+      perPage: '9',
+      tag: 'news',
+      from: '2026-10-01',
+      to: '2026-10-31',
+      status: 'published',
+    })
+  })
+
+  it('filters by tag and date through the Route Handler', async () => {
+    const author = await createUser({})
+    const tagged = await db.post.create({
+      data: { userId: author.id, title: 'Tagged', body: 'b', status: 'published' },
+    })
+    await db.post.create({
+      data: { userId: author.id, title: 'Plain', body: 'b', status: 'published' },
+    })
+    await db.post.update({
+      where: { id: tagged.id },
+      data: { tags: { create: { tag: { create: { name: 'news' } } } } },
+    })
+    const today = new Date().toISOString().slice(0, 10)
+    const page = await fetchPosts({ page: 1, perPage: 9, tag: 'news', from: today, to: today })
+    expect(page.items.map((post) => post.title)).toEqual(['Tagged'])
+  })
+
   it('throws a RequestError carrying the server message and status', async () => {
     const error = await fetchPosts({ page: 0, perPage: 9 }).catch((caught: unknown) => caught)
     expect(error).toBeInstanceOf(RequestError)

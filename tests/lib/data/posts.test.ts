@@ -430,7 +430,7 @@ describe('posts DAL', () => {
       expect(await titles(owner.id)).toEqual(['Published'])
     })
 
-    it('lets an author list every status of their own posts, and an admin everything', async () => {
+    it('lets an author list every status of their own posts; everyone else, admins too, gets published', async () => {
       const owner = await createUser({})
       const admin = await createUser({ role: 'admin' })
       await seedPost(owner.id, 'Draft', 'B', 'draft')
@@ -444,8 +444,17 @@ describe('posts DAL', () => {
       // Without the author filter the author is just another reader.
       expect(await statuses()).toEqual(['published'])
       await signInAs(admin)
-      expect(await statuses()).toEqual(['published', 'archived', 'draft'])
-      expect(await statuses(owner.id)).toEqual(['published', 'archived', 'draft'])
+      expect(await statuses()).toEqual(['published'])
+      expect(await statuses(owner.id)).toEqual(['published'])
+    })
+
+    it('lets an admin list their own posts of every status', async () => {
+      const admin = await createUser({ role: 'admin' })
+      await seedPost(admin.id, 'Draft', 'B', 'draft')
+      await seedPost(admin.id, 'Published')
+      await signInAs(admin)
+      const page = await listPosts({ page: 1, perPage: 10, authorId: admin.id })
+      expect(page.items.map((post) => post.status)).toEqual(['published', 'draft'])
     })
 
     it('never caches a list that depends on the viewer, and keeps the public one apart', async () => {
@@ -470,6 +479,235 @@ describe('posts DAL', () => {
       await seedPost(owner.id, 'Published')
       signOut()
       expect((await listPosts({ page: 1, perPage: 10 })).totalItems).toBe(1)
+    })
+  })
+
+  describe('filters', () => {
+    const titles = async (params: Partial<Parameters<typeof listPosts>[0]> = {}) => {
+      const page = await listPosts({ page: 1, perPage: 10, sort: 'oldest', ...params })
+      return page.items.map((post) => post.title)
+    }
+
+    const tagPost = async (postId: number, ...names: string[]) => {
+      for (const name of names) {
+        const tag = await db.tag.upsert({ where: { name }, create: { name }, update: {} })
+        await db.postTag.create({ data: { postId, tagId: tag.id } })
+      }
+    }
+
+    describe('status', () => {
+      it('lets an author narrow their own list to one status', async () => {
+        const owner = await createUser({})
+        await seedPost(owner.id, 'Draft', 'B', 'draft')
+        await seedPost(owner.id, 'Archived', 'B', 'archived')
+        await seedPost(owner.id, 'Published')
+        await signInAs(owner)
+        expect(await titles({ authorId: owner.id, status: 'draft' })).toEqual(['Draft'])
+        expect(await titles({ authorId: owner.id, status: 'archived' })).toEqual(['Archived'])
+        expect(await titles({ authorId: owner.id, status: 'published' })).toEqual(['Published'])
+      })
+
+      it('lets an admin pick a status across every author', async () => {
+        const a = await createUser({})
+        const b = await createUser({})
+        const admin = await createUser({ role: 'admin' })
+        await seedPost(a.id, 'A draft', 'B', 'draft')
+        await seedPost(b.id, 'B draft', 'B', 'draft')
+        await seedPost(b.id, 'B live')
+        await signInAs(admin)
+        expect(await titles({ status: 'draft' })).toEqual(['A draft', 'B draft'])
+        expect(await titles({ status: 'draft', authorId: b.id })).toEqual(['B draft'])
+        expect(await titles()).toEqual(['B live'])
+      })
+
+      it('ignores a status that is not published for anyone else', async () => {
+        const owner = await createUser({})
+        const other = await createUser({})
+        await seedPost(owner.id, 'Draft', 'B', 'draft')
+        await seedPost(owner.id, 'Archived', 'B', 'archived')
+        await seedPost(owner.id, 'Published')
+        for (const viewer of [null, other]) {
+          if (viewer) {
+            await signInAs(viewer)
+          } else {
+            signOut()
+          }
+          expect(await titles({ status: 'draft' })).toEqual(['Published'])
+          expect(await titles({ status: 'archived', authorId: owner.id })).toEqual(['Published'])
+        }
+      })
+
+      it('rejects an unknown status', async () => {
+        await expect(
+          listPosts({ page: 1, perPage: 10, status: 'deleted' as never }),
+        ).rejects.toBeInstanceOf(ValidationError)
+      })
+    })
+
+    describe('tag', () => {
+      it('lists only posts that carry the tag, whatever its case', async () => {
+        const author = await createUser({})
+        const a = await seedPost(author.id, 'Both')
+        const b = await seedPost(author.id, 'News only')
+        await seedPost(author.id, 'Untagged')
+        await tagPost(a.id, 'news', 'tips')
+        await tagPost(b.id, 'news')
+        expect(await titles({ tag: 'news' })).toEqual(['Both', 'News only'])
+        expect(await titles({ tag: ' TIPS ' })).toEqual(['Both'])
+        expect(await titles({ tag: 'missing' })).toEqual([])
+        expect((await listPosts({ page: 1, perPage: 1, tag: 'news' })).totalItems).toBe(2)
+      })
+
+      it('does not list a draft under its tag for a visitor', async () => {
+        const author = await createUser({})
+        const draft = await seedPost(author.id, 'Hidden', 'B', 'draft')
+        await tagPost(draft.id, 'news')
+        expect(await titles({ tag: 'news' })).toEqual([])
+      })
+
+      it('rejects a tag that is empty or too long', async () => {
+        for (const tag of ['', 'x'.repeat(31)]) {
+          await expect(listPosts({ page: 1, perPage: 10, tag })).rejects.toBeInstanceOf(
+            ValidationError,
+          )
+        }
+      })
+    })
+
+    describe('date range', () => {
+      const seedDated = async (userId: string, title: string, createdAt: string) => {
+        return db.post.create({
+          data: { userId, title, body: 'B', status: 'published', createdAt: new Date(createdAt) },
+        })
+      }
+
+      it('includes both end days in full and excludes the days around them', async () => {
+        const author = await createUser({})
+        await seedDated(author.id, 'Before', '2026-09-30T23:59:59.999Z')
+        await seedDated(author.id, 'First day start', '2026-10-01T00:00:00.000Z')
+        await seedDated(author.id, 'Middle', '2026-10-03T12:00:00.000Z')
+        await seedDated(author.id, 'Last day end', '2026-10-05T23:59:59.999Z')
+        await seedDated(author.id, 'After', '2026-10-06T00:00:00.000Z')
+        expect(await titles({ from: '2026-10-01', to: '2026-10-05' })).toEqual([
+          'First day start',
+          'Middle',
+          'Last day end',
+        ])
+      })
+
+      it('supports an open start or end, and a single day', async () => {
+        const author = await createUser({})
+        await seedDated(author.id, 'Old', '2026-01-10T10:00:00.000Z')
+        await seedDated(author.id, 'New', '2026-10-10T10:00:00.000Z')
+        expect(await titles({ from: '2026-10-01' })).toEqual(['New'])
+        expect(await titles({ to: '2026-01-10' })).toEqual(['Old'])
+        expect(await titles({ from: '2026-10-10', to: '2026-10-10' })).toEqual(['New'])
+        expect(await titles({ from: '2026-10-11', to: '2026-10-01' })).toEqual([])
+      })
+
+      it('rejects a day that does not exist', async () => {
+        await expect(
+          listPosts({ page: 1, perPage: 10, from: '2026-02-30' }),
+        ).rejects.toBeInstanceOf(ValidationError)
+      })
+    })
+
+    it('combines every filter with the author, search and sort', async () => {
+      const a = await createUser({})
+      const b = await createUser({})
+      const mk = (userId: string, title: string, createdAt: string) =>
+        db.post.create({
+          data: { userId, title, body: 'B', status: 'published', createdAt: new Date(createdAt) },
+        })
+      const hit1 = await mk(a.id, 'Cats 1', '2026-10-02T00:00:00Z')
+      const hit2 = await mk(a.id, 'Cats 2', '2026-10-03T00:00:00Z')
+      const wrongTag = await mk(a.id, 'Cats 3', '2026-10-03T00:00:00Z')
+      const wrongAuthor = await mk(b.id, 'Cats 4', '2026-10-03T00:00:00Z')
+      const wrongDate = await mk(a.id, 'Cats 5', '2026-11-03T00:00:00Z')
+      const wrongTitle = await mk(a.id, 'Dogs', '2026-10-03T00:00:00Z')
+      for (const post of [hit1, hit2, wrongAuthor, wrongDate, wrongTitle]) {
+        await tagPost(post.id, 'pets')
+      }
+      await tagPost(wrongTag.id, 'other')
+      const params = {
+        authorId: a.id,
+        q: 'cats',
+        tag: 'pets',
+        from: '2026-10-01',
+        to: '2026-10-31',
+      }
+      expect(await titles(params)).toEqual(['Cats 1', 'Cats 2'])
+      expect(await titles({ ...params, sort: 'newest' })).toEqual(['Cats 2', 'Cats 1'])
+      expect((await listPosts({ page: 1, perPage: 1, ...params })).totalItems).toBe(2)
+    })
+
+    describe('caching', () => {
+      const cachedKeys = () => getRedis().keys('cache:v:*')
+
+      it('caches a tag list under its own key, apart from the unfiltered list', async () => {
+        const author = await createUser({})
+        const post = await seedPost(author.id, 'Tagged')
+        await seedPost(author.id, 'Plain')
+        await tagPost(post.id, 'news')
+        expect(await titles({ tag: 'news' })).toEqual(['Tagged'])
+        expect(await cachedKeys()).toHaveLength(1)
+        expect(await titles()).toEqual(['Tagged', 'Plain'])
+        expect(await cachedKeys()).toHaveLength(2)
+        expect(await titles({ tag: 'news' })).toEqual(['Tagged'])
+      })
+
+      it('invalidates a cached tag list when a post changes', async () => {
+        const author = await createUser({})
+        const post = await seedPost(author.id, 'Tagged')
+        await tagPost(post.id, 'news')
+        await signInAs(author)
+        expect(await titles({ tag: 'news' })).toEqual(['Tagged'])
+        await updatePost(post.id, { tags: [] })
+        expect(await titles({ tag: 'news' })).toEqual([])
+      })
+
+      it('never caches a search, a date range or either end of one', async () => {
+        const author = await createUser({})
+        await seedPost(author.id, 'Findable')
+        await titles({ q: 'find' })
+        await titles({ from: '2020-01-01' })
+        await titles({ to: '2099-01-01' })
+        await titles({ from: '2020-01-01', to: '2099-01-01', tag: 'news' })
+        expect(await cachedKeys()).toEqual([])
+      })
+
+      it('never caches a status that the viewer chose', async () => {
+        const owner = await createUser({})
+        const admin = await createUser({ role: 'admin' })
+        await seedPost(owner.id, 'Draft', 'B', 'draft')
+        await signInAs(owner)
+        await titles({ authorId: owner.id, status: 'draft' })
+        await titles({ authorId: owner.id })
+        await signInAs(admin)
+        await titles({ status: 'draft' })
+        expect(await cachedKeys()).toEqual([])
+      })
+
+      it('shares the cached published list between viewers who ask for published', async () => {
+        const owner = await createUser({})
+        await seedPost(owner.id, 'Draft', 'B', 'draft')
+        await seedPost(owner.id, 'Live')
+        signOut()
+        await titles({ authorId: owner.id })
+        await signInAs(owner)
+        // The owner asking for published explicitly gets the same, safe-to-share result.
+        expect(await titles({ authorId: owner.id, status: 'published' })).toEqual(['Live'])
+        expect(await cachedKeys()).toHaveLength(1)
+      })
+
+      it('does not serve a visitor the author their drafts through the cache', async () => {
+        const owner = await createUser({})
+        await seedPost(owner.id, 'Draft', 'B', 'draft')
+        await signInAs(owner)
+        expect(await titles({ authorId: owner.id, status: 'draft' })).toEqual(['Draft'])
+        signOut()
+        expect(await titles({ authorId: owner.id, status: 'draft' })).toEqual([])
+      })
     })
   })
 

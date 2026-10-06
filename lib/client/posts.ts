@@ -23,15 +23,12 @@ export const fetchPosts = async (
   query: ListPostsParams,
   signal?: AbortSignal,
 ): Promise<Page<PostSummary>> => {
-  const params = new URLSearchParams({ page: String(query.page), perPage: String(query.perPage) })
-  if (query.authorId) {
-    params.set('authorId', query.authorId)
-  }
-  if (query.q) {
-    params.set('q', query.q)
-  }
-  if (query.sort) {
-    params.set('sort', query.sort)
+  const params = new URLSearchParams()
+  // Every defined key goes out as is, so a new filter needs no change here.
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined && value !== null && value !== '') {
+      params.set(key, String(value))
+    }
   }
   const response = await fetch(`${env.apiBaseUrl}/posts?${params}`, { signal })
   const body: unknown = await response.json().catch(() => null)

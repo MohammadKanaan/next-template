@@ -10,6 +10,8 @@ import {
   setPostStatusInput,
   tagNameSchema,
   postsUrlQuery,
+  hasActivePostFilters,
+  toListPostsParams,
   updatePostInput,
 } from '@/lib/dto/posts'
 
@@ -129,15 +131,29 @@ describe('listPostsQuery search and sort', () => {
 
 describe('postsUrlQuery', () => {
   it('parses an empty URL to the defaults', () => {
-    expect(postsUrlQuery.parse({})).toEqual({ page: 1, q: '', sort: 'newest' })
-  })
-
-  it('falls back per field instead of failing', () => {
-    expect(postsUrlQuery.parse({ sort: 'garbage', page: 'abc', q: 'a'.repeat(101) })).toEqual({
+    expect(postsUrlQuery.parse({})).toEqual({
       page: 1,
       q: '',
       sort: 'newest',
+      status: '',
+      tag: '',
+      from: '',
+      to: '',
     })
+  })
+
+  it('falls back per field instead of failing', () => {
+    expect(postsUrlQuery.parse({ sort: 'garbage', page: 'abc', q: 'a'.repeat(101) })).toEqual(
+      postsUrlQuery.parse({}),
+    )
+    expect(
+      postsUrlQuery.parse({
+        status: 'deleted',
+        tag: 'x'.repeat(31),
+        from: '2026-13-45',
+        to: 'yesterday',
+      }),
+    ).toEqual(postsUrlQuery.parse({}))
     expect(postsUrlQuery.parse({ page: '0' }).page).toBe(1)
     expect(postsUrlQuery.parse({ page: String(MAX_PAGE + 1) }).page).toBe(1)
     expect(postsUrlQuery.parse({ page: ['1', '2'], sort: ['oldest'] })).toMatchObject({
@@ -148,10 +164,81 @@ describe('postsUrlQuery', () => {
 
   it('keeps valid values', () => {
     expect(postsUrlQuery.parse({ page: '3', q: ' cats ', sort: 'oldest' })).toEqual({
+      ...postsUrlQuery.parse({}),
       page: 3,
       q: 'cats',
       sort: 'oldest',
     })
+  })
+
+  it('parses the filters: status, a normalized tag and ISO days', () => {
+    expect(
+      postsUrlQuery.parse({ status: 'draft', tag: ' News ', from: '2026-10-01', to: '2026-10-31' }),
+    ).toMatchObject({ status: 'draft', tag: 'news', from: '2026-10-01', to: '2026-10-31' })
+    expect(postsUrlQuery.parse({ status: '' }).status).toBe('')
+  })
+})
+
+describe('listPostsQuery filters', () => {
+  it('leaves status, tag and dates out by default', () => {
+    const query = listPostsQuery.parse({})
+    expect([query.status, query.tag, query.from, query.to]).toEqual([
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+    ])
+  })
+
+  it('accepts a status, a tag and ISO days, normalizing the tag', () => {
+    expect(
+      listPostsQuery.parse({
+        status: 'archived',
+        tag: ' News ',
+        from: '2026-02-28',
+        to: '2026-03-01',
+      }),
+    ).toMatchObject({ status: 'archived', tag: 'news', from: '2026-02-28', to: '2026-03-01' })
+  })
+
+  it('rejects what the URL contract would fall back from', () => {
+    for (const bad of [
+      { status: 'deleted' },
+      { tag: '' },
+      { tag: 'x'.repeat(31) },
+      { from: '2026-02-30' },
+      { to: '10/05/2026' },
+      { from: '2026-10-05T10:00:00Z' },
+    ]) {
+      expect(listPostsQuery.safeParse(bad).success, JSON.stringify(bad)).toBe(false)
+    }
+  })
+})
+
+describe('toListPostsParams', () => {
+  it('turns empty filters into undefined and keeps the rest', () => {
+    expect(toListPostsParams(postsUrlQuery.parse({}))).toEqual({
+      page: 1,
+      sort: 'newest',
+      q: undefined,
+      status: undefined,
+      tag: undefined,
+      from: undefined,
+      to: undefined,
+    })
+    expect(
+      toListPostsParams(postsUrlQuery.parse({ page: '2', tag: 'news', status: 'draft' })),
+    ).toMatchObject({ page: 2, tag: 'news', status: 'draft' })
+  })
+})
+
+describe('hasActivePostFilters', () => {
+  it('ignores page and sort', () => {
+    expect(hasActivePostFilters(postsUrlQuery.parse({ page: '3', sort: 'oldest' }))).toBe(false)
+    for (const key of ['q', 'tag', 'from', 'to', 'status']) {
+      const value = key === 'from' || key === 'to' ? '2026-10-01' : key === 'status' ? 'draft' : 'x'
+      expect(hasActivePostFilters(postsUrlQuery.parse({ [key]: value })), key).toBe(true)
+    }
   })
 })
 
