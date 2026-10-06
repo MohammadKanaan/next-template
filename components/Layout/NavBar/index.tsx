@@ -4,7 +4,7 @@ import clsx from 'clsx'
 import { Menu, X } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Suspense, useCallback, useEffect, useState } from 'react'
+import { useEffect, useEffectEvent, useState } from 'react'
 import { SignOutButton } from '@/components/Auth/SignOutButton'
 import { Button } from '@/components/SCN/button'
 import { ThemeToggle } from '@/components/ThemeToggle'
@@ -39,12 +39,11 @@ type NavLink = (typeof NAV_LINKS)[number]
 
 type NavLinksProps = {
   links: NavLink[]
-  pathname: string | null
 }
 
-function NavLinks({ links, pathname }: NavLinksProps) {
-  const isActive = (href: string) =>
-    pathname !== null && (pathname === href || pathname.startsWith(`${href}/`))
+const NavLinks = ({ links }: NavLinksProps) => {
+  const pathname = usePathname()
+  const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`)
 
   return links.map((link) => (
     <Link
@@ -57,20 +56,11 @@ function NavLinks({ links, pathname }: NavLinksProps) {
   ))
 }
 
-/** Reads the pathname, which is not known while prerendering a route with dynamic params. */
-function ActiveNavLinks({ links }: Pick<NavLinksProps, 'links'>) {
-  return <NavLinks links={links} pathname={usePathname()} />
-}
-
 type AccountActionsProps = {
   user: CurrentUser | null
-  pending: boolean
 }
 
-function AccountActions({ user, pending }: AccountActionsProps) {
-  if (pending) {
-    return null
-  }
+const AccountActions = ({ user }: AccountActionsProps) => {
   if (!user) {
     return (
       <Button asChild size="sm">
@@ -91,19 +81,17 @@ function AccountActions({ user, pending }: AccountActionsProps) {
 
 type NavBarProps = {
   user: CurrentUser | null
-  /** The viewer is still loading: show no account actions rather than a wrong "Log in". */
-  pending?: boolean
 }
 
-export function NavBar({ user, pending = false }: NavBarProps) {
+export const NavBar = ({ user }: NavBarProps) => {
   const { lockScroll, unlockScroll } = useScrollLock()
   const links = user?.role === 'admin' ? [...NAV_LINKS, ADMIN_LINK] : NAV_LINKS
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
 
-  const closeMobileMenu = useCallback(() => {
+  const closeMobileMenu = () => {
     setIsMobileMenuOpen(false)
     unlockScroll()
-  }, [unlockScroll])
+  }
 
   const toggleMobileMenu = () => {
     if (isMobileMenuOpen) {
@@ -115,16 +103,18 @@ export function NavBar({ user, pending = false }: NavBarProps) {
     lockScroll()
   }
 
-  useEffect(() => {
-    const handleResize = () => {
-      if (window.matchMedia(`(min-width: ${BREAKPOINTS.md})`).matches) {
-        closeMobileMenu()
-      }
+  const closeOnDesktop = useEffectEvent(() => {
+    if (window.matchMedia(`(min-width: ${BREAKPOINTS.md})`).matches) {
+      closeMobileMenu()
     }
+  })
+
+  useEffect(() => {
+    const handleResize = () => closeOnDesktop()
 
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
-  }, [closeMobileMenu])
+  }, [])
 
   return (
     <header className={styles.header}>
@@ -145,12 +135,10 @@ export function NavBar({ user, pending = false }: NavBarProps) {
         </button>
 
         <div className={styles.desktopNav}>
-          <Suspense fallback={<NavLinks links={links} pathname={null} />}>
-            <ActiveNavLinks links={links} />
-          </Suspense>
+          <NavLinks links={links} />
           <div className={styles.accountArea}>
             <ThemeToggle />
-            <AccountActions user={user} pending={pending} />
+            <AccountActions user={user} />
           </div>
         </div>
 
@@ -182,7 +170,7 @@ export function NavBar({ user, pending = false }: NavBarProps) {
             <ThemeToggle />
             {/* Account actions close the menu; theme choices keep it open. */}
             <div className={styles.accountArea} onClick={closeMobileMenu}>
-              <AccountActions user={user} pending={pending} />
+              <AccountActions user={user} />
             </div>
           </div>
         </div>

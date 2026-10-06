@@ -6,7 +6,7 @@ export type VerifyEmailProps = {
   url: string
 }
 
-export function VerifyEmail({ name, url }: VerifyEmailProps) {
+export const VerifyEmail = ({ name, url }: VerifyEmailProps) => {
   return (
     <EmailLayout preview="Confirm your email address">
       <Heading as="h1" style={styles.heading}>

@@ -8,7 +8,7 @@ type EmailLayoutProps = {
 }
 
 /** Shared frame for transactional emails. Email clients need inline styles, not CSS Modules. */
-export function EmailLayout({ preview, children }: EmailLayoutProps) {
+export const EmailLayout = ({ preview, children }: EmailLayoutProps) => {
   return (
     <Html lang="en">
       <Head />

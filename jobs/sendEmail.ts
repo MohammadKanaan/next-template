@@ -6,7 +6,7 @@ import { sendMail } from '@/lib/server/mailer'
 import { jobs } from './definitions'
 
 /** Maps a payload's `template` to its React Email component and subject, then sends it. */
-export async function handleSendEmail(payload: unknown) {
+export const handleSendEmail = async (payload: unknown) => {
   const email = jobs['send-email'].schema.parse(payload)
   switch (email.template) {
     case 'verify-email':

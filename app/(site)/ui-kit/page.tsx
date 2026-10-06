@@ -6,6 +6,8 @@ export const metadata: Metadata = {
   description: 'Component catalog for the Next template.',
 }
 
-export default function UiKitPage() {
+const UiKitPage = () => {
   return <UiKitView />
 }
+
+export default UiKitPage

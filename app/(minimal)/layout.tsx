@@ -1,5 +1,7 @@
 import styles from './styles.module.scss'
 
-export default function MinimalLayout({ children }: LayoutProps<'/'>) {
+const MinimalLayout = ({ children }: LayoutProps<'/'>) => {
   return <div className={styles.minimalContent}>{children}</div>
 }
+
+export default MinimalLayout

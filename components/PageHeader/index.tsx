@@ -7,7 +7,7 @@ type PageHeaderProps = {
   actions?: ReactNode
 }
 
-export function PageHeader({ title, description, actions }: PageHeaderProps) {
+export const PageHeader = ({ title, description, actions }: PageHeaderProps) => {
   return (
     <header className={styles.pageHeader}>
       <div className={styles.content}>

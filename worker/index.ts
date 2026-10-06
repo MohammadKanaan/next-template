@@ -26,7 +26,7 @@ const boss = new PgBoss({ connectionString })
 boss.on('error', (error) => log.error({ err: error }, 'pg-boss error'))
 
 /** Handlers receive job arrays; each handler re-validates the payload it is given. */
-async function register(name: JobName, handler: (payload: unknown) => Promise<void>) {
+const register = async (name: JobName, handler: (payload: unknown) => Promise<void>) => {
   await boss.work(name, async (batch) => {
     for (const job of batch) {
       try {
@@ -39,7 +39,7 @@ async function register(name: JobName, handler: (payload: unknown) => Promise<vo
   })
 }
 
-async function start() {
+const start = async () => {
   if (process.env.NODE_ENV === 'production') {
     // Fail at boot on a bad config instead of on the first job.
     serverEnv()
@@ -68,7 +68,7 @@ async function start() {
 
 let shuttingDown = false
 
-async function shutdown(signal: string) {
+const shutdown = async (signal: string) => {
   if (shuttingDown) {
     return
   }

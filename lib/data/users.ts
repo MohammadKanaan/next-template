@@ -4,10 +4,13 @@ import { Prisma } from '@/generated/prisma/client'
 import { toPage, type Page } from '@/lib/dto/common'
 import {
   currentUserSchema,
+  listUsersQuery,
+  setUserRoleInput,
+  updateProfileInput,
   type AdminUser,
   type CurrentUser,
   type ListUsersQuery,
-  type Role,
+  type SetUserRoleInput,
   type UpdateProfileInput,
 } from '@/lib/dto/users'
 import { invalidateTags, remember } from '@/lib/server/cache'
@@ -15,7 +18,13 @@ import { getSessionUser, requireAdmin, requireUser } from './auth'
 import { POSTS_TAG, userTag } from './cacheTags'
 import { db } from './db'
 import { escapeLike } from './escapeLike'
-import { ForbiddenError, NotFoundError, UnauthorizedError, ValidationError } from './errors'
+import {
+  ForbiddenError,
+  NotFoundError,
+  parseInput,
+  UnauthorizedError,
+  ValidationError,
+} from './errors'
 
 /** Selects exactly the `UserProfile` DTO; the row is the DTO, so drift fails to compile. */
 export const userProfileSelect = {
@@ -49,7 +58,7 @@ const adminUserSelect = {
 
 type AdminUserRow = Prisma.UserGetPayload<{ select: typeof adminUserSelect }>
 
-function toAdminUser({ _count, ...row }: AdminUserRow): AdminUser {
+const toAdminUser = ({ _count, ...row }: AdminUserRow): AdminUser => {
   return { ...row, postCount: _count.posts }
 }
 
@@ -73,7 +82,7 @@ export const getViewer = cache(async (): Promise<CurrentUser | null> => {
   )
 })
 
-export async function getCurrentUser(): Promise<CurrentUser> {
+export const getCurrentUser = async (): Promise<CurrentUser> => {
   const viewer = await getViewer()
   if (!viewer) {
     throw new UnauthorizedError()
@@ -81,7 +90,7 @@ export async function getCurrentUser(): Promise<CurrentUser> {
   return viewer
 }
 
-export async function isUsernameTaken(username: string) {
+export const isUsernameTaken = async (username: string) => {
   return (await db.user.count({ where: { username } })) > 0
 }
 
@@ -90,16 +99,17 @@ export async function isUsernameTaken(username: string) {
  * from a race with another request) comes back as a field error. Cached post lists embed the
  * author's name and username, so they are invalidated along with the cached viewer.
  */
-export async function updateProfile(input: UpdateProfileInput): Promise<CurrentUser> {
+export const updateProfile = async (input: UpdateProfileInput): Promise<CurrentUser> => {
   const viewer = await requireUser()
+  const data = parseInput(updateProfileInput, input)
   const user = await db.user
     .update({
       where: { id: viewer.id },
       data: {
-        name: input.name,
-        username: input.username,
+        name: data.name,
+        username: data.username,
         // undefined leaves the website alone; an empty string or null clears it.
-        ...(input.website !== undefined && { website: input.website || null }),
+        ...(data.website !== undefined && { website: data.website || null }),
       },
       select: currentUserSelect,
     })
@@ -119,8 +129,9 @@ export async function updateProfile(input: UpdateProfileInput): Promise<CurrentU
  * name, username and email. Never cached: the list carries emails and is restricted to admins, and a
  * shared cache entry would outlive a role change.
  */
-export async function listUsers({ page, perPage, q }: ListUsersQuery): Promise<Page<AdminUser>> {
+export const listUsers = async (query: ListUsersQuery): Promise<Page<AdminUser>> => {
   await requireAdmin()
+  const { page, perPage, q } = parseInput(listUsersQuery, query)
   const contains = q ? { contains: escapeLike(q), mode: 'insensitive' as const } : undefined
   const where: Prisma.UserWhereInput = contains
     ? { OR: [{ name: contains }, { username: contains }, { email: contains }] }
@@ -143,8 +154,9 @@ export async function listUsers({ page, perPage, q }: ListUsersQuery): Promise<P
  * account (403, so the last admin cannot demote themselves). Roles are read from the database
  * session on every request, so the change applies on the target's next request.
  */
-export async function setUserRole(id: string, role: Role): Promise<AdminUser> {
+export const setUserRole = async (input: SetUserRoleInput): Promise<AdminUser> => {
   const viewer = await requireAdmin()
+  const { id, role } = parseInput(setUserRoleInput, input)
   const target = await db.user.findUnique({ where: { id }, select: { id: true } })
   if (!target) {
     throw new NotFoundError('User not found')

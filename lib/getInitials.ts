@@ -1,4 +1,4 @@
-export function getInitials(value: string, maximumParts = 2): string {
+export const getInitials = (value: string, maximumParts = 2): string => {
   return value
     .trim()
     .split(/\s+/)

@@ -1,4 +1,6 @@
 'use client'
+// React Hook Form's `register()` must run on every render; the React Compiler would cache it.
+'use no memo'
 
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
@@ -13,7 +15,7 @@ export type PasswordFormProps = {
   onSubmit: (values: ChangePasswordInput) => Promise<ActionResult<unknown>>
 }
 
-export function PasswordForm({ onSubmit }: PasswordFormProps) {
+export const PasswordForm = ({ onSubmit }: PasswordFormProps) => {
   const {
     register,
     handleSubmit,

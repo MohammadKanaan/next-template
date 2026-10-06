@@ -31,7 +31,7 @@ let cached: ServerEnv | undefined
  * `next build` (which never touches Redis, S3, or the mailer) works without these variables.
  * Throws one readable error that lists every missing or invalid variable.
  */
-export function serverEnv(): ServerEnv {
+export const serverEnv = (): ServerEnv => {
   if (cached) {
     return cached
   }
@@ -47,6 +47,6 @@ export function serverEnv(): ServerEnv {
 }
 
 /** Clears the memoized env; for tests. */
-export function resetServerEnv() {
+export const resetServerEnv = () => {
   cached = undefined
 }

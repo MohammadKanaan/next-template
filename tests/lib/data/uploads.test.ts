@@ -85,7 +85,7 @@ describe('uploads DAL', () => {
   })
 
   describe('attachAvatar', () => {
-    async function pendingUpload(userId: string) {
+    const pendingUpload = async (userId: string) => {
       return db.upload.create({
         data: {
           key: `avatars/${userId}/${crypto.randomUUID()}`,

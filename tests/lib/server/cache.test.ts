@@ -9,7 +9,7 @@ const schema = z.object({ id: z.number(), createdAt: z.coerce.date() })
 const createdAt = new Date('2026-01-02T03:04:05.000Z')
 const options = { ttl: 60, tags: ['posts'], schema }
 
-function counted(value = { id: 1, createdAt }) {
+const counted = (value = { id: 1, createdAt }) => {
   return vi.fn(async () => value)
 }
 

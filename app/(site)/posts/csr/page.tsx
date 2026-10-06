@@ -8,10 +8,13 @@ export const metadata: Metadata = {
   description: 'Posts fetched in the browser through the API layer.',
 }
 
-export default function PostsCsrPage() {
+const PostsCsrPage = () => {
+  // This page reads nothing on the server, so the view's `useSearchParams` needs a boundary.
   return (
     <Suspense fallback={<PageLoading />}>
       <PostsCsrView />
     </Suspense>
   )
 }
+
+export default PostsCsrPage

@@ -11,7 +11,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/SCN/dropdown-menu'
 
-export function ThemeToggle() {
+export const ThemeToggle = () => {
   const { theme, setTheme } = useTheme()
 
   return (

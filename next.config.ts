@@ -6,7 +6,7 @@ const scssBreakpoints = Object.entries(BREAKPOINTS)
   .join('\n')
 
 const nextConfig: NextConfig = {
-  cacheComponents: true,
+  reactCompiler: true,
   sassOptions: {
     additionalData: scssBreakpoints,
   },

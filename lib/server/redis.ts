@@ -5,7 +5,7 @@ import { logger } from './logger'
 
 const log = logger.child({ module: 'redis' })
 
-function createClient() {
+const createClient = () => {
   const client = new Redis(serverEnv().REDIS_URL, {
     lazyConnect: true,
     // Redis is an optimization, never a dependency: fail a command fast instead of queueing it
@@ -22,7 +22,7 @@ function createClient() {
 const globalForRedis = globalThis as unknown as { redis?: Redis }
 
 /** Shared connection, created on first use so importing this file never needs REDIS_URL. */
-export function getRedis(): Redis {
+export const getRedis = (): Redis => {
   if (!globalForRedis.redis) {
     globalForRedis.redis = createClient()
   }

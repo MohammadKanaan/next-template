@@ -14,7 +14,7 @@ export type Health = {
 const CHECK_TIMEOUT_MS = 2000
 
 /** Rejects when `probe` does not settle in time, so a hung dependency reads as a failure. */
-async function withTimeout(name: string, probe: () => Promise<unknown>): Promise<HealthCheck> {
+const withTimeout = async (name: string, probe: () => Promise<unknown>): Promise<HealthCheck> => {
   let timer: ReturnType<typeof setTimeout> | undefined
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(
@@ -38,7 +38,7 @@ async function withTimeout(name: string, probe: () => Promise<unknown>): Promise
  * Liveness of the services the app cannot work without. Deliberately unauthenticated (load
  * balancers and container probes call it) and returns only ok/fail per dependency, never errors.
  */
-export async function checkHealth(): Promise<Health> {
+export const checkHealth = async (): Promise<Health> => {
   const [dbCheck, redisCheck] = await Promise.all([
     withTimeout('db', () => db.$queryRaw`SELECT 1`),
     withTimeout('redis', () => getRedis().ping()),

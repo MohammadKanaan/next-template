@@ -14,7 +14,7 @@ export const cookieStore = {
 }
 
 /** Request headers as a browser would send them back, encoded the way Next serialises cookies. */
-export function requestHeaders() {
+export const requestHeaders = () => {
   const cookie = [...cookieJar]
     .map(([name, value]) => `${name}=${encodeURIComponent(value)}`)
     .join('; ')

@@ -2,21 +2,16 @@
 
 import { revalidatePath } from 'next/cache'
 import { ROUTE_POSTS } from '@/lib/constants-routes'
-import { parseInput, toActionFailure } from '@/lib/data/errors'
+import { toActionFailure } from '@/lib/data/errors'
 import { createPost, deletePost, updatePost } from '@/lib/data/posts'
-import { idSchema } from '@/lib/dto/common'
-import {
-  createPostInput,
-  updatePostInput,
-  type CreatePostInput,
-  type PostDetail,
-  type UpdatePostInput,
-} from '@/lib/dto/posts'
+import type { CreatePostInput, PostDetail, UpdatePostInput } from '@/lib/dto/posts'
 import type { ActionResult } from '@/types/api'
 
-export async function createPostAction(input: CreatePostInput): Promise<ActionResult<PostDetail>> {
+export const createPostAction = async (
+  input: CreatePostInput,
+): Promise<ActionResult<PostDetail>> => {
   try {
-    const post = await createPost(parseInput(createPostInput, input))
+    const post = await createPost(input)
     revalidatePath(ROUTE_POSTS, 'layout')
     return { ok: true, data: post }
   } catch (error) {
@@ -24,12 +19,12 @@ export async function createPostAction(input: CreatePostInput): Promise<ActionRe
   }
 }
 
-export async function updatePostAction(
+export const updatePostAction = async (
   id: number,
   input: UpdatePostInput,
-): Promise<ActionResult<PostDetail>> {
+): Promise<ActionResult<PostDetail>> => {
   try {
-    const post = await updatePost(parseInput(idSchema, id), parseInput(updatePostInput, input))
+    const post = await updatePost(id, input)
     revalidatePath(ROUTE_POSTS, 'layout')
     return { ok: true, data: post }
   } catch (error) {
@@ -37,9 +32,9 @@ export async function updatePostAction(
   }
 }
 
-export async function deletePostAction(id: number): Promise<ActionResult<null>> {
+export const deletePostAction = async (id: number): Promise<ActionResult<null>> => {
   try {
-    await deletePost(parseInput(idSchema, id))
+    await deletePost(id)
     revalidatePath(ROUTE_POSTS, 'layout')
     return { ok: true, data: null }
   } catch (error) {

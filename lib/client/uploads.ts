@@ -5,7 +5,7 @@ import { RequestError } from './posts'
  * Sends `file` straight to storage with the presigned POST `ticket` (the one client request that
  * goes to a non-app URL). The policy fields must come first and the file last, as S3 requires.
  */
-export async function uploadFile(ticket: UploadTicket, file: File, signal?: AbortSignal) {
+export const uploadFile = async (ticket: UploadTicket, file: File, signal?: AbortSignal) => {
   const body = new FormData()
   for (const [name, value] of Object.entries(ticket.fields)) {
     body.append(name, value)

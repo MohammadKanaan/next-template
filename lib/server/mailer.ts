@@ -22,7 +22,7 @@ let resend: Resend | undefined
  * from the message, since it carries live reset and verification links) so the job fails and is
  * retried visibly. Also throws when Resend rejects the message.
  */
-export async function sendMail({ to, subject, react }: Mail): Promise<void> {
+export const sendMail = async ({ to, subject, react }: Mail): Promise<void> => {
   const { RESEND_API_KEY, EMAIL_FROM } = serverEnv()
   if (!RESEND_API_KEY && process.env.NODE_ENV === 'production') {
     throw new Error('RESEND_API_KEY is required in production: the email was not sent')

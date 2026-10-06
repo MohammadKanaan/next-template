@@ -19,10 +19,10 @@ export class RequestError extends Error {
  * Client facade for `GET /api/v1/posts`. Parses with the shared schema, so the caller gets the
  * same `Page<PostSummary>` (with `Date`s) that Server Components get from the DAL.
  */
-export async function fetchPosts(
+export const fetchPosts = async (
   query: ListPostsParams,
   signal?: AbortSignal,
-): Promise<Page<PostSummary>> {
+): Promise<Page<PostSummary>> => {
   const params = new URLSearchParams({ page: String(query.page), perPage: String(query.perPage) })
   if (query.authorId) {
     params.set('authorId', query.authorId)

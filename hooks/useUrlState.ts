@@ -1,7 +1,7 @@
 'use client'
 
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { useCallback, useEffect, useMemo, useRef, useTransition } from 'react'
+import { useEffect, useRef, useTransition } from 'react'
 import type { z } from 'zod'
 import { toScalarParams } from '@/lib/searchParams'
 
@@ -20,9 +20,13 @@ type UrlStateOptions = {
  * Each patch is built on the last query it requested, not on the committed URL, so two patches
  * issued before the first navigation lands (a search and a sort change, say) both survive.
  * `isPending` is true while that navigation (and the server render it triggers) is in flight.
- * Callers must sit inside `<Suspense>`: `useSearchParams` requires it under Cache Components.
+ * On a page that reads nothing on the server (so it could be prerendered), the caller must sit
+ * inside `<Suspense>`: `useSearchParams` requires it there. Pages that use `loadPage` need none.
  */
-export function useUrlState<S extends z.ZodObject>(schema: S, { history }: UrlStateOptions = {}) {
+export const useUrlState = <S extends z.ZodObject>(
+  schema: S,
+  { history }: UrlStateOptions = {},
+) => {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -36,37 +40,31 @@ export function useUrlState<S extends z.ZodObject>(schema: S, { history }: UrlSt
     latest.current = { committed: search, requested: null, pathname }
   }, [search, pathname])
 
-  const state: z.output<S> = useMemo(
-    () => schema.parse(toScalarParams(new URLSearchParams(search))),
-    [schema, search],
-  )
-  const defaults: z.output<S> = useMemo(() => schema.parse({}), [schema])
+  const state: z.output<S> = schema.parse(toScalarParams(new URLSearchParams(search)))
+  const defaults: z.output<S> = schema.parse({})
 
-  const setState = useCallback(
-    (patch: Partial<z.output<S>>) => {
-      const current = latest.current
-      const next = new URLSearchParams(current.requested ?? current.committed)
-      for (const [key, value] of Object.entries(patch)) {
-        const isDefault = String(value) === String(defaults[key])
-        if (value === undefined || value === null || value === '' || isDefault) {
-          next.delete(key)
-        } else {
-          next.set(key, String(value))
-        }
+  const setState = (patch: Partial<z.output<S>>) => {
+    const current = latest.current
+    const next = new URLSearchParams(current.requested ?? current.committed)
+    for (const [key, value] of Object.entries(patch)) {
+      const isDefault = String(value) === String(defaults[key])
+      if (value === undefined || value === null || value === '' || isDefault) {
+        next.delete(key)
+      } else {
+        next.set(key, String(value))
       }
-      const query = next.toString()
-      current.requested = query
-      const href = query ? `${current.pathname}?${query}` : current.pathname
-      startTransition(() => {
-        if (history === 'push') {
-          router.push(href, { scroll: false })
-        } else {
-          router.replace(href, { scroll: false })
-        }
-      })
-    },
-    [defaults, history, router],
-  )
+    }
+    const query = next.toString()
+    current.requested = query
+    const href = query ? `${current.pathname}?${query}` : current.pathname
+    startTransition(() => {
+      if (history === 'push') {
+        router.push(href, { scroll: false })
+      } else {
+        router.replace(href, { scroll: false })
+      }
+    })
+  }
 
   return { state, setState, isPending }
 }

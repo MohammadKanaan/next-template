@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { DeleteAccountDialog } from '@/components/Settings/DeleteAccountDialog'
 
-async function open() {
+const open = async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Delete account' }))
   return screen.findByRole('dialog')
 }

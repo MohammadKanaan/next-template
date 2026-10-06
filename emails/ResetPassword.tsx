@@ -6,7 +6,7 @@ export type ResetPasswordProps = {
   url: string
 }
 
-export function ResetPassword({ name, url }: ResetPasswordProps) {
+export const ResetPassword = ({ name, url }: ResetPasswordProps) => {
   return (
     <EmailLayout preview="Reset your password">
       <Heading as="h1" style={styles.heading}>

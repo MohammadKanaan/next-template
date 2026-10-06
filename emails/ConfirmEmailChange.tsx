@@ -8,7 +8,7 @@ export type ConfirmEmailChangeProps = {
 }
 
 /** Sent to the current address: the owner of the account approves moving it to `newEmail`. */
-export function ConfirmEmailChange({ name, newEmail, url }: ConfirmEmailChangeProps) {
+export const ConfirmEmailChange = ({ name, newEmail, url }: ConfirmEmailChangeProps) => {
   return (
     <EmailLayout preview="Confirm your email change">
       <Heading as="h1" style={styles.heading}>

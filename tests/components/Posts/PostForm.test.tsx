@@ -188,7 +188,7 @@ describe('PostForm draft', () => {
   })
 
   it('never resets what is being typed while the draft is written back into the form', async () => {
-    function Harness() {
+    const Harness = () => {
       const { value, setValue, removeValue } = useLocalStorage('post-draft:test', postDraftSchema)
       return (
         <PostForm
@@ -224,7 +224,7 @@ describe('PostForm draft', () => {
   })
 
   it('does not feed a draft saved elsewhere back into a form the user has touched', async () => {
-    function Harness() {
+    const Harness = () => {
       const { value } = useLocalStorage('post-draft:test', postDraftSchema)
       return (
         <PostForm
@@ -253,7 +253,7 @@ describe('PostForm draft', () => {
 
   it('restores a draft that was already in storage when the form mounts', () => {
     localStorage.setItem('post-draft:test', JSON.stringify({ title: 'Back again', body: 'Text' }))
-    function Harness() {
+    const Harness = () => {
       const { value } = useLocalStorage('post-draft:test', postDraftSchema)
       return <PostForm post={null} draft={value} submitLabel="Create" onSubmit={vi.fn()} />
     }

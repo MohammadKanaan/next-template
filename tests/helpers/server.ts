@@ -6,26 +6,26 @@ import { cookieJar } from './cookies'
 
 export const TEST_PASSWORD = 'correct-horse-battery'
 
-export function assertTestDatabase() {
+export const assertTestDatabase = () => {
   if (!process.env.DATABASE_URL?.includes('next_template_test')) {
     throw new Error('Server tests must run against next_template_test')
   }
 }
 
 /** Tests share Redis DB 15 only; anything else could hold real data. */
-export function assertTestRedis() {
+export const assertTestRedis = () => {
   if (!process.env.REDIS_URL?.endsWith('/15')) {
     throw new Error('Server tests must run against Redis database 15')
   }
 }
 
 /** Empties the test Redis (cache entries, tag versions, rate-limit counters). */
-export async function resetRedis() {
+export const resetRedis = async () => {
   assertTestRedis()
   await getRedis().flushdb()
 }
 
-export async function resetDatabase() {
+export const resetDatabase = async () => {
   assertTestDatabase()
   await resetRedis()
   cookieJar.clear()
@@ -33,9 +33,9 @@ export async function resetDatabase() {
 }
 
 /** Signs a user up through Better Auth (real password hash and account row), then signs out locally. */
-export async function createUser(
+export const createUser = async (
   overrides: Partial<{ name: string; username: string; email: string; role: Role }> = {},
-) {
+) => {
   const suffix = Math.random().toString(36).slice(2, 8)
   const email = overrides.email ?? `${suffix}@example.com`
   await auth.api.signUpEmail({
@@ -50,11 +50,11 @@ export async function createUser(
   return db.user.update({ where: { email }, data: { role: overrides.role ?? 'user' } })
 }
 
-export async function signInAs(user: { email: string }) {
+export const signInAs = async (user: { email: string }) => {
   cookieJar.clear()
   await auth.api.signInEmail({ body: { email: user.email, password: TEST_PASSWORD } })
 }
 
-export function signOut() {
+export const signOut = () => {
   cookieJar.clear()
 }

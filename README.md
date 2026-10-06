@@ -5,7 +5,7 @@ Auth, Server Actions for writes, shared Zod DTOs, schema-first forms, and shadcn
 
 ## Stack
 
-- Next.js 16 (App Router, Turbopack), React 19, TypeScript 5.9
+- Next.js 16 (App Router, Turbopack), React 19 with the React Compiler, TypeScript 5.9
 - Bun as the package manager (scripts run on Node 24)
 - SCSS CSS Modules for all styling; shadcn/ui (Radix) + Tailwind CSS 4 only inside `components/SCN`
 - lucide-react icons, sonner toasts
@@ -117,11 +117,11 @@ worker's start) and exit on a bad value. `output: 'standalone'` returns with the
 prisma/schema.prisma ──prisma generate──▶ generated/prisma (git-ignored)
 
 lib/dto/*  Zod schemas: inputs and outputs, types via z.infer (client- and server-safe)
-lib/data/* server-only DAL: the only code that touches Prisma; enforces auth; returns DTOs
+lib/data/* server-only DAL: the only code that touches Prisma; enforces auth; validates inputs; returns DTOs
 
 Server Component ───────────────────────────────────────────▶ lib/data ──▶ PostgreSQL
                                                                       └──▶ Redis / S3 / job queue (lib/server)
-Server Action (actions/*)  parseInput(lib/dto) ─────────────▶ lib/data
+Server Action (actions/*) ──────────────────────────────────▶ lib/data
 Client facade (lib/client) ─fetch─▶ Route Handler (app/api/v1) ▶ lib/data   (parsed with lib/dto)
 ```
 
@@ -154,16 +154,18 @@ Official references: [CLI](https://ui.shadcn.com/docs/cli),
 **Data Access Layer.** `lib/data/*` is `server-only` and the only code that imports Prisma (ESLint
 enforces it). Each function selects exactly the columns its DTO needs, maps the row to the DTO, and
 enforces auth itself with `requireUser()` / `requireAdmin()` plus record-level rules (a post may be
-changed by its author or an admin).
+changed by its author or an admin). It also validates its own inputs with the `lib/dto` schema
+(`parseInput`), so the rules hold whichever caller reaches it.
 
-**Server Actions.** Writes live in `actions/`: validate with `parseInput`, call the DAL,
+**Server Actions.** Writes live in `actions/`: call the DAL (it validates),
 `revalidatePath` / `refresh`, and return an `ActionResult<T>`. Forms map failures onto fields with
 `applyActionErrors`.
 
-**Caching and rendering.** Cache Components are on: pages prerender a static shell and stream request
-data inside `<Suspense>`. The DAL caches viewer-independent reads in Redis with tag versions and
-invalidates inside the write functions. `'use cache'` is never used on anything that reads data
-Redis caches, and every component that calls a data function sits in a `<Suspense>`.
+**Caching and rendering.** Pages are async Server Components rendered per request; they await
+their data, so redirects and not-found pages answer with real status codes. Redis is the only
+cache: the DAL caches viewer-independent reads with tag versions and invalidates inside the write
+functions. Next's Cache Components (`'use cache'`) are off, so there is no second cache to keep in
+sync.
 
 **Jobs and email.** `jobs/definitions.ts` lists each job (name, Zod payload, retry options, cron).
 `enqueue()` validates and sends; the worker runs the handlers. Jobs that touch the database use the
@@ -183,7 +185,7 @@ of the replaced avatar. Abandoned uploads are cleaned up hourly.
 **Presenters.** Types are the source of truth; presenters exist only for overrides. A presenter is
 a plain function that spreads the DTO and replaces just the fields a view needs reshaped
 (`presentUser` turns a bare `website` domain into a linkable URL). Apply it where the data is
-consumed, such as a view's `useMemo`.
+consumed: directly in a Server Component or in a client view.
 
 **Auth.** Better Auth with email + password, database sessions, and the `nextCookies` plugin. `role`
 (`user` / `admin`) is an additional user field. `proxy.ts` redirects private routes to
@@ -243,16 +245,17 @@ cannot set cookies), so a user who only browses is signed out when the session e
    `bun run db:migrate`.
 2. Add the Zod schemas to `lib/dto/<name>.ts` (inputs and the output variants a view needs).
 3. Add the DAL in `lib/data/<name>.ts`: `import 'server-only'`, select exactly the DTO columns, map
-   rows to DTOs, call `requireUser()` / `requireAdmin()` and enforce record-level rules, throw typed
-   errors.
-4. Add Server Actions in `actions/<name>.ts` (`parseInput` → DAL → `revalidatePath` →
-   `ActionResult`). Add a Route Handler under `app/api/v1/<name>/` plus a facade in `lib/client`
+   rows to DTOs, call `requireUser()` / `requireAdmin()`, validate the input with `parseInput`,
+   enforce record-level rules, throw typed errors.
+4. Add Server Actions in `actions/<name>.ts` (DAL → `revalidatePath` → `ActionResult`). Add a Route Handler under `app/api/v1/<name>/` plus a facade in `lib/client`
    only if a client component must fetch.
 5. Only if a view needs reshaped fields, add `presentX` in `presenters/<Name>Presenter.ts`.
-6. Add the pages (`page.tsx` + `view.tsx`), the form component, and routes in
-   `lib/constants-routes.ts` (decide whether they are public or private). Wrap page reads in
-   `loadPage` and render them from an async component inside `<Suspense>`. If the reads are viewer
-   independent and worth caching, use `remember()` in the DAL and invalidate its tags in the writes.
+6. Add the pages, the form component, and routes in `lib/constants-routes.ts` (decide whether
+   they are public or private). `page.tsx` is an async Server Component that wraps its reads in
+   `loadPage` and renders the markup; add a `'use client'` `view.tsx` beside it only for the
+   interactive part (a form's submit handler, filters, pagination). Caching is optional: if a read
+   is viewer independent and worth it, use `remember()` in the DAL and invalidate its tags in the
+   writes.
 7. Add tests in `tests/lib/data/`, `tests/actions/` (and `tests/app/` or `tests/lib/client/` for a
    handler) against the test DB.
 

@@ -12,7 +12,7 @@ const CHANGE_EVENT = 'browser-storage-change'
 
 type ChangeDetail = { area: StorageArea; key: string }
 
-function getArea(area: StorageArea): Storage | null {
+const getArea = (area: StorageArea): Storage | null => {
   try {
     return typeof window === 'undefined' ? null : window[area]
   } catch {
@@ -20,7 +20,7 @@ function getArea(area: StorageArea): Storage | null {
   }
 }
 
-export function readStorage(area: StorageArea, key: string): string | null {
+export const readStorage = (area: StorageArea, key: string): string | null => {
   try {
     return getArea(area)?.getItem(key) ?? null
   } catch {
@@ -28,12 +28,12 @@ export function readStorage(area: StorageArea, key: string): string | null {
   }
 }
 
-function notify(area: StorageArea, key: string) {
+const notify = (area: StorageArea, key: string) => {
   window.dispatchEvent(new CustomEvent<ChangeDetail>(CHANGE_EVENT, { detail: { area, key } }))
 }
 
 /** Returns false when the value could not be stored. */
-export function writeStorage(area: StorageArea, key: string, value: string): boolean {
+export const writeStorage = (area: StorageArea, key: string, value: string): boolean => {
   try {
     const storage = getArea(area)
     if (!storage) {
@@ -47,7 +47,7 @@ export function writeStorage(area: StorageArea, key: string, value: string): boo
   return true
 }
 
-export function removeStorage(area: StorageArea, key: string): void {
+export const removeStorage = (area: StorageArea, key: string): void => {
   try {
     const storage = getArea(area)
     if (!storage) {
@@ -61,7 +61,7 @@ export function removeStorage(area: StorageArea, key: string): void {
 }
 
 /** Calls `onChange` when `key` changes in this tab or any other; returns the unsubscribe. */
-export function subscribeStorage(area: StorageArea, key: string, onChange: () => void) {
+export const subscribeStorage = (area: StorageArea, key: string, onChange: () => void) => {
   if (typeof window === 'undefined') {
     return () => {}
   }

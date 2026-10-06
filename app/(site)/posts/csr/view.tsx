@@ -19,13 +19,13 @@ const PER_PAGE = 9
 
 type LoadResult = { key: string; data: Page<PostSummary> | null; errorMessage: string }
 
-function toErrorMessage(error: unknown) {
+const toErrorMessage = (error: unknown) => {
   return error instanceof RequestError
     ? error.message
     : 'Could not load posts. Check your connection.'
 }
 
-export function PostsCsrView() {
+export const PostsCsrView = () => {
   const { state, setState } = useUrlState(postsUrlQuery)
   const { page, q, sort } = state
   const [attempt, setAttempt] = useState(0)

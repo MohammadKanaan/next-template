@@ -1,10 +1,13 @@
 import { fileURLToPath } from 'node:url'
-import react from '@vitejs/plugin-react'
+import babel from '@rolldown/plugin-babel'
+import react, { reactCompilerPreset } from '@vitejs/plugin-react'
 import { loadEnv } from 'vite'
 import { defineConfig } from 'vitest/config'
 
 export default defineConfig(({ mode }) => ({
-  plugins: [react()],
+  // The React Compiler runs in tests too (as `reactCompiler: true` does in Next), so tests
+  // exercise the same memoized code that ships.
+  plugins: [react(), babel({ presets: [reactCompilerPreset()] })],
   resolve: {
     tsconfigPaths: true,
     alias: {

@@ -11,7 +11,7 @@ export const metadata: Metadata = {
   description: 'Compare server-rendered and client-rendered post lists.',
 }
 
-export default function PostsPage() {
+const PostsPage = () => {
   return (
     <div className={styles.page}>
       <PageHeader
@@ -61,3 +61,5 @@ export default function PostsPage() {
     </div>
   )
 }
+
+export default PostsPage

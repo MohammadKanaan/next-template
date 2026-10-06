@@ -38,8 +38,6 @@ describe('NavBar', () => {
     expect(adminLinks()).toHaveLength(0)
     rerender(<NavBar user={null} />)
     expect(adminLinks()).toHaveLength(0)
-    rerender(<NavBar user={null} pending />)
-    expect(adminLinks()).toHaveLength(0)
   })
 
   it('keeps the regular links for everyone', () => {

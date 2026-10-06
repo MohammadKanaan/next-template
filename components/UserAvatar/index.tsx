@@ -8,7 +8,7 @@ type UserAvatarProps = {
 }
 
 /** A user's picture, falling back to their initials while it loads or when there is none. */
-export function UserAvatar({ name, image, size = 'default' }: UserAvatarProps) {
+export const UserAvatar = ({ name, image, size = 'default' }: UserAvatarProps) => {
   return (
     <Avatar size={size}>
       <AvatarImage src={image ?? undefined} alt="" />

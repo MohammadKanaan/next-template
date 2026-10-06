@@ -1,6 +1,6 @@
 import styles from './home.module.scss'
 
-export default function HomePage() {
+const HomePage = () => {
   return (
     <section className={styles.landing}>
       <h1>Welcome</h1>
@@ -8,3 +8,5 @@ export default function HomePage() {
     </section>
   )
 }
+
+export default HomePage

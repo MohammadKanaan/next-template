@@ -52,7 +52,7 @@ const REDIRECT_BASE = 'http://localhost'
  * Dot segments can also normalise to a `//` path (`/.//evil.example`), which a browser would treat
  * as protocol-relative, so the resolved path is checked too.
  */
-export function safeRedirectPath(value: string | null | undefined, fallback = ROUTE_PRIVATE) {
+export const safeRedirectPath = (value: string | null | undefined, fallback = ROUTE_PRIVATE) => {
   if (!value || !value.startsWith('/')) {
     return fallback
   }

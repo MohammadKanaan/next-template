@@ -9,7 +9,7 @@ import { ROUTE_LOGIN } from '@/lib/constants-routes'
 import type { RequestPasswordResetInput } from '@/lib/dto/auth'
 import styles from '../login/styles.module.scss'
 
-export function ForgotPasswordView() {
+export const ForgotPasswordView = () => {
   const router = useRouter()
 
   const handleSubmit = async (values: RequestPasswordResetInput) => {

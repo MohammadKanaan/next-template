@@ -25,10 +25,9 @@ import {
   type SignInInput,
   type SignUpInput,
 } from '@/lib/dto/auth'
-import { sessionIdSchema } from '@/lib/dto/users'
 import type { ActionResult } from '@/types/api'
 
-export async function signInAction(input: SignInInput): Promise<ActionResult<null>> {
+export const signInAction = async (input: SignInInput): Promise<ActionResult<null>> => {
   try {
     const body = parseInput(signInInput, input)
     if (isRateLimitEnabled()) {
@@ -54,7 +53,7 @@ export async function signInAction(input: SignInInput): Promise<ActionResult<nul
   }
 }
 
-export async function signUpAction(input: SignUpInput): Promise<ActionResult<null>> {
+export const signUpAction = async (input: SignUpInput): Promise<ActionResult<null>> => {
   try {
     const body = parseInput(signUpInput, input)
     if (isRateLimitEnabled()) {
@@ -79,7 +78,7 @@ export async function signUpAction(input: SignUpInput): Promise<ActionResult<nul
   }
 }
 
-export async function signOutAction(): Promise<ActionResult<null>> {
+export const signOutAction = async (): Promise<ActionResult<null>> => {
   await auth.api.signOut({ headers: await headers() })
   refresh()
   return { ok: true, data: null }
@@ -89,9 +88,9 @@ export async function signOutAction(): Promise<ActionResult<null>> {
  * Always `ok` for a well-formed email, whether or not an account exists, so the form cannot be
  * used to find out who has one. The email itself is sent by a background job.
  */
-export async function requestPasswordResetAction(
+export const requestPasswordResetAction = async (
   input: RequestPasswordResetInput,
-): Promise<ActionResult<null>> {
+): Promise<ActionResult<null>> => {
   try {
     const body = parseInput(requestPasswordResetInput, input)
     if (isRateLimitEnabled()) {
@@ -111,7 +110,9 @@ export async function requestPasswordResetAction(
   }
 }
 
-export async function resetPasswordAction(input: ResetPasswordInput): Promise<ActionResult<null>> {
+export const resetPasswordAction = async (
+  input: ResetPasswordInput,
+): Promise<ActionResult<null>> => {
   try {
     const body = parseInput(resetPasswordInput, input)
     if (isRateLimitEnabled()) {
@@ -143,7 +144,7 @@ export async function resetPasswordAction(input: ResetPasswordInput): Promise<Ac
 }
 
 /** Sends the signed-in user a fresh verification email. */
-export async function resendVerificationAction(): Promise<ActionResult<null>> {
+export const resendVerificationAction = async (): Promise<ActionResult<null>> => {
   try {
     const user = await getCurrentUser()
     if (isRateLimitEnabled()) {
@@ -167,9 +168,9 @@ export async function resendVerificationAction(): Promise<ActionResult<null>> {
 }
 
 /** Changes the password and signs every other session out; this one stays signed in. */
-export async function changePasswordAction(
+export const changePasswordAction = async (
   input: ChangePasswordInput,
-): Promise<ActionResult<null>> {
+): Promise<ActionResult<null>> => {
   try {
     const body = parseInput(changePasswordInput, input)
     const viewer = await requireUser()
@@ -208,7 +209,7 @@ export async function changePasswordAction(
  * taken, so the form cannot be used to find out who has an account. The confirmation (to the
  * current address) and then the verification (to the new one) are sent by background jobs.
  */
-export async function changeEmailAction(input: ChangeEmailInput): Promise<ActionResult<null>> {
+export const changeEmailAction = async (input: ChangeEmailInput): Promise<ActionResult<null>> => {
   try {
     const body = parseInput(changeEmailInput, input)
     const user = await getCurrentUser()
@@ -233,14 +234,13 @@ export async function changeEmailAction(input: ChangeEmailInput): Promise<Action
 }
 
 /** Signs one of the viewer's own sessions out. */
-export async function revokeSessionAction(id: string): Promise<ActionResult<null>> {
+export const revokeSessionAction = async (id: string): Promise<ActionResult<null>> => {
   try {
-    const sessionId = parseInput(sessionIdSchema, id)
     const viewer = await requireUser()
     if (isRateLimitEnabled()) {
       await consumeRateLimit(`revoke-session:user:${viewer.id}`, { max: 20, windowMs: 60_000 })
     }
-    await revokeSession(sessionId)
+    await revokeSession(id)
     refresh()
     return { ok: true, data: null }
   } catch (error) {
@@ -249,7 +249,7 @@ export async function revokeSessionAction(id: string): Promise<ActionResult<null
 }
 
 /** Signs every session of the viewer out except this one. */
-export async function revokeOtherSessionsAction(): Promise<ActionResult<null>> {
+export const revokeOtherSessionsAction = async (): Promise<ActionResult<null>> => {
   try {
     const viewer = await requireUser()
     if (isRateLimitEnabled()) {
@@ -264,7 +264,9 @@ export async function revokeOtherSessionsAction(): Promise<ActionResult<null>> {
 }
 
 /** Deletes the viewer's account (posts, sessions and uploads with it); needs the password. */
-export async function deleteAccountAction(input: DeleteAccountInput): Promise<ActionResult<null>> {
+export const deleteAccountAction = async (
+  input: DeleteAccountInput,
+): Promise<ActionResult<null>> => {
   try {
     const body = parseInput(deleteAccountInput, input)
     const viewer = await requireUser()

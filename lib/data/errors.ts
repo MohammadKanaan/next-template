@@ -45,7 +45,7 @@ export class RateLimitedError extends DataError {
   }
 }
 
-export function fieldErrorsFrom(error: z.ZodError): FieldErrors {
+export const fieldErrorsFrom = (error: z.ZodError): FieldErrors => {
   const errors: FieldErrors = {}
   for (const issue of error.issues) {
     const field = issue.path.join('.') || 'base'
@@ -55,7 +55,7 @@ export function fieldErrorsFrom(error: z.ZodError): FieldErrors {
 }
 
 /** `safeParse` that throws a `ValidationError` carrying per-field messages. */
-export function parseInput<S extends z.ZodType>(schema: S, input: unknown): z.output<S> {
+export const parseInput = <S extends z.ZodType>(schema: S, input: unknown): z.output<S> => {
   const result = schema.safeParse(input)
   if (!result.success) {
     throw new ValidationError(fieldErrorsFrom(result.error))
@@ -71,7 +71,7 @@ const STATUS_BY_CODE: Record<ErrorCode, number> = {
   RATE_LIMITED: 429,
 }
 
-function toErrorBody(error: DataError): ErrorBody {
+const toErrorBody = (error: DataError): ErrorBody => {
   return error.fieldErrors
     ? { code: error.code, message: error.message, fieldErrors: error.fieldErrors }
     : { code: error.code, message: error.message }
@@ -81,7 +81,7 @@ function toErrorBody(error: DataError): ErrorBody {
  * Server Actions: a typed DAL error becomes a failed result; anything else (including Next's
  * redirect and not-found errors) is rethrown untouched.
  */
-export function toActionFailure(error: unknown): ActionFailure {
+export const toActionFailure = (error: unknown): ActionFailure => {
   if (error instanceof DataError) {
     return { ok: false, ...toErrorBody(error) }
   }
@@ -89,7 +89,7 @@ export function toActionFailure(error: unknown): ActionFailure {
 }
 
 /** Route Handlers: a typed DAL error becomes its status code; anything else propagates (500). */
-export function toErrorResponse(error: unknown) {
+export const toErrorResponse = (error: unknown) => {
   if (error instanceof DataError) {
     return NextResponse.json(toErrorBody(error), { status: STATUS_BY_CODE[error.code] })
   }

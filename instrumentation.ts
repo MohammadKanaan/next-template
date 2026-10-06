@@ -4,7 +4,7 @@
  * rate limiter, cache or uploads. It stays off in dev, tests and `next build`, which never need
  * these variables.
  */
-export async function register() {
+export const register = async () => {
   if (
     process.env.NEXT_RUNTIME === 'nodejs' &&
     process.env.NODE_ENV === 'production' &&

@@ -28,7 +28,7 @@ type SettingsViewProps = {
   sessions: SessionSummary[]
 }
 
-export function SettingsView({ user, sessions }: SettingsViewProps) {
+export const SettingsView = ({ user, sessions }: SettingsViewProps) => {
   const router = useRouter()
 
   const handleProfile = async (values: UpdateProfileInput) => {

@@ -8,7 +8,7 @@ type TextareaProps = Omit<ComponentProps<typeof ShadcnTextarea>, 'className' | '
   error?: string
 }
 
-export function Textarea({ label, error, required, id, ...props }: TextareaProps) {
+export const Textarea = ({ label, error, required, id, ...props }: TextareaProps) => {
   const generatedId = useId()
   const textareaId = id ?? generatedId
   const errorId = `${textareaId}-error`

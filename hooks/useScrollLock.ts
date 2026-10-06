@@ -1,11 +1,11 @@
 'use client'
 
-import { useCallback, useEffect, useRef } from 'react'
+import { useEffect, useState } from 'react'
 
 const SCROLL_LOCK_CLASS = 'is-scroll-locked'
 const scrollLockOwners = new Set<symbol>()
 
-function syncScrollLockClass() {
+const syncScrollLockClass = () => {
   if (typeof document === 'undefined') {
     return
   }
@@ -15,28 +15,29 @@ function syncScrollLockClass() {
   document.body.classList[method](SCROLL_LOCK_CLASS)
 }
 
-export function useScrollLock() {
-  const ownerRef = useRef<symbol>(undefined)
+const release = (owner: symbol) => {
+  if (scrollLockOwners.delete(owner)) {
+    syncScrollLockClass()
+  }
+}
 
-  const lockScroll = useCallback(() => {
-    ownerRef.current ??= Symbol('scroll-lock-owner')
-    if (scrollLockOwners.has(ownerRef.current)) {
+export const useScrollLock = () => {
+  // Identifies this component among everything that may hold the lock.
+  const [owner] = useState(() => Symbol('scroll-lock-owner'))
+
+  const lockScroll = () => {
+    if (scrollLockOwners.has(owner)) {
       return
     }
 
-    scrollLockOwners.add(ownerRef.current)
+    scrollLockOwners.add(owner)
     syncScrollLockClass()
-  }, [])
+  }
 
-  const unlockScroll = useCallback(() => {
-    if (!ownerRef.current || !scrollLockOwners.delete(ownerRef.current)) {
-      return
-    }
+  const unlockScroll = () => release(owner)
 
-    syncScrollLockClass()
-  }, [])
-
-  useEffect(() => unlockScroll, [unlockScroll])
+  // Never leave the page locked behind a component that is gone.
+  useEffect(() => () => release(owner), [owner])
 
   return { lockScroll, unlockScroll }
 }

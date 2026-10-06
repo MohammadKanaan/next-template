@@ -35,7 +35,14 @@ const eslintConfig = defineConfig([
       eqeqeq: ['error', 'smart'],
       'no-alert': 'error',
       curly: 'error',
+      // Functions are `const` arrow functions everywhere in application code.
+      'func-style': ['error', 'expression'],
     },
+  },
+  // CLI-generated shadcn primitives stay as upstream writes them.
+  {
+    files: ['components/SCN/**'],
+    rules: { 'func-style': 'off' },
   },
   {
     files: ['**/*.{ts,tsx,mts}'],
@@ -73,6 +80,24 @@ const eslintConfig = defineConfig([
         'error',
         {
           patterns: [prismaImportPattern, serverImportPattern, maintenanceImportPattern],
+        },
+      ],
+    },
+  },
+  // React Hook Form 7 relies on `register()` being called on every render (a reset clears its
+  // field registry and the next render refills it). The React Compiler caches that call, so a file
+  // that uses the library must opt out, or its form stops following resets and new `values`.
+  {
+    files: ['app/**/*.tsx', 'components/**/*.tsx', 'hooks/**/*.{ts,tsx}'],
+    ignores: ['components/SCN/**'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector:
+            'Program:has(ImportDeclaration[source.value="react-hook-form"][importKind!="type"]):not(:has(ExpressionStatement[directive="use no memo"]))',
+          message:
+            "Files that use React Hook Form must opt out of the React Compiler: add 'use no memo' below 'use client'.",
         },
       ],
     },

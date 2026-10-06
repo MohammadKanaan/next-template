@@ -7,7 +7,7 @@ import { useLocalStorage } from '@/hooks/useLocalStorage'
 const schema = z.object({ title: z.string(), count: z.number() })
 const KEY = 'test:draft'
 
-function Reader() {
+const Reader = () => {
   const { value } = useLocalStorage(KEY, schema)
   return <p data-testid="value">{value ? value.title : 'empty'}</p>
 }

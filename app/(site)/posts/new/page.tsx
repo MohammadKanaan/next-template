@@ -5,6 +5,8 @@ export const metadata: Metadata = {
   title: 'Write a post',
 }
 
-export default function PostNewPage() {
+const PostNewPage = () => {
   return <PostNewView />
 }
+
+export default PostNewPage

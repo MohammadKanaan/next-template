@@ -11,7 +11,7 @@ type LoginViewProps = {
   nextPath: string
 }
 
-export function LoginView({ nextPath }: LoginViewProps) {
+export const LoginView = ({ nextPath }: LoginViewProps) => {
   const router = useRouter()
 
   const handleSubmit = async (values: SignInInput) => {

@@ -18,10 +18,10 @@ vi.mock('next/cache', () => ({ revalidatePath: vi.fn(), refresh: vi.fn() }))
 
 const hour = 60 * 60 * 1000
 
-async function addSession(
+const addSession = async (
   userId: string,
   overrides: { expiresInMs?: number; agent?: string } = {},
-) {
+) => {
   const id = `session-${Math.random().toString(36).slice(2, 10)}`
   return db.session.create({
     data: {
@@ -36,7 +36,7 @@ async function addSession(
 }
 
 /** createUser's own sign-up session is not under test. */
-async function signedInUser() {
+const signedInUser = async () => {
   const user = await createUser({})
   await db.session.deleteMany()
   await signInAs(user)

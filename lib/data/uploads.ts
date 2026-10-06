@@ -3,7 +3,9 @@ import { randomUUID } from 'node:crypto'
 import {
   AVATAR_CONTENT_TYPES,
   AVATAR_MAX_SIZE,
+  createAvatarUploadInput,
   type CreateAvatarUploadInput,
+  uploadIdSchema,
   type UploadTicket,
 } from '@/lib/dto/uploads'
 import type { CurrentUser } from '@/lib/dto/users'
@@ -14,42 +16,38 @@ import { createUploadTicket, deleteObject, headObject, publicUrl } from '@/lib/s
 import { requireUser } from './auth'
 import { userTag } from './cacheTags'
 import { db } from './db'
-import { ForbiddenError, NotFoundError, ValidationError } from './errors'
+import { ForbiddenError, NotFoundError, parseInput, ValidationError } from './errors'
 import { currentUserSelect } from './users'
 
 const log = logger.child({ module: 'uploads' })
 
 /** Signed in → returns a presigned POST for a new avatar object and the pending upload's id. */
-export async function createAvatarUpload(input: CreateAvatarUploadInput): Promise<UploadTicket> {
+export const createAvatarUpload = async (input: CreateAvatarUploadInput): Promise<UploadTicket> => {
   const viewer = await requireUser()
+  const { contentType, size } = parseInput(createAvatarUploadInput, input)
   const key = `avatars/${viewer.id}/${randomUUID()}`
   const upload = await db.upload.create({
-    data: {
-      key,
-      userId: viewer.id,
-      purpose: 'avatar',
-      contentType: input.contentType,
-      size: input.size,
-    },
+    data: { key, userId: viewer.id, purpose: 'avatar', contentType, size },
     select: { id: true },
   })
   const ticket = await createUploadTicket({
     key,
-    contentType: input.contentType,
+    contentType,
     maxSize: AVATAR_MAX_SIZE,
   })
   return { uploadId: upload.id, ...ticket }
 }
 
-function isAvatarContentType(value: string | null): boolean {
+const isAvatarContentType = (value: string | null): boolean => {
   return AVATAR_CONTENT_TYPES.some((type) => type === value)
 }
 
 /** Signed in, upload exists, and it is the viewer's own — in that order. */
-async function requireOwnUpload(uploadId: string) {
+const requireOwnUpload = async (uploadId: string) => {
   const viewer = await requireUser()
+  const id = parseInput(uploadIdSchema, uploadId)
   const upload = await db.upload.findUnique({
-    where: { id: uploadId },
+    where: { id },
     select: { id: true, key: true, userId: true, purpose: true, status: true },
   })
   if (!upload || upload.purpose !== 'avatar') {
@@ -66,7 +64,7 @@ async function requireOwnUpload(uploadId: string) {
  * (the presigned policy should already have enforced them); the replaced avatar's object is
  * removed by a job, because the bucket call is slow and may fail independently.
  */
-export async function attachAvatar(uploadId: string): Promise<CurrentUser> {
+export const attachAvatar = async (uploadId: string): Promise<CurrentUser> => {
   const { viewer, upload } = await requireOwnUpload(uploadId)
   if (upload.status !== 'pending') {
     throw new ValidationError({ uploadId: ['This upload was already used'] })

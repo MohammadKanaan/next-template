@@ -1,19 +1,20 @@
 'use client'
 
+import type { ReactNode } from 'react'
 import { Pagination } from '@/components/Pagination'
 import { PostsFilters } from '@/components/Posts/Filters'
-import { PostsGrid } from '@/components/Posts/Grid'
-import { PostsState } from '@/components/Posts/State'
 import { useUrlState } from '@/hooks/useUrlState'
-import type { Page } from '@/lib/dto/common'
-import { postsUrlQuery, type PostSummary } from '@/lib/dto/posts'
+import { postsUrlQuery } from '@/lib/dto/posts'
 import styles from './styles.module.scss'
 
 type PostsSsrViewProps = {
-  posts: Page<PostSummary>
+  page: number
+  totalPages: number
+  /** The server-rendered list. */
+  children: ReactNode
 }
 
-export function PostsSsrView({ posts }: PostsSsrViewProps) {
+export const PostsSsrView = ({ page, totalPages, children }: PostsSsrViewProps) => {
   const { state, setState, isPending } = useUrlState(postsUrlQuery)
 
   return (
@@ -23,16 +24,11 @@ export function PostsSsrView({ posts }: PostsSsrViewProps) {
         sort={state.sort}
         onChange={(patch) => setState({ ...patch, page: 1 })}
       />
-      <PostsState
-        empty={posts.items.length === 0}
-        emptyMessage={state.q ? 'No posts match your search.' : 'No posts found.'}
-      >
-        <PostsGrid posts={posts.items} />
-      </PostsState>
+      {children}
       <Pagination
-        page={posts.page}
-        totalPages={posts.totalPages}
-        onPageChange={(page) => setState({ page })}
+        page={page}
+        totalPages={totalPages}
+        onPageChange={(next) => setState({ page: next })}
         disabled={isPending}
       />
     </div>

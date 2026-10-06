@@ -1,4 +1,6 @@
 'use client'
+// React Hook Form's `register()` must run on every render; the React Compiler would cache it.
+'use no memo'
 
 import { zodResolver } from '@hookform/resolvers/zod'
 import Link from 'next/link'
@@ -15,7 +17,7 @@ export type SignUpFormProps = {
   onSubmit: (values: SignUpInput) => Promise<ActionResult<unknown>>
 }
 
-export function SignUpForm({ onSubmit }: SignUpFormProps) {
+export const SignUpForm = ({ onSubmit }: SignUpFormProps) => {
   const {
     register,
     handleSubmit,

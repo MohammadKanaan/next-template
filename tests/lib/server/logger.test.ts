@@ -3,7 +3,7 @@ import { Writable } from 'node:stream'
 import { describe, expect, it } from 'vitest'
 import { createLogger, logger, usesPrettyTransport } from '@/lib/server/logger'
 
-function capture() {
+const capture = () => {
   const lines: string[] = []
   const destination = new Writable({
     write(chunk, _encoding, done) {

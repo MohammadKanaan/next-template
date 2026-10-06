@@ -13,7 +13,7 @@ const valid = {
   S3_PUBLIC_URL: 'http://localhost:9000/bucket',
 }
 
-function stubEnv(values: Record<string, string | undefined>) {
+const stubEnv = (values: Record<string, string | undefined>) => {
   for (const [name, value] of Object.entries({ RESEND_API_KEY: undefined, ...values })) {
     vi.stubEnv(name, value)
   }

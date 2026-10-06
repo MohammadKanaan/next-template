@@ -1,4 +1,4 @@
-function toAbsoluteUrl(value: string | null) {
+const toAbsoluteUrl = (value: string | null) => {
   if (!value) {
     return null
   }

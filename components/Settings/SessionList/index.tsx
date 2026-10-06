@@ -26,7 +26,7 @@ export type SessionListProps = {
   onRevokeOthers: () => Promise<ActionResult<unknown>>
 }
 
-export function SessionList({ sessions, onRevoke, onRevokeOthers }: SessionListProps) {
+export const SessionList = ({ sessions, onRevoke, onRevokeOthers }: SessionListProps) => {
   // Which request is running: a session id, `others`, or nothing.
   const [pending, setPending] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)

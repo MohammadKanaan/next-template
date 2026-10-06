@@ -7,7 +7,7 @@ type PostsCardProps = {
   post: PostSummary
 }
 
-export function PostsCard({ post }: PostsCardProps) {
+export const PostsCard = ({ post }: PostsCardProps) => {
   return (
     <article className={styles.card}>
       <div className={styles.cardHeader}>

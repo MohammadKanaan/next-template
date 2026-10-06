@@ -6,7 +6,7 @@ import { ROUTE_LOGIN, isPrivateRoute } from '@/lib/constants-routes'
  * Optimistic redirect from cookie presence only. Real checks live in the DAL. Signed-in visitors on
  * `/login` and `/signup` are redirected by those pages, because a stale cookie must not lock anyone out.
  */
-export function proxy(request: NextRequest) {
+export const proxy = (request: NextRequest) => {
   const { pathname, search } = request.nextUrl
   const hasSession = getSessionCookie(request) !== null
 

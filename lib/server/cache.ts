@@ -17,7 +17,7 @@ type RememberOptions<S extends z.ZodType> = {
   schema: S
 }
 
-function versionedKey(key: string, tags: string[], versions: (string | null)[]) {
+const versionedKey = (key: string, tags: string[], versions: (string | null)[]) => {
   const suffix = tags.map((tag, index) => `${tag}=${versions[index] ?? 0}`).join(',')
   return `${KEY_PREFIX}${key}|${suffix}`
 }
@@ -28,11 +28,11 @@ function versionedKey(key: string, tags: string[], versions: (string | null)[]) 
  * parse failure is logged and falls through to `load()`: the cache never breaks a request.
  * Only cache data that is the same for every viewer; check auth before calling this.
  */
-export async function remember<S extends z.ZodType>(
+export const remember = async <S extends z.ZodType>(
   key: string,
   { ttl, tags, schema }: RememberOptions<S>,
   load: () => Promise<z.output<S>>,
-): Promise<z.output<S>> {
+): Promise<z.output<S>> => {
   let cacheKey: string | null = null
   try {
     const redis = getRedis()
@@ -59,7 +59,7 @@ export async function remember<S extends z.ZodType>(
 }
 
 /** Bumps each tag's version, atomically; entries cached under the old version are never read. */
-export async function invalidateTags(...tags: string[]): Promise<void> {
+export const invalidateTags = async (...tags: string[]): Promise<void> => {
   if (tags.length === 0) {
     return
   }

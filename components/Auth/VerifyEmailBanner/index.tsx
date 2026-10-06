@@ -11,7 +11,7 @@ type VerifyEmailBannerProps = {
 }
 
 /** Soft nag for a signed-in user whose email is not verified yet; sign-in is not blocked. */
-export function VerifyEmailBanner({ email }: VerifyEmailBannerProps) {
+export const VerifyEmailBanner = ({ email }: VerifyEmailBannerProps) => {
   const [isPending, startTransition] = useTransition()
 
   const handleResend = () => {

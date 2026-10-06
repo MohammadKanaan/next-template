@@ -4,7 +4,7 @@ import { Button } from '@/components/SCN/button'
 import { ROUTE_HOME } from '@/lib/constants-routes'
 import styles from './not-found.module.scss'
 
-export default function NotFound() {
+const NotFound = () => {
   return (
     <div className={styles.container}>
       <Empty
@@ -19,3 +19,5 @@ export default function NotFound() {
     </div>
   )
 }
+
+export default NotFound

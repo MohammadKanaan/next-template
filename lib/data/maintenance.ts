@@ -11,7 +11,7 @@ const log = logger.child({ module: 'maintenance' })
  */
 
 /** Deletes sessions and verification tokens past their expiry; returns how many of each. */
-export async function deleteExpiredAuthRows() {
+export const deleteExpiredAuthRows = async () => {
   const now = new Date()
   const [sessions, verifications] = await db.$transaction([
     db.session.deleteMany({ where: { expiresAt: { lt: now } } }),
@@ -29,10 +29,10 @@ const STALE_UPLOAD_BATCH = 100
  * attach) together with their objects, oldest first and at most `batchSize` per run. The object
  * goes first, so if storage is down the row stays and the next run retries it.
  */
-export async function deleteStalePendingUploads(
+export const deleteStalePendingUploads = async (
   maxAgeMs = STALE_UPLOAD_AGE_MS,
   batchSize = STALE_UPLOAD_BATCH,
-) {
+) => {
   const stale = await db.upload.findMany({
     where: { status: 'pending', createdAt: { lt: new Date(Date.now() - maxAgeMs) } },
     select: { id: true, key: true },

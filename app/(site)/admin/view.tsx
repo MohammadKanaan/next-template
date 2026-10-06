@@ -35,7 +35,7 @@ type AdminViewProps = {
   viewerId: string
 }
 
-export function AdminView({ users, viewerId }: AdminViewProps) {
+export const AdminView = ({ users, viewerId }: AdminViewProps) => {
   const { state, setState, isPending } = useUrlState(usersUrlQuery)
   // A role change is in flight: every role select waits, so changes cannot overlap.
   const [isSavingRole, setIsSavingRole] = useState(false)

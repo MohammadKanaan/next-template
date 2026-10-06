@@ -45,7 +45,7 @@ const grace: AdminUser = {
   postCount: 0,
 }
 
-function page(items: AdminUser[], overrides: Partial<Page<AdminUser>> = {}): Page<AdminUser> {
+const page = (items: AdminUser[], overrides: Partial<Page<AdminUser>> = {}): Page<AdminUser> => {
   return { items, page: 1, perPage: 10, totalItems: items.length, totalPages: 1, ...overrides }
 }
 

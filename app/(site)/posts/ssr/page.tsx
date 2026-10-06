@@ -1,8 +1,8 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { Suspense } from 'react'
 import { PageHeader } from '@/components/PageHeader'
-import { PageLoading } from '@/components/PageLoading'
+import { PostsGrid } from '@/components/Posts/Grid'
+import { PostsState } from '@/components/Posts/State'
 import { Button } from '@/components/SCN/button'
 import { ROUTE_POSTS, ROUTE_POSTS_CSR, ROUTE_POSTS_SSR } from '@/lib/constants-routes'
 import { loadPage } from '@/lib/data/page'
@@ -19,17 +19,11 @@ export const metadata: Metadata = {
   description: 'Posts rendered on the server through the data access layer.',
 }
 
-type PostsListProps = Pick<PageProps<'/posts/ssr'>, 'searchParams'>
-
-async function PostsList({ searchParams }: PostsListProps) {
+const PostsSsrPage = async ({ searchParams }: PageProps<'/posts/ssr'>) => {
   // The same tolerant schema the client hook uses: a garbled URL falls back to the defaults.
   const query = postsUrlQuery.parse(toScalarParams(await searchParams))
   const posts = await loadPage(() => listPosts({ ...query, perPage: PER_PAGE }), ROUTE_POSTS_SSR)
 
-  return <PostsSsrView posts={posts} />
-}
-
-export default function PostsSsrPage({ searchParams }: PageProps<'/posts/ssr'>) {
   return (
     <div className={styles.page}>
       <PageHeader
@@ -46,9 +40,17 @@ export default function PostsSsrPage({ searchParams }: PageProps<'/posts/ssr'>) 
           </>
         }
       />
-      <Suspense fallback={<PageLoading />}>
-        <PostsList searchParams={searchParams} />
-      </Suspense>
+      {/* The view is the client part (filters, pagination); the list stays server-rendered. */}
+      <PostsSsrView page={posts.page} totalPages={posts.totalPages}>
+        <PostsState
+          empty={posts.items.length === 0}
+          emptyMessage={query.q ? 'No posts match your search.' : 'No posts found.'}
+        >
+          <PostsGrid posts={posts.items} />
+        </PostsState>
+      </PostsSsrView>
     </div>
   )
 }
+
+export default PostsSsrPage

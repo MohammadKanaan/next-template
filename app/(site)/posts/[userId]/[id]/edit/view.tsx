@@ -14,7 +14,7 @@ type PostEditViewProps = {
   post: PostDetail
 }
 
-export function PostEditView({ post }: PostEditViewProps) {
+export const PostEditView = ({ post }: PostEditViewProps) => {
   const router = useRouter()
 
   const handleSubmit = async (values: CreatePostInput) => {

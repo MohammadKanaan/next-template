@@ -5,10 +5,10 @@ export const POST_FORM_FIELDS = ['title', 'body'] as const
 export const EMPTY_POST_FORM: CreatePostInput = { title: '', body: '' }
 
 /** An existing post wins; a new post starts from the saved draft, if any. */
-export function hydratePostForm(
+export const hydratePostForm = (
   post: PostDetail | null,
   draft?: PostDraft | null,
-): CreatePostInput {
+): CreatePostInput => {
   if (post) {
     return { title: post.title, body: post.body }
   }
@@ -16,15 +16,15 @@ export function hydratePostForm(
 }
 
 /** A form with nothing typed has no draft worth keeping. */
-export function isEmptyPostForm(values: CreatePostInput) {
+export const isEmptyPostForm = (values: CreatePostInput) => {
   return values.title === '' && values.body === ''
 }
 
 /** New post: every field. Existing post: only the fields that changed. */
-export function buildPostAttributes(
+export const buildPostAttributes = (
   values: CreatePostInput,
   post: PostDetail | null,
-): Partial<CreatePostInput> {
+): Partial<CreatePostInput> => {
   const original = hydratePostForm(post)
   const attributes: Partial<CreatePostInput> = {}
   for (const field of POST_FORM_FIELDS) {

@@ -30,7 +30,7 @@ export type Page<T> = {
   totalPages: number
 }
 
-export function pageSchema<T extends z.ZodType>(item: T) {
+export const pageSchema = <T extends z.ZodType>(item: T) => {
   return z.object({
     items: z.array(item),
     page: z.number().int(),
@@ -40,7 +40,11 @@ export function pageSchema<T extends z.ZodType>(item: T) {
   })
 }
 
-export function toPage<T>(items: T[], totalItems: number, { page, perPage }: PageQuery): Page<T> {
+export const toPage = <T>(
+  items: T[],
+  totalItems: number,
+  { page, perPage }: PageQuery,
+): Page<T> => {
   return {
     items,
     page,

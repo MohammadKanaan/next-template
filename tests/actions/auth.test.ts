@@ -187,7 +187,7 @@ describe('auth actions', () => {
 
   describe('emails', () => {
     /** The link of the last queued email for `template`, as the worker would render it. */
-    function queuedLink(template: 'verify-email' | 'reset-password') {
+    const queuedLink = (template: 'verify-email' | 'reset-password') => {
       const sent = vi
         .mocked(enqueue)
         .mock.calls.map(([, payload]) => payload)
@@ -375,14 +375,14 @@ describe('account actions', () => {
   afterAll(() => db.$disconnect())
 
   /** Signs in on one device after creating others, so `createUser` does not drop the cookie. */
-  async function signedInUser(overrides: Parameters<typeof createUser>[0] = {}) {
+  const signedInUser = async (overrides: Parameters<typeof createUser>[0] = {}) => {
     const user = await createUser(overrides)
     await db.session.deleteMany()
     await signInAs(user)
     return user
   }
 
-  async function addSession(userId: string) {
+  const addSession = async (userId: string) => {
     const id = `session-${Math.random().toString(36).slice(2, 10)}`
     return db.session.create({
       data: { id, token: `token-${id}`, userId, expiresAt: new Date(Date.now() + 3_600_000) },

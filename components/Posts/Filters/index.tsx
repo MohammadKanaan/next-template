@@ -22,7 +22,7 @@ type PostsFiltersProps = {
   disabled?: boolean
 }
 
-export function PostsFilters({ q, sort, onChange, disabled }: PostsFiltersProps) {
+export const PostsFilters = ({ q, sort, onChange, disabled }: PostsFiltersProps) => {
   const sortId = useId()
   const [text, setText] = useState(q)
   // The last value this component reported, so the URL echoing it back is not mistaken for an
@@ -41,7 +41,7 @@ export function PostsFilters({ q, sort, onChange, disabled }: PostsFiltersProps)
 
   useEffect(() => () => clearTimeout(timer.current), [])
 
-  function handleSearch(value: string) {
+  const handleSearch = (value: string) => {
     setText(value)
     clearTimeout(timer.current)
     // A keystroke that leaves the trimmed search as it is (a trailing space, or typing back to
@@ -56,7 +56,7 @@ export function PostsFilters({ q, sort, onChange, disabled }: PostsFiltersProps)
     }, SEARCH_DEBOUNCE_MS)
   }
 
-  function handleSort(value: string) {
+  const handleSort = (value: string) => {
     const parsed = postsSortSchema.safeParse(value)
     if (parsed.success) {
       onChange({ sort: parsed.data })

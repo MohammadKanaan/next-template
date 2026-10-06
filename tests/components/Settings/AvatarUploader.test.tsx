@@ -20,7 +20,7 @@ const user: CurrentUser = {
   role: 'user',
 }
 
-function setup() {
+const setup = () => {
   const onCreateUpload = vi.fn().mockResolvedValue({ ok: true, data: ticket })
   const onAttach = vi.fn().mockResolvedValue({ ok: true, data: user })
   const onUploaded = vi.fn()

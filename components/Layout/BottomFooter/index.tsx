@@ -1,11 +1,7 @@
-import { cacheLife } from 'next/cache'
 import { env } from '@/lib/env'
 import styles from './styles.module.scss'
 
-export async function BottomFooter() {
-  'use cache'
-  cacheLife('days')
-
+export const BottomFooter = () => {
   return (
     <footer className={styles.footer}>
       <p>

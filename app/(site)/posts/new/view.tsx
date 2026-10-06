@@ -12,7 +12,7 @@ import styles from '../styles.module.scss'
 
 const DRAFT_STORAGE_KEY = 'post-draft:v1'
 
-export function PostNewView() {
+export const PostNewView = () => {
   const router = useRouter()
   const {
     value: draft,

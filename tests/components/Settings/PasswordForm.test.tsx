@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { PasswordForm } from '@/components/Settings/PasswordForm'
 
-async function fill(current: string, next: string) {
+const fill = async (current: string, next: string) => {
   if (current) {
     await userEvent.type(screen.getByLabelText(/Current password/), current)
   }

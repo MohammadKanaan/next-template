@@ -1,7 +1,5 @@
 import type { Metadata } from 'next'
-import { Suspense } from 'react'
 import { SignOutButton } from '@/components/Auth/SignOutButton'
-import { PageLoading } from '@/components/PageLoading'
 import { ROUTE_PRIVATE } from '@/lib/constants-routes'
 import { loadPage } from '@/lib/data/page'
 import { getCurrentUser } from '@/lib/data/users'
@@ -11,37 +9,31 @@ export const metadata: Metadata = {
   title: 'Private',
 }
 
-async function Profile() {
+const PrivatePage = async () => {
   const user = await loadPage(getCurrentUser, ROUTE_PRIVATE)
 
   return (
-    <div className={styles.profile}>
-      <p className={styles.meta}>
-        <strong>Name:</strong> {user.name}
-      </p>
-      <p className={styles.meta}>
-        <strong>Username:</strong> {user.username}
-      </p>
-      <p className={styles.meta}>
-        <strong>Email:</strong> {user.email}
-      </p>
-      <p className={styles.meta}>
-        <strong>Role:</strong> {user.role}
-      </p>
-      <div>
-        <SignOutButton />
+    <div className={styles.page}>
+      <h1 className={styles.title}>This page is private and requires authentication.</h1>
+      <div className={styles.profile}>
+        <p className={styles.meta}>
+          <strong>Name:</strong> {user.name}
+        </p>
+        <p className={styles.meta}>
+          <strong>Username:</strong> {user.username}
+        </p>
+        <p className={styles.meta}>
+          <strong>Email:</strong> {user.email}
+        </p>
+        <p className={styles.meta}>
+          <strong>Role:</strong> {user.role}
+        </p>
+        <div>
+          <SignOutButton />
+        </div>
       </div>
     </div>
   )
 }
 
-export default function PrivatePage() {
-  return (
-    <div className={styles.page}>
-      <h1 className={styles.title}>This page is private and requires authentication.</h1>
-      <Suspense fallback={<PageLoading />}>
-        <Profile />
-      </Suspense>
-    </div>
-  )
-}
+export default PrivatePage

@@ -11,7 +11,7 @@ import { serverEnv } from './env'
 
 const globalForStorage = globalThis as unknown as { s3?: S3Client; s3Public?: S3Client }
 
-function createClient(endpoint: string): S3Client {
+const createClient = (endpoint: string): S3Client => {
   const env = serverEnv()
   return new S3Client({
     endpoint,
@@ -23,7 +23,7 @@ function createClient(endpoint: string): S3Client {
 }
 
 /** Shared client, created on first use so importing this file never needs the S3 variables. */
-function getClient(): S3Client {
+const getClient = (): S3Client => {
   globalForStorage.s3 ??= createClient(serverEnv().S3_ENDPOINT)
   return globalForStorage.s3
 }
@@ -32,7 +32,7 @@ function getClient(): S3Client {
  * Client whose endpoint is the one the browser reaches (`S3_PUBLIC_ENDPOINT`); only used to build
  * presigned POST URLs, which are signed for that host. Falls back to the server's own client.
  */
-function getSigningClient(): S3Client {
+const getSigningClient = (): S3Client => {
   const publicEndpoint = serverEnv().S3_PUBLIC_ENDPOINT
   if (!publicEndpoint) {
     return getClient()
@@ -57,12 +57,12 @@ type PresignOptions = {
  * cap the object size (`content-length-range`) and pin the `Content-Type`, so S3 itself rejects an
  * oversized or wrongly typed upload.
  */
-export async function createUploadTicket({
+export const createUploadTicket = async ({
   key,
   contentType,
   maxSize,
   expiresIn = 300,
-}: PresignOptions): Promise<PresignedPost> {
+}: PresignOptions): Promise<PresignedPost> => {
   return createPresignedPost(getSigningClient(), {
     Bucket: serverEnv().S3_BUCKET,
     Key: key,
@@ -78,7 +78,7 @@ export async function createUploadTicket({
 export type ObjectHead = { size: number; contentType: string | null }
 
 /** What is actually stored under `key`, or null when nothing was uploaded. */
-export async function headObject(key: string): Promise<ObjectHead | null> {
+export const headObject = async (key: string): Promise<ObjectHead | null> => {
   try {
     const head = await getClient().send(
       new HeadObjectCommand({ Bucket: serverEnv().S3_BUCKET, Key: key }),
@@ -96,11 +96,11 @@ export async function headObject(key: string): Promise<ObjectHead | null> {
 }
 
 /** Removes the object; S3 treats a missing key as success. */
-export async function deleteObject(key: string): Promise<void> {
+export const deleteObject = async (key: string): Promise<void> => {
   await getClient().send(new DeleteObjectCommand({ Bucket: serverEnv().S3_BUCKET, Key: key }))
 }
 
 /** The URL anyone can load the object from (`S3_PUBLIC_URL` already includes the bucket). */
-export function publicUrl(key: string): string {
+export const publicUrl = (key: string): string => {
   return `${serverEnv().S3_PUBLIC_URL.replace(/\/+$/, '')}/${key}`
 }

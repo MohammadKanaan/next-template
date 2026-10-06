@@ -11,7 +11,7 @@ type PaginationProps = {
   disabled?: boolean
 }
 
-export function Pagination({ page, totalPages, onPageChange, disabled }: PaginationProps) {
+export const Pagination = ({ page, totalPages, onPageChange, disabled }: PaginationProps) => {
   return (
     <nav className={styles.pagination} aria-label="Pagination">
       <Button

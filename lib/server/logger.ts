@@ -20,7 +20,7 @@ type Env = Record<string, string | undefined>
  * `next dev` and `bun run dev:worker`, which both set NODE_ENV=development. Anything else (tests,
  * production, a plain `bun run worker`) writes JSON.
  */
-export function usesPrettyTransport(env: Env) {
+export const usesPrettyTransport = (env: Env) => {
   return env.NODE_ENV === 'development'
 }
 
@@ -30,7 +30,7 @@ type CreateLoggerOptions = {
   destination?: DestinationStream
 }
 
-function resolveLevel(env: Env) {
+const resolveLevel = (env: Env) => {
   if (env.LOG_LEVEL) {
     return env.LOG_LEVEL
   }
@@ -46,7 +46,10 @@ function resolveLevel(env: Env) {
  * read here directly, not through `serverEnv()`, because the logger must work before the
  * environment is validated (e.g. the worker's "DATABASE_URL is required" exit).
  */
-export function createLogger({ env = process.env, destination }: CreateLoggerOptions = {}): Logger {
+export const createLogger = ({
+  env = process.env,
+  destination,
+}: CreateLoggerOptions = {}): Logger => {
   const options: LoggerOptions = {
     level: resolveLevel(env),
     redact: { paths: REDACT_PATHS, censor: '[redacted]' },

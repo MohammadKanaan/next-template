@@ -8,6 +8,6 @@ import { useBrowserStorage } from './useBrowserStorage'
  * the first client render, then the stored value) and in sync across tabs and hook instances.
  * `value` is also `null` when nothing is stored or what is stored fails the schema.
  */
-export function useLocalStorage<S extends z.ZodType>(key: string, schema: S) {
+export const useLocalStorage = <S extends z.ZodType>(key: string, schema: S) => {
   return useBrowserStorage('localStorage', key, schema)
 }

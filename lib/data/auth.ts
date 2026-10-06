@@ -20,7 +20,7 @@ const log = logger.child({ module: 'auth' })
  * Queues an email without awaiting it: the caller's response time must not reveal whether an
  * account exists. A failure to queue is logged; the user can ask again.
  */
-function queueEmail(payload: JobPayload<'send-email'>) {
+const queueEmail = (payload: JobPayload<'send-email'>) => {
   enqueue('send-email', payload).catch((error) => log.error({ err: error }, 'email not queued'))
 }
 
@@ -127,7 +127,7 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
 })
 
 /** Throws `UnauthorizedError` when signed out. Never redirects; pages use `loadPage` for that. */
-export async function requireUser(): Promise<SessionUser> {
+export const requireUser = async (): Promise<SessionUser> => {
   const user = await getSessionUser()
   if (!user) {
     throw new UnauthorizedError()
@@ -135,7 +135,7 @@ export async function requireUser(): Promise<SessionUser> {
   return user
 }
 
-export async function requireAdmin(): Promise<SessionUser> {
+export const requireAdmin = async (): Promise<SessionUser> => {
   const user = await requireUser()
   if (user.role !== 'admin') {
     throw new ForbiddenError()

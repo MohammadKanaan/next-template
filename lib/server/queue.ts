@@ -7,7 +7,7 @@ const log = logger.child({ module: 'queue' })
 
 const globalForQueue = globalThis as unknown as { boss?: Promise<PgBoss> }
 
-async function startBoss() {
+const startBoss = async () => {
   const connectionString = process.env.DATABASE_URL
   if (!connectionString) {
     throw new Error('DATABASE_URL is required to enqueue jobs')
@@ -28,7 +28,7 @@ async function startBoss() {
 }
 
 /** Shared send-only instance, started on first use so importing this file never needs a database. */
-function getBoss() {
+const getBoss = () => {
   if (!globalForQueue.boss) {
     const starting = startBoss()
     globalForQueue.boss = starting
@@ -46,18 +46,18 @@ function getBoss() {
  * Validates `payload` against the job's schema and sends it to the queue (a worker runs it).
  * Returns the job id, or null when pg-boss dropped it (e.g. a singleton collision).
  */
-export async function enqueue<N extends JobName>(
+export const enqueue = async <N extends JobName>(
   name: N,
   payload: JobPayload<N>,
   options?: SendOptions,
-): Promise<string | null> {
+): Promise<string | null> => {
   const data = jobs[name].schema.parse(payload)
   const boss = await getBoss()
   return boss.send(name, data, options)
 }
 
 /** Stops the shared instance; for tests and graceful shutdown. */
-export async function closeQueue(): Promise<void> {
+export const closeQueue = async (): Promise<void> => {
   const starting = globalForQueue.boss
   globalForQueue.boss = undefined
   if (starting) {

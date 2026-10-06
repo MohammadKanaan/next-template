@@ -8,7 +8,7 @@ type ErrorPageProps = {
   reset: () => void
 }
 
-export default function ErrorPage({ reset }: ErrorPageProps) {
+const ErrorPage = ({ reset }: ErrorPageProps) => {
   return (
     <div className={styles.container}>
       <Empty
@@ -23,3 +23,5 @@ export default function ErrorPage({ reset }: ErrorPageProps) {
     </div>
   )
 }
+
+export default ErrorPage

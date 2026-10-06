@@ -15,8 +15,9 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 Every data path ends at the same DAL function and returns the same DTO type under the same auth rules:
 Server Component → `lib/data`; Server Action (`actions/`) → `lib/data`; client facade (`lib/client`) → Route
 Handler (`app/api/v1`) → `lib/data`. DTOs are Zod schemas in `lib/dto` (`z.infer` gives the types). The DAL is the
-only code that touches Prisma, and it enforces auth itself (`requireUser()` / `requireAdmin()` plus inline
-record-level rules), so a caller that forgets a check cannot bypass it.
+only code that touches Prisma. It enforces auth itself (`requireUser()` / `requireAdmin()` plus inline
+record-level rules) and validates its own inputs with the `lib/dto` schema (`parseInput`), so a caller that
+forgets a check cannot bypass it.
 
 ## Locating Code
 
@@ -56,12 +57,14 @@ record-level rules), so a caller that forgets a check cannot bypass it.
 
 ## Tech Stack
 
-- **Framework:** Next.js 16 App Router / React 19 / TypeScript (strict mode)
+- **Framework:** Next.js 16 App Router / React 19 / TypeScript (strict mode), with the React
+  Compiler on (`reactCompiler: true`)
 - **UI primitives:** shadcn/ui on Radix, vendored as flat files in `components/SCN/`
 - **Data layer:** server-only DAL in `lib/data`; Zod DTOs in `lib/dto`; Server Actions for writes
 - **HTTP (client reads only):** `fetch` inside a typed facade in `lib/client`, parsed with the shared schema
 - **Database:** Prisma ORM 7.10 (`prisma-client` generator, `@prisma/adapter-pg`) on PostgreSQL 18
-- **Cache + rate limits:** Redis (`ioredis`) behind `lib/server`; Next Cache Components for pure UI
+- **Cache + rate limits:** Redis (`ioredis`) behind `lib/server`. It is the only cache: Next's
+  Cache Components (`'use cache'`) are off
 - **Jobs:** pg-boss on the same PostgreSQL, run by a separate worker process (`worker/`)
 - **Email:** Resend + React Email templates (`emails/`), logged to the logger without an API key
 - **Logging:** pino (`lib/server/logger.ts`), pino-pretty in development
@@ -77,7 +80,7 @@ record-level rules), so a caller that forgets a check cannot bypass it.
 
 ```
 app/                     # App Router: route groups (site), (minimal); api/auth, api/v1, api/health
-  (site)/<route>/        # page.tsx (Server Component) + view.tsx ('use client') + styles.module.scss
+  (site)/<route>/        # page.tsx (Server Component) + optional view.tsx ('use client') + styles.module.scss
 actions/                 # 'use server' Server Actions (posts.ts, auth.ts, uploads.ts)
 components/              # React components (ComponentName/index.tsx + styles.module.scss)
 components/SCN/          # shadcn/ui primitives (the only place Tailwind is allowed)
@@ -123,18 +126,26 @@ docs/DECISIONS.md        # Framework and library choices, with reasons
 
 ## React Components
 
-- Function components with **named exports**. Next route files (`page.tsx`, `layout.tsx`,
-  `not-found.tsx`, `route.ts`) use the default exports Next requires.
+- **Every function is a `const` arrow function** (`export const PostForm = (props) => { … }`),
+  components, hooks, helpers, DAL functions and Server Actions alike; ESLint enforces it with
+  `func-style`. The only `function` declarations are in the generated `components/SCN`.
+- Components use **named exports**. Next route files (`page.tsx`, `layout.tsx`,
+  `not-found.tsx`, `route.ts`) use the default exports Next requires, written as
+  `const PostsPage = async (…) => { … }` followed by `export default PostsPage`.
 - **Server Components by default.** Add `'use client'` only for state, effects, event handlers, or
-  browser APIs. Interactive route UI lives in a sibling `view.tsx`; `page.tsx` stays a Server
-  Component that owns `metadata` and the static shell.
-- **Cache Components are on** (`cacheComponents: true`), so request data may only be read inside
-  `<Suspense>`: `page.tsx` renders an inner async component inside
-  `<Suspense fallback={<PageLoading />}>` that awaits `params`/`searchParams` (Promises) and calls
-  the DAL through `loadPage`. A page that only reads the session (login, signup) does the same
-  with `getViewer()`. Any other component that calls a data function gets its own `<Suspense>`
-  (see **Caching**).
-- A route with no params and no data stays a plain static shell (`/posts/new`, `/ui-kit`).
+  browser APIs. `page.tsx` is an async Server Component that owns `metadata`, awaits
+  `params`/`searchParams` (Promises), calls the DAL through `loadPage` and renders the markup.
+- **Push `'use client'` to the leaves.** A page with nothing interactive of its own has no
+  `view.tsx` (`/posts/[userId]/[id]` renders on the server; only `DeletePostButton` is a client
+  component). Add a sibling `view.tsx` only for the interactive part: handlers that call Server
+  Actions, toasts, navigation, URL state. When a view wraps content that needs no interactivity,
+  the page passes that content as `children` so it stays server-rendered (`/posts/ssr`: the view
+  owns filters and pagination, the page renders the list into it).
+- **No `<Suspense>` is required around data reads.** A page awaits its data and the response is
+  sent when it is ready, so `redirect()` and `notFound()` answer with real 307 / 404 statuses. Wrap
+  a slow section in `<Suspense fallback={<PageLoading />}>` only when you want it to stream. The
+  one required boundary: a client component that calls `useSearchParams` (`useUrlState`) on a page
+  that reads nothing on the server (`/posts/csr`).
 - Component folders: `components/<Area>/<Name>/index.tsx` with a co-located `styles.module.scss`.
 - Match the style of the file or directory you are editing — do not restructure opportunistically.
 - In application code, do not cast with `as` inside JSX. Narrow or derive the value in the
@@ -204,7 +215,7 @@ docs/DECISIONS.md        # Framework and library choices, with reasons
   exists (404) → not the admin's own account (403) → update → `invalidateTags(userTag(id))`.
   Roles are read from the database session on every request, so a change applies on the target's
   next request. `setUserRoleAction` is the write; `page.tsx` reads `searchParams` with
-  `usersUrlQuery` inside `<Suspense>` and `view.tsx` (table, role `Select`, search, `Pagination`)
+  `usersUrlQuery` and `view.tsx` (table, role `Select`, search, `Pagination`)
   writes through `useUrlState`. `NavBar` shows an "Admin" link to admins only (cosmetic; the DAL is
   the guard). Better Auth's `admin` plugin is deliberately not used (see `docs/DECISIONS.md`).
 - `proxy.ts` is optimistic only: it checks cookie _presence_ (`getSessionCookie`) to redirect
@@ -240,15 +251,21 @@ docs/DECISIONS.md        # Framework and library choices, with reasons
   starts with `import 'server-only'`.
 - Select exactly the columns a DTO needs (`satisfies Prisma.PostSelect`), map the row to the DTO,
   and return the DTO. Never return a Prisma row to a caller.
+- **Every function validates its own inputs** with `parseInput(schema, input)` from `./errors`
+  (it throws `ValidationError` with per-field messages) and works on the parsed result, which is
+  where trimming and defaults are applied. The parameter stays typed with the DTO type for callers;
+  the parse is what makes it true at runtime, whoever calls. Order: signed in (401) → input valid
+  (422) → exists (404) → allowed (403). A read by id treats a malformed id as not found
+  (`getPost('abc')` throws `NotFoundError`), so pages pass the route param straight in.
 - Every function enforces auth itself: `requireUser()` / `requireAdmin()` plus inline record-level
   rules (e.g. a post may be changed by its author or an admin). For writes the order is signed in
   (401) → exists (404) → allowed (403).
 - Failures are typed errors (see **Errors**), not return codes.
 - Server Components call the DAL directly (wrapped in `loadPage` when they need the redirect /
   not-found behaviour). They never fetch the app's own Route Handlers. `loadPage` awaits
-  `connection()` before it loads, so no page read ever runs while `next build` prerenders; a
-  component that calls the DAL without `loadPage` (e.g. the NavBar's `getViewer()`) is session
-  based and so is already request-time.
+  `connection()` before it loads, so a page is never prerendered (and frozen) by `next build`,
+  even when its read does not touch the session; a component that calls the DAL without
+  `loadPage` (e.g. the layout's `getViewer()`) is session based and so is already request-time.
 - `lib/data/health.ts` and `lib/data/maintenance.ts` are the two deliberate exceptions to "every
   function enforces auth": health is a public probe that returns only ok/fail per dependency, and
   maintenance is the system DAL for jobs (see **Jobs**).
@@ -257,18 +274,22 @@ docs/DECISIONS.md        # Framework and library choices, with reasons
 
 ## Server Actions
 
-- Writes go through `'use server'` files in `actions/`. Inputs are typed for callers but
-  re-validated: anything can reach an action endpoint.
-- Shape: `try { parseInput(schema, input) → DAL call → revalidatePath / refresh → { ok: true, data } }
+- Writes go through `'use server'` files in `actions/`. Inputs are typed for callers, but anything
+  can reach an action endpoint, so an action passes its arguments to the DAL untouched (never
+  destructure or read a field first) and the DAL validates them.
+- Shape: `try { DAL call → revalidatePath / refresh → { ok: true, data } }
 catch (error) { return toActionFailure(error) }`. Return `ActionResult<T>`; never throw for
   expected failures.
-- Auth actions (`signInAction`, `signUpAction`, `signOutAction`) call `auth.api.*` and `refresh()`.
+- Auth actions (`signInAction`, `signUpAction`, `signOutAction`, …) call `auth.api.*` and
+  `refresh()`. There is no DAL function behind those calls, so these actions are the exception that
+  runs `parseInput` themselves (in `actions/auth.ts`).
 - The calling view owns navigation and toasts; the form owns field errors.
 
 ## Route Handlers and client facades
 
 - Use a Route Handler only when a client component must fetch (today: `GET /api/v1/posts`, the
-  `/posts/csr` example). It stays thin: `parseInput` the query, call the DAL, return JSON or
+  `/posts/csr` example). It stays thin: `parseInput` the query to decode it (every value arrives as a
+  string), call the DAL (which validates again, because it trusts no caller), return JSON or
   `toErrorResponse(error)`.
 - The client calls it through a facade in `lib/client` (`fetchPosts`) that parses the response with
   the shared `lib/dto` schema and throws `RequestError` (message + status) on failure. Components do
@@ -292,20 +313,12 @@ catch (error) { return toActionFailure(error) }`. Return `ActionResult<T>`; neve
 
 ## Caching
 
-Two caches exist and they must not meet:
-
-- **Redis data cache** (`remember()` in `lib/server/cache.ts`), used inside the DAL for data that is
-  the same for every viewer.
-- **Next Cache Components** (`'use cache'`), for pure or static UI only (today: `BottomFooter`).
-
-Rules:
-
-1. **Never put `'use cache'` on anything that reads data Redis caches** (any DAL call). Next would
-   freeze a copy that Redis invalidation cannot reach.
-2. **Wrap every component that calls a data function in `<Suspense fallback={…}>`** (use
-   `components/PageLoading` for a page, a skeleton or `null` for a slot). Cache Components
-   rejects uncached request data outside a boundary, and the boundary is what lets the static shell
-   prerender.
+There is one cache: the **Redis data cache** (`remember()` in `lib/server/cache.ts`), used inside
+the DAL for data that is the same for every viewer. Next's Cache Components are off
+(`cacheComponents` is not set), so `'use cache'`, `cacheTag` and `cacheLife` are not available; do
+not turn them on to cache data, because a second cache is a copy that Redis invalidation cannot
+reach. Caching is opt-in per DAL function: a new read works without `remember()`, add it when the
+read is viewer independent and worth it.
 
 How the DAL caches:
 
@@ -425,8 +438,19 @@ records the result.
 
 ## Hooks
 
-- Located in `hooks/`. Named `useXxx` and exported as named functions.
-- Return objects with state and stable callbacks.
+- Located in `hooks/`. Named `useXxx` and exported as named `const` arrow functions.
+- Return objects with state and callbacks.
+- **No `useMemo` / `useCallback` / `React.memo`.** The React Compiler memoizes components and
+  hooks at build time (and in Vitest, through `vitest.config.mts`), so derived values and
+  callbacks are plain `const`s. Two rules keep that safe:
+  - **Never rely on memoization for correctness.** Code must behave the same if a value is
+    recreated on every render. When an effect needs the latest props or state without re-running,
+    read them through `useEffectEvent` (`NavBar`'s resize handler, `PostForm`'s debounced draft
+    save) instead of listing a callback as a dependency.
+  - **A file that uses React Hook Form opts out with `'use no memo'`** below `'use client'`.
+    `register()` must run on every render (a reset clears the field registry and the next render
+    refills it); compiled, the call is cached and the form stops following resets and new
+    `values`. ESLint fails the file if the directive is missing.
 - **URL state:** `useUrlState(schema, { history })` (`hooks/useUrlState.ts`) keeps list filters in
   the query string. The schema is a Zod object whose fields all have `.default()` / `.catch()`, so
   any URL parses (`postsUrlQuery` in `lib/dto/posts.ts` is the one contract, shared with the SSR
@@ -434,8 +458,9 @@ records the result.
   a repeated param reads as its last value on server and client alike). `setState(patch)` is one
   navigation per patch and is stable; each patch builds on the last query requested (not the
   committed URL), so two patches issued before the first lands both survive. Keys that are empty
-  or equal to the default leave the URL, unknown params stay. Scalars only. The component using it
-  must sit inside `<Suspense>`. A filter change resets `page` in the same patch.
+  or equal to the default leave the URL, unknown params stay. Scalars only. On a page that
+  reads nothing on the server the component using it must sit inside `<Suspense>` (see **React
+  Components**). A filter change resets `page` in the same patch.
 - **Browser storage:** `useLocalStorage(key, schema)` / `useSessionStorage(key, schema)` return
   `{ value, setValue, removeValue }`. They sit on `useSyncExternalStore` with a `null` server
   snapshot, so `value` is `null` on the server and on the first client render (no hydration
@@ -453,16 +478,17 @@ records the result.
 
 ## Helpers & Presenters
 
-- **Helpers** (`lib/`): exported named functions, no classes, no default exports. Pure
+- **Helpers** (`lib/`): exported named `const` arrow functions, no classes, no default exports. Pure
   formatting, parsing, and data utilities.
 - **Presenters** (`presenters/`): plain functions, only for overrides. A presenter spreads the DTO
   and overrides or adds just the fields a view needs reshaped:
   `export const presentUser = (user) => ({ ...user, website: toAbsoluteUrl(user.website) })`.
   No classes, no presenter that only passes data through — if the DTO already fits the view, use it
   directly.
-- Apply a presenter where the data is consumed (a view's `useMemo`). DTOs are plain
-  objects, so they cross the Server → Client Component boundary safely; present on the client side
-  of it.
+- Apply a presenter where the data is consumed: call it directly in a Server Component
+  (`/posts/[userId]/[id]`) or in a client view. DTOs are plain objects, so they cross
+  the Server → Client Component boundary safely; a presented value that holds a function or class
+  instance would not, so present on the side that renders it.
 - Reuse existing helpers and presenters before adding duplicate logic.
 
 ## Formatting (Prettier)
@@ -495,7 +521,8 @@ records the result.
   `signInAs()` from `tests/helpers/server.ts`, and run against `next_template_test` only. Run
   `bun run db:test:prepare` after schema changes.
 - `vitest.config.mts` inlines `better-auth` so its internal `next/headers` import goes through the
-  mock.
+  mock. It also runs the React Compiler (`reactCompilerPreset`), so component and hook tests
+  exercise the same memoized code that ships.
 - Server tests also need Redis (database 15 via `.env.test`); `resetDatabase()` flushes it. Tests that
   reach storage or Resend mock them, and `@/lib/server/queue` is mocked globally in `tests/setup.ts`. Tests
   never need MinIO or Resend.
@@ -515,7 +542,9 @@ records the result.
 ## Forms
 
 - React Hook Form + Zod via `zodResolver`. Schemas come from `lib/dto` and are the same ones the
-  Server Actions validate with.
+  DAL validates with.
+- Every form component starts with `'use client'` then `'use no memo'` (see **Hooks**: React Hook
+  Form is not compatible with the React Compiler). Copy an existing form to get both.
 - The form component owns `useForm` and hands validated values to the page through `onSubmit`. The
   page passes an `onSubmit` that calls a Server Action and returns its `ActionResult`; the form maps
   failures with `applyActionErrors` (field errors onto fields, otherwise `message` as a form-level
@@ -531,9 +560,8 @@ records the result.
 | `(minimal)` | Auth pages (`/login`, `/signup`; no navigation chrome) |
 
 - The root `app/layout.tsx` owns fonts, global styles, and `Providers` (theme, tooltips, toaster).
-- The `(site)` layout reads the session (`getViewer()`) in async slots (`NavBarSlot`,
-  `VerifyEmailBannerSlot`), each inside its own `<Suspense>`, so the shell prerenders and the
-  viewer-dependent parts stream in.
+- The `(site)` layout is async: it reads the session once (`getViewer()`) and passes the viewer
+  to `NavBar` and `VerifyEmailBanner`. Every `(site)` route is therefore rendered per request.
 
 ## Environment & Config
 

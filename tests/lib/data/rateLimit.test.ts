@@ -17,7 +17,7 @@ vi.mock('@/lib/server/logger', () => ({ logger: { child: () => log } }))
 
 const rule = { max: 3, windowMs: 1000 }
 
-async function consume(key: string, times: number) {
+const consume = async (key: string, times: number) => {
   for (let attempt = 0; attempt < times; attempt++) {
     await consumeRateLimit(key, rule)
   }

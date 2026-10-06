@@ -1,4 +1,6 @@
 'use client'
+// React Hook Form's `register()` must run on every render; the React Compiler would cache it.
+'use no memo'
 
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useState } from 'react'
@@ -25,7 +27,7 @@ export type DeleteAccountDialogProps = {
   onConfirm: (values: DeleteAccountInput) => Promise<ActionResult<unknown>>
 }
 
-export function DeleteAccountDialog({ onConfirm }: DeleteAccountDialogProps) {
+export const DeleteAccountDialog = ({ onConfirm }: DeleteAccountDialogProps) => {
   const [open, setOpen] = useState(false)
   const {
     register,

@@ -1,7 +1,8 @@
 'use client'
+// React Hook Form's `register()` must run on every render; the React Compiler would cache it.
+'use no memo'
 
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { Input } from '@/components/Form/Input'
 import { LoadingButton } from '@/components/LoadingButton'
@@ -16,14 +17,16 @@ export type ProfileFormProps = {
   onSubmit: (values: UpdateProfileInput) => Promise<ActionResult<unknown>>
 }
 
-export function ProfileForm({ user, onSubmit }: ProfileFormProps) {
-  const values = useMemo(() => hydrateProfileForm(user), [user])
+export const ProfileForm = ({ user, onSubmit }: ProfileFormProps) => {
   const {
     register,
     handleSubmit,
     setError,
     formState: { errors, isDirty, isSubmitting },
-  } = useForm<UpdateProfileInput>({ resolver: zodResolver(updateProfileInput), values })
+  } = useForm<UpdateProfileInput>({
+    resolver: zodResolver(updateProfileInput),
+    values: hydrateProfileForm(user),
+  })
 
   const submit = handleSubmit(async (formValues) => {
     const result = await onSubmit(formValues)

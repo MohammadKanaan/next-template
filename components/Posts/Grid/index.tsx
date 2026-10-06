@@ -6,7 +6,7 @@ type PostsGridProps = {
   posts: PostSummary[]
 }
 
-export function PostsGrid({ posts }: PostsGridProps) {
+export const PostsGrid = ({ posts }: PostsGridProps) => {
   return (
     <div className={styles.grid}>
       {posts.map((post) => (

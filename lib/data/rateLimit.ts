@@ -11,7 +11,7 @@ export type RateLimitRule = { max: number; windowMs: number }
 const KEY_PREFIX = 'ratelimit:'
 
 /** Mirrors Better Auth's own default: its HTTP rate limiter is only on in production. */
-export function isRateLimitEnabled() {
+export const isRateLimitEnabled = () => {
   return process.env.NODE_ENV === 'production'
 }
 
@@ -22,7 +22,7 @@ export function isRateLimitEnabled() {
  * Redis drops the key when it ends. If Redis is unreachable the attempt is allowed and the failure
  * is logged: an outage must not lock everyone out of signing in.
  */
-export async function consumeRateLimit(key: string, rule: RateLimitRule): Promise<void> {
+export const consumeRateLimit = async (key: string, rule: RateLimitRule): Promise<void> => {
   let count: number
   try {
     const results = await getRedis()
@@ -45,7 +45,7 @@ export async function consumeRateLimit(key: string, rule: RateLimitRule): Promis
 }
 
 /** Deletes every rate-limit counter; for tests. */
-export async function resetRateLimits(): Promise<void> {
+export const resetRateLimits = async (): Promise<void> => {
   const redis = getRedis()
   const keys = await redis.keys(`${KEY_PREFIX}*`)
   if (keys.length > 0) {
@@ -54,7 +54,7 @@ export async function resetRateLimits(): Promise<void> {
 }
 
 /** First `x-forwarded-for` entry, else `x-real-ip`, else `'unknown'`. */
-export async function getClientIp() {
+export const getClientIp = async () => {
   const requestHeaders = await headers()
   const forwarded = requestHeaders.get('x-forwarded-for')?.split(',')[0]?.trim()
   return forwarded || requestHeaders.get('x-real-ip')?.trim() || 'unknown'

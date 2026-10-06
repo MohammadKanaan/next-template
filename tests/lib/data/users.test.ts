@@ -273,11 +273,17 @@ describe('users DAL', () => {
   describe('setUserRole', () => {
     it('requires an admin: 401 signed out, 403 for a regular user, role unchanged', async () => {
       const target = await createUser({})
-      await expect(setUserRole(target.id, 'admin')).rejects.toBeInstanceOf(UnauthorizedError)
+      await expect(setUserRole({ id: target.id, role: 'admin' })).rejects.toBeInstanceOf(
+        UnauthorizedError,
+      )
       const member = await createUser({})
       await signInAs(member)
-      await expect(setUserRole(target.id, 'admin')).rejects.toBeInstanceOf(ForbiddenError)
-      await expect(setUserRole(member.id, 'admin')).rejects.toBeInstanceOf(ForbiddenError)
+      await expect(setUserRole({ id: target.id, role: 'admin' })).rejects.toBeInstanceOf(
+        ForbiddenError,
+      )
+      await expect(setUserRole({ id: member.id, role: 'admin' })).rejects.toBeInstanceOf(
+        ForbiddenError,
+      )
       expect(await db.user.findUniqueOrThrow({ where: { id: target.id } })).toMatchObject({
         role: 'user',
       })
@@ -289,13 +295,17 @@ describe('users DAL', () => {
     it('reports a missing user as not found', async () => {
       const admin = await createUser({ role: 'admin' })
       await signInAs(admin)
-      await expect(setUserRole('missing-id', 'admin')).rejects.toBeInstanceOf(NotFoundError)
+      await expect(setUserRole({ id: 'missing-id', role: 'admin' })).rejects.toBeInstanceOf(
+        NotFoundError,
+      )
     })
 
     it('refuses to change the admin’s own role', async () => {
       const admin = await createUser({ role: 'admin' })
       await signInAs(admin)
-      await expect(setUserRole(admin.id, 'user')).rejects.toBeInstanceOf(ForbiddenError)
+      await expect(setUserRole({ id: admin.id, role: 'user' })).rejects.toBeInstanceOf(
+        ForbiddenError,
+      )
       expect(await db.user.findUniqueOrThrow({ where: { id: admin.id } })).toMatchObject({
         role: 'admin',
       })
@@ -307,13 +317,13 @@ describe('users DAL', () => {
       const admin = await createUser({ role: 'admin' })
       await signInAs(admin)
 
-      const promoted = await setUserRole(target.id, 'admin')
+      const promoted = await setUserRole({ id: target.id, role: 'admin' })
       expect(promoted).toMatchObject({ id: target.id, name: 'Target', role: 'admin', postCount: 1 })
       expect(await db.user.findUniqueOrThrow({ where: { id: target.id } })).toMatchObject({
         role: 'admin',
       })
 
-      expect((await setUserRole(target.id, 'user')).role).toBe('user')
+      expect((await setUserRole({ id: target.id, role: 'user' })).role).toBe('user')
     })
 
     it('applies on the target’s next request and refreshes their cached viewer', async () => {
@@ -322,7 +332,7 @@ describe('users DAL', () => {
       await signInAs(target)
       expect((await getViewer())?.role).toBe('user')
       await signInAs(admin)
-      await setUserRole(target.id, 'admin')
+      await setUserRole({ id: target.id, role: 'admin' })
 
       await signInAs(target)
       expect((await getViewer())?.role).toBe('admin')

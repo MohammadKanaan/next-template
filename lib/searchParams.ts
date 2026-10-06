@@ -5,7 +5,9 @@ type RawSearchParams = Record<string, string | string[] | undefined>
  * server (a page's `searchParams` record) and the client (`URLSearchParams`) read the same URL the
  * same way before a Zod URL schema parses it.
  */
-export function toScalarParams(input: URLSearchParams | RawSearchParams): Record<string, string> {
+export const toScalarParams = (
+  input: URLSearchParams | RawSearchParams,
+): Record<string, string> => {
   if (input instanceof URLSearchParams) {
     return Object.fromEntries(input)
   }

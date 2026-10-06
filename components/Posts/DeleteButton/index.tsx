@@ -22,7 +22,7 @@ type DeletePostButtonProps = {
   postId: number
 }
 
-export function DeletePostButton({ postId }: DeletePostButtonProps) {
+export const DeletePostButton = ({ postId }: DeletePostButtonProps) => {
   const router = useRouter()
   const [isOpen, setIsOpen] = useState(false)
   const [isPending, startTransition] = useTransition()

@@ -13,7 +13,7 @@ export const metadata: Metadata = {
   title: { default: env.appName, template: `%s | ${env.appName}` },
 }
 
-export default function RootLayout({ children }: LayoutProps<'/'>) {
+const RootLayout = ({ children }: LayoutProps<'/'>) => {
   return (
     <html lang="en" className={inter.variable} suppressHydrationWarning>
       <body>
@@ -22,3 +22,5 @@ export default function RootLayout({ children }: LayoutProps<'/'>) {
     </html>
   )
 }
+
+export default RootLayout

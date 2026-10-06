@@ -2,23 +2,17 @@
 
 import { refresh } from 'next/cache'
 import { getSessionUser } from '@/lib/data/auth'
-import { parseInput, toActionFailure } from '@/lib/data/errors'
+import { toActionFailure } from '@/lib/data/errors'
 import { consumeRateLimit, isRateLimitEnabled } from '@/lib/data/rateLimit'
 import { attachAvatar, createAvatarUpload } from '@/lib/data/uploads'
-import {
-  createAvatarUploadInput,
-  uploadIdSchema,
-  type CreateAvatarUploadInput,
-  type UploadTicket,
-} from '@/lib/dto/uploads'
+import type { CreateAvatarUploadInput, UploadTicket } from '@/lib/dto/uploads'
 import type { CurrentUser } from '@/lib/dto/users'
 import type { ActionResult } from '@/types/api'
 
-export async function createAvatarUploadAction(
+export const createAvatarUploadAction = async (
   input: CreateAvatarUploadInput,
-): Promise<ActionResult<UploadTicket>> {
+): Promise<ActionResult<UploadTicket>> => {
   try {
-    const body = parseInput(createAvatarUploadInput, input)
     if (isRateLimitEnabled()) {
       // Signed-out callers are rejected by the DAL below; only a session has a user to count.
       const viewer = await getSessionUser()
@@ -26,16 +20,16 @@ export async function createAvatarUploadAction(
         await consumeRateLimit(`avatar-upload:user:${viewer.id}`, { max: 10, windowMs: 60_000 })
       }
     }
-    const ticket = await createAvatarUpload(body)
+    const ticket = await createAvatarUpload(input)
     return { ok: true, data: ticket }
   } catch (error) {
     return toActionFailure(error)
   }
 }
 
-export async function attachAvatarAction(uploadId: string): Promise<ActionResult<CurrentUser>> {
+export const attachAvatarAction = async (uploadId: string): Promise<ActionResult<CurrentUser>> => {
   try {
-    const user = await attachAvatar(parseInput(uploadIdSchema, uploadId))
+    const user = await attachAvatar(uploadId)
     refresh()
     return { ok: true, data: user }
   } catch (error) {

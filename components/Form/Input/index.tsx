@@ -8,7 +8,7 @@ type InputProps = Omit<ComponentProps<typeof ShadcnInput>, 'className' | 'style'
   error?: string
 }
 
-export function Input({ label, error, required, id, ...props }: InputProps) {
+export const Input = ({ label, error, required, id, ...props }: InputProps) => {
   const generatedId = useId()
   const inputId = id ?? generatedId
   const errorId = `${inputId}-error`

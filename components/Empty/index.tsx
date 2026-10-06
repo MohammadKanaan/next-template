@@ -7,7 +7,7 @@ type EmptyProps = {
   action?: ReactNode
 }
 
-export function Empty({ title, description, action }: EmptyProps) {
+export const Empty = ({ title, description, action }: EmptyProps) => {
   return (
     <div className={styles.empty}>
       <h2 className={styles.title}>{title}</h2>

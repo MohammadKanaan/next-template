@@ -15,7 +15,7 @@ type PostsStateProps = {
   children: ReactNode
 }
 
-export function PostsState({
+export const PostsState = ({
   title,
   subtitle,
   loading = false,
@@ -24,7 +24,7 @@ export function PostsState({
   errorMessage = '',
   onRetry,
   children,
-}: PostsStateProps) {
+}: PostsStateProps) => {
   let content: ReactNode
 
   if (loading) {

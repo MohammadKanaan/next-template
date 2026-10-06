@@ -6,12 +6,12 @@ type LoadingButtonProps = Omit<ComponentProps<typeof Button>, 'className' | 'sty
   loading?: boolean
 }
 
-export function LoadingButton({
+export const LoadingButton = ({
   loading = false,
   disabled,
   children,
   ...props
-}: LoadingButtonProps) {
+}: LoadingButtonProps) => {
   return (
     <Button disabled={disabled || loading} aria-busy={loading || undefined} {...props}>
       {loading && <Spinner aria-hidden="true" />}

@@ -55,6 +55,6 @@ export type JobName = keyof typeof jobs
 
 export type JobPayload<N extends JobName> = z.infer<(typeof jobs)[N]['schema']>
 
-export function getJobDefinition(name: JobName): JobDefinition {
+export const getJobDefinition = (name: JobName): JobDefinition => {
   return jobs[name]
 }

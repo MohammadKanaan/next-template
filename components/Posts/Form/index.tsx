@@ -1,7 +1,9 @@
 'use client'
+// React Hook Form's `register()` must run on every render; the React Compiler would cache it.
+'use no memo'
 
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useCallback, useEffect, useMemo, useRef, type FormEvent } from 'react'
+import { useEffect, useEffectEvent, useRef, type FormEvent } from 'react'
 import { useForm } from 'react-hook-form'
 import { Input } from '@/components/Form/Input'
 import { Textarea } from '@/components/Form/Textarea'
@@ -34,17 +36,16 @@ export type PostFormProps = {
   onDraftChange?: (draft: PostDraft | null) => void
 }
 
-export function PostForm({
+export const PostForm = ({
   post,
   submitLabel,
   onSubmit,
   onCancel,
   draft,
   onDraftChange,
-}: PostFormProps) {
+}: PostFormProps) => {
   // An existing post follows the `post` prop. A new post only starts from the draft: feeding the
   // draft back through `values` would reset the form (and its errors) on every autosave.
-  const postValues = useMemo(() => (post ? hydratePostForm(post) : undefined), [post])
   const {
     register,
     handleSubmit,
@@ -56,7 +57,7 @@ export function PostForm({
   } = useForm<CreatePostInput>({
     resolver: zodResolver(createPostInput),
     defaultValues: hydratePostForm(post, draft),
-    values: postValues,
+    values: post ? hydratePostForm(post) : undefined,
   })
 
   // The stored draft is unknown while hydrating and shows up on a later render: restore it once.
@@ -74,19 +75,18 @@ export function PostForm({
   // Set once the post was created: nothing may be written to the draft after that.
   const submitted = useRef(false)
 
-  const onDraftChangeRef = useRef(onDraftChange)
-  useEffect(() => {
-    onDraftChangeRef.current = onDraftChange
-  })
   const draftTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
 
-  const saveDraft = useCallback(() => {
+  const saveDraft = () => {
     if (submitted.current) {
       return
     }
     const current = getValues()
-    onDraftChangeRef.current?.(isEmptyPostForm(current) ? null : current)
-  }, [getValues])
+    onDraftChange?.(isEmptyPostForm(current) ? null : current)
+  }
+  // The debounce timer fires long after the effect below ran: an Effect Event calls the latest
+  // `saveDraft` without the effect having to re-subscribe when it changes.
+  const saveDraftFromTimer = useEffectEvent(saveDraft)
 
   const hasDraftHandler = onDraftChange !== undefined
   useEffect(() => {
@@ -97,14 +97,14 @@ export function PostForm({
       formState: { values: true },
       callback: () => {
         clearTimeout(draftTimer.current)
-        draftTimer.current = setTimeout(saveDraft, DRAFT_DEBOUNCE_MS)
+        draftTimer.current = setTimeout(() => saveDraftFromTimer(), DRAFT_DEBOUNCE_MS)
       },
     })
     return () => {
       unsubscribe()
       clearTimeout(draftTimer.current)
     }
-  }, [hasDraftHandler, subscribe, saveDraft])
+  }, [hasDraftHandler, subscribe])
 
   // `handleSubmit` runs inside the event handler: its callback touches a ref, which must not
   // happen while rendering.

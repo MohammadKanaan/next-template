@@ -6,7 +6,7 @@ import { signOutAction } from '@/actions/auth'
 import { LoadingButton } from '@/components/LoadingButton'
 import { ROUTE_HOME } from '@/lib/constants-routes'
 
-export function SignOutButton() {
+export const SignOutButton = () => {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
 

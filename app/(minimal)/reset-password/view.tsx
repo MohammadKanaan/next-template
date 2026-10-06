@@ -15,7 +15,7 @@ type ResetPasswordViewProps = {
   token: string | null
 }
 
-export function ResetPasswordView({ token }: ResetPasswordViewProps) {
+export const ResetPasswordView = ({ token }: ResetPasswordViewProps) => {
   const router = useRouter()
 
   const handleSubmit = async (values: ResetPasswordInput) => {

@@ -52,6 +52,7 @@ describe('post actions', () => {
   })
 
   it('rejects an empty update', async () => {
+    await signInAs(await createUser({}))
     const result = await updatePostAction(1, {})
     expect(result).toMatchObject({
       ok: false,
@@ -60,11 +61,16 @@ describe('post actions', () => {
     })
   })
 
-  it('rejects a bad id before it reaches the DAL', async () => {
+  it('rejects a bad id', async () => {
+    await signInAs(await createUser({}))
     expect(await updatePostAction(0, { title: 'x' })).toMatchObject({
       ok: false,
       code: 'VALIDATION',
     })
+  })
+
+  it('answers UNAUTHORIZED before looking at the input when signed out', async () => {
+    expect(await updatePostAction(0, {})).toMatchObject({ ok: false, code: 'UNAUTHORIZED' })
   })
 
   it('forbids an intruder from updating', async () => {

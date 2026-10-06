@@ -24,13 +24,13 @@ export type AvatarUploaderProps = {
   onUploaded?: (user: CurrentUser) => void
 }
 
-export function AvatarUploader({
+export const AvatarUploader = ({
   name,
   image,
   onCreateUpload,
   onAttach,
   onUploaded,
-}: AvatarUploaderProps) {
+}: AvatarUploaderProps) => {
   const inputId = useId()
   const errorId = `${inputId}-error`
   const inputRef = useRef<HTMLInputElement>(null)

@@ -1,7 +1,12 @@
 // @vitest-environment node
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/data/db'
-import { ForbiddenError, NotFoundError, UnauthorizedError } from '@/lib/data/errors'
+import {
+  ForbiddenError,
+  NotFoundError,
+  UnauthorizedError,
+  ValidationError,
+} from '@/lib/data/errors'
 import { createPost, deletePost, getPost, listPosts, toExcerpt, updatePost } from '@/lib/data/posts'
 import { getRedis } from '@/lib/server/redis'
 import { createUser, resetDatabase, signInAs, signOut } from '../../helpers/server'
@@ -15,7 +20,7 @@ vi.mock('next/headers', () => ({
 }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn(), refresh: vi.fn() }))
 
-async function seedPost(userId: string, title = 'Post', body = 'Body') {
+const seedPost = async (userId: string, title = 'Post', body = 'Body') => {
   return db.post.create({ data: { userId, title, body } })
 }
 
@@ -132,6 +137,47 @@ describe('posts DAL', () => {
 
   it('throws NotFoundError for a missing post', async () => {
     await expect(getPost(999)).rejects.toBeInstanceOf(NotFoundError)
+  })
+
+  describe('input validation', () => {
+    it('accepts a route param as the id and treats a malformed one as not found', async () => {
+      const author = await createUser({})
+      const post = await seedPost(author.id, 'By param')
+      expect((await getPost(String(post.id))).title).toBe('By param')
+      await expect(getPost('abc')).rejects.toBeInstanceOf(NotFoundError)
+      await expect(getPost(-1)).rejects.toBeInstanceOf(NotFoundError)
+    })
+
+    it('validates a new post itself, so a caller that skips the schema cannot write bad data', async () => {
+      await signInAs(await createUser({}))
+      const error = await createPost({ title: ' ', body: 'x'.repeat(5001) }).catch((e) => e)
+      expect(error).toBeInstanceOf(ValidationError)
+      expect(error.fieldErrors).toEqual({
+        title: ['Title is required'],
+        body: ['Body must be 5000 characters or fewer'],
+      })
+      expect(await db.post.count()).toBe(0)
+      expect((await createPost({ title: '  Trimmed  ', body: 'Body' })).title).toBe('Trimmed')
+    })
+
+    it('validates an update and its id', async () => {
+      const author = await createUser({})
+      const post = await seedPost(author.id)
+      await signInAs(author)
+      await expect(updatePost(post.id, {})).rejects.toBeInstanceOf(ValidationError)
+      await expect(updatePost(post.id, { title: '' })).rejects.toBeInstanceOf(ValidationError)
+      await expect(updatePost(0, { title: 'x' })).rejects.toBeInstanceOf(ValidationError)
+      await expect(deletePost(1.5)).rejects.toBeInstanceOf(ValidationError)
+    })
+
+    it('checks the session before the input', async () => {
+      await expect(createPost({ title: '', body: '' })).rejects.toBeInstanceOf(UnauthorizedError)
+    })
+
+    it('bounds list queries', async () => {
+      await expect(listPosts({ page: 1, perPage: 101 })).rejects.toBeInstanceOf(ValidationError)
+      await expect(listPosts({ page: 0, perPage: 10 })).rejects.toBeInstanceOf(ValidationError)
+    })
   })
 
   it('computes permissions for anonymous, other, owner, and admin viewers', async () => {

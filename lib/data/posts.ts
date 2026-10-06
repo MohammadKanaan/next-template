@@ -1,15 +1,18 @@
 import 'server-only'
 import { Prisma } from '@/generated/prisma/client'
-import { toPage, type Page } from '@/lib/dto/common'
+import { idSchema, toPage, type Page } from '@/lib/dto/common'
 import {
   POST_EXCERPT_LENGTH,
+  createPostInput,
   type CreatePostInput,
+  listPostsQuery,
   type ListPostsParams,
   postDetailBaseSchema,
   postsPageSchema,
   type PostDetail,
   type PostDetailBase,
   type PostSummary,
+  updatePostInput,
   type UpdatePostInput,
 } from '@/lib/dto/posts'
 import { invalidateTags, remember } from '@/lib/server/cache'
@@ -17,7 +20,7 @@ import { getSessionUser, requireUser, type SessionUser } from './auth'
 import { POSTS_TAG, postTag } from './cacheTags'
 import { db } from './db'
 import { escapeLike } from './escapeLike'
-import { ForbiddenError, NotFoundError } from './errors'
+import { ForbiddenError, NotFoundError, parseInput } from './errors'
 import { userProfileSelect } from './users'
 
 const postSummarySelect = {
@@ -43,16 +46,16 @@ const postDetailSelect = {
 type PostSummaryRow = Prisma.PostGetPayload<{ select: typeof postSummarySelect }>
 type PostDetailRow = Prisma.PostGetPayload<{ select: typeof postDetailSelect }>
 
-export function toExcerpt(body: string, maxLength = POST_EXCERPT_LENGTH) {
+export const toExcerpt = (body: string, maxLength = POST_EXCERPT_LENGTH) => {
   return body.length <= maxLength ? body : `${body.slice(0, maxLength).trimEnd()}…`
 }
 
 /** Record-level rule: the author or an admin may change a post. */
-function canModify(viewer: SessionUser | null, authorId: string) {
+const canModify = (viewer: SessionUser | null, authorId: string) => {
   return viewer !== null && (viewer.id === authorId || viewer.role === 'admin')
 }
 
-function toPostSummary(row: PostSummaryRow): PostSummary {
+const toPostSummary = (row: PostSummaryRow): PostSummary => {
   return {
     id: row.id,
     title: row.title,
@@ -63,7 +66,7 @@ function toPostSummary(row: PostSummaryRow): PostSummary {
 }
 
 /** Everything about a post that does not depend on who is looking. */
-function toPostBase(row: PostDetailRow): PostDetailBase {
+const toPostBase = (row: PostDetailRow): PostDetailBase => {
   return {
     id: row.id,
     title: row.title,
@@ -74,18 +77,14 @@ function toPostBase(row: PostDetailRow): PostDetailBase {
   }
 }
 
-function toPostDetail(base: PostDetailBase, viewer: SessionUser | null): PostDetail {
-  const allowed = canModify(viewer, base.author.id)
-  return { ...base, permissions: { update: allowed, delete: allowed } }
+/** Adds what this viewer may do with the post; never cached, because it differs per viewer. */
+const withPermissions = (post: PostDetailBase, viewer: SessionUser | null): PostDetail => {
+  const allowed = canModify(viewer, post.author.id)
+  return { ...post, permissions: { update: allowed, delete: allowed } }
 }
 
-export async function listPosts({
-  page,
-  perPage,
-  authorId,
-  q,
-  sort = 'newest',
-}: ListPostsParams): Promise<Page<PostSummary>> {
+export const listPosts = async (params: ListPostsParams): Promise<Page<PostSummary>> => {
+  const { page, perPage, authorId, q, sort } = parseInput(listPostsQuery, params)
   const where: Prisma.PostWhereInput = {
     ...(authorId ? { userId: authorId } : {}),
     ...(q ? { title: { contains: escapeLike(q), mode: 'insensitive' } } : {}),
@@ -116,14 +115,20 @@ export async function listPosts({
   )
 }
 
-export async function getPost(id: number): Promise<PostDetail> {
-  const [base, viewer] = await Promise.all([
-    // Cached for everyone; `permissions` is computed per viewer below, never cached.
+/** `id` may come straight from a route param; one that is not a valid id is simply not found. */
+export const getPost = async (id: number | string): Promise<PostDetail> => {
+  const parsedId = idSchema.safeParse(id)
+  if (!parsedId.success) {
+    throw new NotFoundError('Post not found')
+  }
+  const postId = parsedId.data
+  const [post, viewer] = await Promise.all([
+    // Cached for everyone; `permissions` is added per viewer below, never cached.
     remember(
-      `post:${id}`,
-      { ttl: POSTS_CACHE_TTL, tags: [POSTS_TAG, postTag(id)], schema: postDetailBaseSchema },
+      `post:${postId}`,
+      { ttl: POSTS_CACHE_TTL, tags: [POSTS_TAG, postTag(postId)], schema: postDetailBaseSchema },
       async () => {
-        const row = await db.post.findUnique({ where: { id }, select: postDetailSelect })
+        const row = await db.post.findUnique({ where: { id: postId }, select: postDetailSelect })
         if (!row) {
           throw new NotFoundError('Post not found')
         }
@@ -132,30 +137,31 @@ export async function getPost(id: number): Promise<PostDetail> {
     ),
     getSessionUser(),
   ])
-  return toPostDetail(base, viewer)
+  return withPermissions(post, viewer)
 }
 
-export async function createPost(input: CreatePostInput): Promise<PostDetail> {
+export const createPost = async (input: CreatePostInput): Promise<PostDetail> => {
   const viewer = await requireUser()
+  const data = parseInput(createPostInput, input)
   const row = await db.post.create({
-    data: { ...input, userId: viewer.id },
+    data: { ...data, userId: viewer.id },
     select: postDetailSelect,
   })
   await invalidateTags(POSTS_TAG)
-  return toPostDetail(toPostBase(row), viewer)
+  const post = toPostBase(row)
+  return withPermissions(post, viewer)
 }
 
 /** The post vanished between the access check and the write (e.g. a concurrent delete). */
-function mapMissingRecord(error: unknown): never {
+const mapMissingRecord = (error: unknown): never => {
   if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
     throw new NotFoundError('Post not found')
   }
   throw error
 }
 
-/** Signed in, post exists, and the viewer may change it — in that order. */
-async function requirePostChange(id: number) {
-  const viewer = await requireUser()
+/** The post exists and the viewer may change it — in that order. */
+const requirePostChange = async (viewer: SessionUser, id: number) => {
   const post = await db.post.findUnique({ where: { id }, select: { userId: true } })
   if (!post) {
     throw new NotFoundError('Post not found')
@@ -163,20 +169,25 @@ async function requirePostChange(id: number) {
   if (!canModify(viewer, post.userId)) {
     throw new ForbiddenError('You cannot change this post')
   }
-  return viewer
 }
 
-export async function updatePost(id: number, input: UpdatePostInput): Promise<PostDetail> {
-  const viewer = await requirePostChange(id)
+export const updatePost = async (id: number, input: UpdatePostInput): Promise<PostDetail> => {
+  const viewer = await requireUser()
+  const postId = parseInput(idSchema, id)
+  const data = parseInput(updatePostInput, input)
+  await requirePostChange(viewer, postId)
   const row = await db.post
-    .update({ where: { id }, data: input, select: postDetailSelect })
+    .update({ where: { id: postId }, data, select: postDetailSelect })
     .catch(mapMissingRecord)
-  await invalidateTags(POSTS_TAG, postTag(id))
-  return toPostDetail(toPostBase(row), viewer)
+  await invalidateTags(POSTS_TAG, postTag(postId))
+  const post = toPostBase(row)
+  return withPermissions(post, viewer)
 }
 
-export async function deletePost(id: number): Promise<void> {
-  await requirePostChange(id)
-  await db.post.delete({ where: { id } }).catch(mapMissingRecord)
-  await invalidateTags(POSTS_TAG, postTag(id))
+export const deletePost = async (id: number): Promise<void> => {
+  const viewer = await requireUser()
+  const postId = parseInput(idSchema, id)
+  await requirePostChange(viewer, postId)
+  await db.post.delete({ where: { id: postId } }).catch(mapMissingRecord)
+  await invalidateTags(POSTS_TAG, postTag(postId))
 }

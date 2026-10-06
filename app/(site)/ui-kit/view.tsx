@@ -109,7 +109,7 @@ type SectionProps = {
   children: ReactNode
 }
 
-function Section({ id, eyebrow, title, description, children }: SectionProps) {
+const Section = ({ id, eyebrow, title, description, children }: SectionProps) => {
   return (
     <section id={id} className={styles.section} aria-labelledby={`${id}-title`}>
       <header className={styles.sectionHeader}>
@@ -124,7 +124,7 @@ function Section({ id, eyebrow, title, description, children }: SectionProps) {
   )
 }
 
-export function UiKitView() {
+export const UiKitView = () => {
   const [page, setPage] = useState(2)
   const [filters, setFilters] = useState<{ q: string; sort: PostsSort }>({
     q: '',
