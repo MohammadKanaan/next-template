@@ -6,6 +6,7 @@ import {
   ForbiddenError,
   NotFoundError,
   parseInput,
+  readJsonBody,
   RateLimitedError,
   toActionFailure,
   toErrorResponse,
@@ -89,5 +90,46 @@ describe('toErrorResponse', () => {
 
   it('rethrows unknown errors', () => {
     expect(() => toErrorResponse(new Error('boom'))).toThrow('boom')
+  })
+})
+
+describe('readJsonBody', () => {
+  const jsonRequest = (body: string, contentType = 'application/json') => {
+    return new Request('http://localhost/api', {
+      method: 'POST',
+      headers: { 'content-type': contentType },
+      body,
+    })
+  }
+
+  it('parses a JSON body, whatever its shape', async () => {
+    expect(await readJsonBody(jsonRequest('{"a":1}'))).toEqual({ a: 1 })
+    expect(await readJsonBody(jsonRequest('[1]'))).toEqual([1])
+    expect(await readJsonBody(jsonRequest('null'))).toBeNull()
+  })
+
+  it('accepts a charset and any letter case in the content type', async () => {
+    expect(await readJsonBody(jsonRequest('{}', 'Application/JSON; charset=utf-8'))).toEqual({})
+  })
+
+  it('rejects any other content type, or none, with a ValidationError', async () => {
+    for (const type of ['text/plain', 'application/x-www-form-urlencoded', 'application/jsonx']) {
+      await expect(readJsonBody(jsonRequest('{}', type))).rejects.toBeInstanceOf(ValidationError)
+    }
+    const missing = new Request('http://localhost/api', { method: 'POST' })
+    await expect(readJsonBody(missing)).rejects.toMatchObject({
+      code: 'VALIDATION',
+      message: 'Content-Type must be application/json',
+    })
+  })
+
+  it('maps malformed or empty JSON to a ValidationError', async () => {
+    for (const body of ['{"a":', '', 'not json']) {
+      await expect(readJsonBody(jsonRequest(body))).rejects.toMatchObject({
+        code: 'VALIDATION',
+        message: 'The request body is not valid JSON',
+        fieldErrors: { base: ['The request body is not valid JSON'] },
+      })
+    }
   })
 })

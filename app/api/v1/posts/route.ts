@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
-import { parseInput, toErrorResponse } from '@/lib/data/errors'
-import { listPosts } from '@/lib/data/posts'
+import { parseInput, readJsonBody, toErrorResponse } from '@/lib/data/errors'
+import { createPost, listPosts } from '@/lib/data/posts'
 import { listPostsQuery } from '@/lib/dto/posts'
 
 export const GET = async (request: Request) => {
@@ -9,6 +9,15 @@ export const GET = async (request: Request) => {
     // Decodes the query string (every value arrives as a string); `listPosts` validates again.
     const query = parseInput(listPostsQuery, Object.fromEntries(searchParams))
     return NextResponse.json(await listPosts(query))
+  } catch (error) {
+    return toErrorResponse(error)
+  }
+}
+
+export const POST = async (request: Request) => {
+  try {
+    const post = await createPost(await readJsonBody(request))
+    return NextResponse.json(post, { status: 201 })
   } catch (error) {
     return toErrorResponse(error)
   }

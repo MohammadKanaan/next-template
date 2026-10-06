@@ -6,7 +6,6 @@ import {
   createCommentInput,
   type Comment,
   type CommentBase,
-  type CreateCommentInput,
 } from '@/lib/dto/comments'
 import { invalidateTags, remember } from '@/lib/server/cache'
 import { getSessionUser, requireUser, type SessionUser } from './auth'
@@ -85,10 +84,7 @@ export const listComments = async (postId: number | string): Promise<Comment[]> 
  * Signed in (401) → valid input (422) → the post exists and the viewer may see it (404) → it is
  * published (403: comments are closed on drafts and archived posts).
  */
-export const createComment = async (
-  postId: number,
-  input: CreateCommentInput,
-): Promise<Comment> => {
+export const createComment = async (postId: number | string, input: unknown): Promise<Comment> => {
   const viewer = await requireUser()
   const id = parseInput(idSchema, postId)
   const { body } = parseInput(createCommentInput, input)
@@ -117,7 +113,7 @@ export const createComment = async (
 }
 
 /** Signed in (401) → the comment exists (404) → its author, the post's author or an admin (403). */
-export const deleteComment = async (id: number): Promise<void> => {
+export const deleteComment = async (id: number | string): Promise<void> => {
   const viewer = await requireUser()
   const commentId = parseInput(idSchema, id)
   const comment = await db.comment.findUnique({

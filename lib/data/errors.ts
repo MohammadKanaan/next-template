@@ -95,3 +95,24 @@ export const toErrorResponse = (error: unknown) => {
   }
   throw error
 }
+
+/**
+ * Reads a Route Handler's JSON body. The content type must be `application/json` (a cross-site
+ * form cannot send it without a CORS preflight, which with a `SameSite=Lax` session cookie is what
+ * keeps these endpoints safe from CSRF), and a body that is empty or not JSON is a
+ * `ValidationError`. The result is `unknown` on purpose: the DAL function that receives it
+ * validates its shape.
+ */
+export const readJsonBody = async (request: Request): Promise<unknown> => {
+  const mediaType = request.headers.get('content-type')?.split(';')[0].trim().toLowerCase()
+  if (mediaType !== 'application/json') {
+    const message = 'Content-Type must be application/json'
+    throw new ValidationError({ base: [message] }, message)
+  }
+  try {
+    return await request.json()
+  } catch {
+    const message = 'The request body is not valid JSON'
+    throw new ValidationError({ base: [message] }, message)
+  }
+}

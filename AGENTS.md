@@ -339,14 +339,27 @@ catch (error) { return toActionFailure(error) }`. Return `ActionResult<T>`; neve
 
 ## Route Handlers and client facades
 
-- Use a Route Handler only when a client component must fetch (today: `GET /api/v1/posts`, the
-  `/posts/csr` example). It stays thin: `parseInput` the query to decode it (every value arrives as a
-  string), call the DAL (which validates again, because it trusts no caller), return JSON or
-  `toErrorResponse(error)`.
+- Use a Route Handler only when a client component must fetch (the `/posts/csr` example) or when an
+  HTTP API is required (the REST endpoints under `app/api/v1/posts`, below). It stays thin: for a
+  query, `parseInput` it to decode it (every value arrives as a string); for a body,
+  `readJsonBody(request)`; then call the DAL (which validates again, because it trusts no caller),
+  return JSON or `toErrorResponse(error)`.
 - The client calls it through a facade in `lib/client` (`fetchPosts`) that parses the response with
   the shared `lib/dto` schema and throws `RequestError` (message + status) on failure. Components do
   not call `fetch` directly.
 - `/posts/csr` is the single live example of this path and has an end-to-end test.
+- **REST API (`app/api/v1/posts`):** `GET`/`POST /posts`, `GET`/`PATCH`/`DELETE /posts/[id]`,
+  `GET`/`POST /posts/[id]/comments` (table in the README). Auth is the session cookie. Writes call
+  `readJsonBody(request)` (`lib/data/errors.ts`), which rejects a content type other than
+  `application/json` and maps malformed JSON to a `ValidationError` (both 422); that requirement
+  plus the `SameSite=Lax` cookie is the CSRF guard, since a cross-site form cannot send JSON without
+  a CORS preflight. Handlers type their context with the generated `RouteContext<'/api/v1/posts/[id]'>`,
+  await `params`, and hand the raw `id` string and the parsed body (`unknown`) to the DAL, which
+  validates both. Status codes: 201 for a create (with the created DTO), 200 for reads and updates,
+  204 with an empty body for a delete, errors through `toErrorResponse` (401/403/404/422/429).
+  There is deliberately no status endpoint: transitions stay in `setPostStatusAction`. There are no
+  client facades for these endpoints because no UI calls them; their tests call the handlers
+  directly (`tests/app/api/v1/`). API keys and OpenAPI stay deferred.
 - `GET /api/health` is the other Route Handler. It is for load balancers and container probes,
   not for the client facade: it awaits `connection()`, calls `checkHealth()` (database `SELECT 1`
   and Redis `PING`, each with a 2 s timeout) and returns 200 `{ status: 'ok', checks }` or 503

@@ -5,7 +5,6 @@ import {
   POST_EXCERPT_LENGTH,
   canTransitionPostStatus,
   createPostInput,
-  type CreatePostParams,
   listPostsQuery,
   type ListPostsParams,
   type ListPostsQuery,
@@ -19,7 +18,6 @@ import {
   type PostSummary,
   type TagSummary,
   updatePostInput,
-  type UpdatePostInput,
 } from '@/lib/dto/posts'
 import { invalidateTags, remember } from '@/lib/server/cache'
 import { getSessionUser, requireUser, type SessionUser } from './auth'
@@ -285,7 +283,7 @@ const replacePostTags = async (tx: Prisma.TransactionClient, postId: number, nam
 }
 
 /** A new post is a draft: the author publishes it with `setPostStatus`. */
-export const createPost = async (input: CreatePostParams): Promise<PostDetail> => {
+export const createPost = async (input: unknown): Promise<PostDetail> => {
   const viewer = await requireUser()
   const { tags, ...data } = parseInput(createPostInput, input)
   // One transaction: the post and its tag links appear together or not at all.
@@ -325,7 +323,7 @@ const requirePostChange = async (viewer: SessionUser, id: number) => {
   return post
 }
 
-export const updatePost = async (id: number, input: UpdatePostInput): Promise<PostDetail> => {
+export const updatePost = async (id: number | string, input: unknown): Promise<PostDetail> => {
   const viewer = await requireUser()
   const postId = parseInput(idSchema, id)
   const { tags, ...data } = parseInput(updatePostInput, input)
@@ -378,7 +376,7 @@ export const setPostStatus = async (id: number, status: PostStatus): Promise<Pos
   return withPermissions(post, viewer)
 }
 
-export const deletePost = async (id: number): Promise<void> => {
+export const deletePost = async (id: number | string): Promise<void> => {
   const viewer = await requireUser()
   const postId = parseInput(idSchema, id)
   await requirePostChange(viewer, postId)

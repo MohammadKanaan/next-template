@@ -218,8 +218,27 @@ system DAL `lib/data/maintenance.ts`, importable only from `jobs/`.
 file straight to storage; attaching re-checks the object, updates `user.image`, and queues deletion
 of the replaced avatar. Abandoned uploads are cleaned up hourly.
 
-**Route Handler and facade.** `GET /api/v1/posts` exists only because a client component must fetch
-(`/posts/csr`). `lib/client/posts.ts` calls it and parses the response with the shared schema.
+**Route Handlers and facade.** `GET /api/v1/posts` is called by a client component (`/posts/csr`)
+through `lib/client/posts.ts`, which parses the response with the shared schema. The write endpoints
+below exist for HTTP API clients; no UI calls them, so they have no facade. Each handler reads the
+body with `readJsonBody` and passes it, with the raw route `id`, to the DAL, which validates and
+authorizes. Authentication is the session cookie; writes require `Content-Type: application/json`
+(a cross-site form cannot send it without a CORS preflight, which together with the `SameSite=Lax`
+cookie is the CSRF guard).
+
+| Method   | Path                          | Auth                                          | Success                                                                                                    |
+| -------- | ----------------------------- | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `GET`    | `/api/v1/posts`               | none (drafts only for the author listing own) | 200 `Page<PostSummary>`; filters `q`, `sort`, `tag`, `status`, `from`, `to`, `authorId`, `page`, `perPage` |
+| `POST`   | `/api/v1/posts`               | signed in                                     | 201 `PostDetail` (a draft)                                                                                 |
+| `GET`    | `/api/v1/posts/{id}`          | none for published; author or admin otherwise | 200 `PostDetail`                                                                                           |
+| `PATCH`  | `/api/v1/posts/{id}`          | author or admin                               | 200 `PostDetail` (`title`, `body`, `tags`; no status)                                                      |
+| `DELETE` | `/api/v1/posts/{id}`          | author or admin                               | 204, empty body                                                                                            |
+| `GET`    | `/api/v1/posts/{id}/comments` | none for published; author or admin otherwise | 200 `Comment[]`, oldest first                                                                              |
+| `POST`   | `/api/v1/posts/{id}/comments` | signed in; post must be published             | 201 `Comment`                                                                                              |
+
+Errors are `{ code, message, fieldErrors? }` with 401, 403, 404, 422 (validation, including a
+non-JSON content type or malformed JSON) or 429. Status transitions (publish, archive) are
+Server-Action-only.
 
 **Errors.** The DAL throws `UnauthorizedError`, `ForbiddenError`, `NotFoundError` and
 `ValidationError`. Actions turn them into `ActionResult` failures, the Route Handler into
@@ -278,7 +297,7 @@ status write invalidates the tags those entries were cached under. New posts sta
 - **Auth in the DAL.** A page, action, or proxy that forgets a check cannot bypass authorization,
   because the data functions enforce it themselves.
 - **Server Actions vs Route Handlers.** Actions for UI writes (no extra HTTP surface to design);
-  a Route Handler only where a client has to fetch.
+  a Route Handler where a client has to fetch or an HTTP API is required.
 - **Typed errors per caller.** One set of error classes, translated once per transport.
 
 ## What I'd do at scale

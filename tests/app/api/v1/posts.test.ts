@@ -1,8 +1,8 @@
 // @vitest-environment node
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { GET } from '@/app/api/v1/posts/route'
+import { GET, POST } from '@/app/api/v1/posts/route'
 import { db } from '@/lib/data/db'
-import { createUser, resetDatabase } from '../../../helpers/server'
+import { createUser, resetDatabase, signInAs } from '../../../helpers/server'
 
 const { cookieStore, requestHeaders } = await vi.hoisted(
   async () => import('../../../helpers/cookies'),
@@ -69,5 +69,94 @@ describe('GET /api/v1/posts', () => {
     const response = await GET(request('?sort=garbage'))
     expect(response.status).toBe(422)
     expect((await response.json()).fieldErrors.sort).toHaveLength(1)
+  })
+})
+
+const jsonRequest = (body: unknown) => {
+  return new Request('http://localhost/api/v1/posts', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+describe('POST /api/v1/posts', () => {
+  beforeEach(resetDatabase)
+
+  it('answers 401 without a session and creates nothing', async () => {
+    const response = await POST(jsonRequest({ title: 'T', body: 'B' }))
+    expect(response.status).toBe(401)
+    expect(await response.json()).toMatchObject({ code: 'UNAUTHORIZED' })
+    expect(await db.post.count()).toBe(0)
+  })
+
+  it('creates a draft and answers 201 with the detail', async () => {
+    const author = await createUser({})
+    await signInAs(author)
+    const response = await POST(jsonRequest({ title: ' Hello ', body: 'World', tags: ['News'] }))
+    expect(response.status).toBe(201)
+    const body = await response.json()
+    expect(body).toMatchObject({
+      title: 'Hello',
+      body: 'World',
+      status: 'draft',
+      tags: ['news'],
+      author: { id: author.id },
+      permissions: { update: true, delete: true },
+    })
+    expect(await db.post.count()).toBe(1)
+  })
+
+  it('answers 422 with field errors for invalid input', async () => {
+    await signInAs(await createUser({}))
+    const response = await POST(jsonRequest({ title: ' ', body: '' }))
+    expect(response.status).toBe(422)
+    expect(await response.json()).toMatchObject({
+      code: 'VALIDATION',
+      fieldErrors: { title: ['Title is required'], body: ['Body is required'] },
+    })
+    expect(await db.post.count()).toBe(0)
+  })
+
+  it('answers 422 for a content type other than JSON', async () => {
+    await signInAs(await createUser({}))
+    const response = await POST(
+      new Request('http://localhost/api/v1/posts', {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: 'title=T&body=B',
+      }),
+    )
+    expect(response.status).toBe(422)
+    expect(await response.json()).toMatchObject({
+      message: 'Content-Type must be application/json',
+    })
+    expect(await db.post.count()).toBe(0)
+  })
+
+  it('answers 422 for malformed JSON and for a body that is not an object', async () => {
+    await signInAs(await createUser({}))
+    const malformed = await POST(
+      new Request('http://localhost/api/v1/posts', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{"title":',
+      }),
+    )
+    expect(malformed.status).toBe(422)
+    expect((await POST(jsonRequest(null))).status).toBe(422)
+    expect((await POST(jsonRequest('text'))).status).toBe(422)
+    expect(await db.post.count()).toBe(0)
+  })
+
+  it('cannot set the status or the author through the body', async () => {
+    const author = await createUser({})
+    const other = await createUser({})
+    await signInAs(author)
+    const response = await POST(
+      jsonRequest({ title: 'T', body: 'B', status: 'published', userId: other.id }),
+    )
+    expect(response.status).toBe(201)
+    expect(await response.json()).toMatchObject({ status: 'draft', author: { id: author.id } })
   })
 })
