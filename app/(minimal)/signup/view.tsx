@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { signUpAction } from '@/actions/auth'
+import { GoogleButton } from '@/components/Auth/GoogleButton'
 import { SignUpForm } from '@/components/Auth/SignUpForm'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/SCN/card'
 import type { SignUpInput } from '@/lib/dto/auth'
@@ -9,9 +10,10 @@ import styles from '../login/styles.module.scss'
 
 type SignUpViewProps = {
   nextPath: string
+  googleEnabled: boolean
 }
 
-export const SignUpView = ({ nextPath }: SignUpViewProps) => {
+export const SignUpView = ({ nextPath, googleEnabled }: SignUpViewProps) => {
   const router = useRouter()
 
   const handleSubmit = async (values: SignUpInput) => {
@@ -32,6 +34,7 @@ export const SignUpView = ({ nextPath }: SignUpViewProps) => {
           </CardHeader>
           <CardContent>
             <SignUpForm onSubmit={handleSubmit} />
+            {googleEnabled && <GoogleButton nextPath={nextPath} />}
           </CardContent>
         </Card>
       </div>

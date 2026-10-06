@@ -12,6 +12,7 @@ import { listPosts } from '@/lib/data/posts'
 import {
   getCurrentUser,
   getViewer,
+  hasPassword,
   isUsernameTaken,
   listUsers,
   setUserRole,
@@ -37,6 +38,26 @@ describe('users DAL', () => {
   it('has no viewer when signed out', async () => {
     expect(await getViewer()).toBeNull()
     await expect(getCurrentUser()).rejects.toBeInstanceOf(UnauthorizedError)
+  })
+
+  it('reports whether the viewer has a password', async () => {
+    await expect(hasPassword()).rejects.toBeInstanceOf(UnauthorizedError)
+
+    const user = await createUser({})
+    await signInAs(user)
+    expect(await hasPassword()).toBe(true)
+
+    // An account created through Google has no credential account.
+    await db.account.deleteMany({ where: { userId: user.id, providerId: 'credential' } })
+    await db.account.create({
+      data: {
+        id: 'google-account',
+        accountId: 'google-sub',
+        providerId: 'google',
+        userId: user.id,
+      },
+    })
+    expect(await hasPassword()).toBe(false)
   })
 
   it('treats a forged or stale session cookie as no viewer', async () => {

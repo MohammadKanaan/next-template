@@ -284,6 +284,43 @@ Sign-up sends a verification email and the login form links to a password reset,
 button. Resetting a password signs out every session. Better Auth's `/verify-email` and
 `/reset-password/:token` routes stay enabled because the email links use them.
 
+**Google sign-in (optional).** With `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` both set, `/login`
+and `/signup` show a "Continue with Google" button (`components/Auth/GoogleButton`); with neither set
+the button is absent and nothing else changes. Setting only one fails at boot in production.
+
+> **Not verified end to end:** the sign-in round trip with Google was never executed (it needs real
+> credentials). What is tested, without network access: the provider turning on and off with the
+> environment, the generated username, the environment pair rule, that the action redirects to
+> Google's authorization URL with the right redirect URI, that the button shows only when enabled,
+> and the settings page for an account without a password. Treat the first real sign-in as the test.
+
+Setup:
+
+1. In the [Google Cloud Console](https://console.cloud.google.com/apis/credentials), configure the
+   OAuth consent screen, then create an **OAuth client ID** of type "Web application".
+2. Add the authorized redirect URI `<BETTER_AUTH_URL>/api/auth/callback/google`
+   (`http://localhost:3000/api/auth/callback/google` in development; use your real origin in
+   production, and add it again for every environment).
+3. Put the client ID and secret in `.env` as `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`
+   (compose passes them through to the containers) and restart the web process.
+
+How it behaves: `signInWithGoogleAction(nextPath)` asks Better Auth for the authorization URL and
+redirects to it; Google returns to `/api/auth/callback/google` (enabled in Better Auth's router,
+unlike the paths in `disabledPaths`), which signs the user in and sends them to `nextPath`. A new
+Google user gets a username derived from the email's local part plus a random six-character suffix
+(`deriveUsername` in `lib/username.ts`; they can change it in settings), and a verified email
+because Google vouches for it. Account linking is Better Auth's default: a Google sign-in links to
+the existing account with the same email only when Google reports the email as verified **and** the
+existing account's email is verified too. A password account that never verified its email is not
+linked and the sign-in fails; the user must verify first (the banner has a Resend button).
+
+A Google-only account has no password. `/settings` detects that (`hasPassword()` in
+`lib/data/users.ts`), hides the change-password form and the delete-account button, and points to
+"Forgot password". That works: in the installed Better Auth (1.7.7) the reset-password flow creates
+the missing `credential` account (`resetPassword` in `better-auth/dist/api/routes/password.mjs`), and
+`requestPasswordReset` does not require one to exist. The reset also signs out every session, so the
+user signs in again afterwards. This path was read in the library source, not run.
+
 Sessions last 7 days and refresh only through Server Actions or the auth route (Server Components
 cannot set cookies), so a user who only browses is signed out when the session expires.
 

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import { safeRedirectPath } from '@/lib/constants-routes'
+import { isGoogleAuthEnabled } from '@/lib/data/auth'
 import { getViewer } from '@/lib/data/users'
 import { SignUpView } from './view'
 
@@ -17,7 +18,7 @@ const SignUpPage = async ({ searchParams }: PageProps<'/signup'>) => {
     redirect(nextPath)
   }
 
-  return <SignUpView nextPath={nextPath} />
+  return <SignUpView nextPath={nextPath} googleEnabled={isGoogleAuthEnabled()} />
 }
 
 export default SignUpPage

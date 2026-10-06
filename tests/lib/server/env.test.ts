@@ -14,7 +14,12 @@ const valid = {
 }
 
 const stubEnv = (values: Record<string, string | undefined>) => {
-  for (const [name, value] of Object.entries({ RESEND_API_KEY: undefined, ...values })) {
+  for (const [name, value] of Object.entries({
+    RESEND_API_KEY: undefined,
+    GOOGLE_CLIENT_ID: undefined,
+    GOOGLE_CLIENT_SECRET: undefined,
+    ...values,
+  })) {
     vi.stubEnv(name, value)
   }
 }
@@ -56,5 +61,24 @@ describe('serverEnv', () => {
   it('lists every missing or invalid variable in one error', () => {
     stubEnv({ ...valid, REDIS_URL: undefined, S3_BUCKET: undefined, S3_ENDPOINT: 'not a url' })
     expect(() => serverEnv()).toThrow(/REDIS_URL[\s\S]*S3_ENDPOINT[\s\S]*S3_BUCKET/)
+  })
+
+  it('treats the Google pair as optional, and empty values as unset', () => {
+    stubEnv(valid)
+    expect(serverEnv().GOOGLE_CLIENT_ID).toBeUndefined()
+    resetServerEnv()
+    stubEnv({ ...valid, GOOGLE_CLIENT_ID: '', GOOGLE_CLIENT_SECRET: '' })
+    expect(serverEnv().GOOGLE_CLIENT_SECRET).toBeUndefined()
+    resetServerEnv()
+    stubEnv({ ...valid, GOOGLE_CLIENT_ID: 'id', GOOGLE_CLIENT_SECRET: 'secret' })
+    expect(serverEnv()).toMatchObject({ GOOGLE_CLIENT_ID: 'id', GOOGLE_CLIENT_SECRET: 'secret' })
+  })
+
+  it('rejects one Google variable without the other', () => {
+    stubEnv({ ...valid, GOOGLE_CLIENT_ID: 'id' })
+    expect(() => serverEnv()).toThrow(/Set both GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET/)
+    resetServerEnv()
+    stubEnv({ ...valid, GOOGLE_CLIENT_SECRET: 'secret', GOOGLE_CLIENT_ID: '' })
+    expect(() => serverEnv()).toThrow(/Set both GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET/)
   })
 })

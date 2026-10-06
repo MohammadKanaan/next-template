@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import {
@@ -18,7 +19,7 @@ import { PasswordForm } from '@/components/Settings/PasswordForm'
 import { ProfileForm } from '@/components/Settings/ProfileForm'
 import { SessionList } from '@/components/Settings/SessionList'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/SCN/card'
-import { ROUTE_HOME } from '@/lib/constants-routes'
+import { ROUTE_FORGOT_PASSWORD, ROUTE_HOME } from '@/lib/constants-routes'
 import type { ChangeEmailInput, ChangePasswordInput, DeleteAccountInput } from '@/lib/dto/auth'
 import type { CurrentUser, SessionSummary, UpdateProfileInput } from '@/lib/dto/users'
 import styles from './styles.module.scss'
@@ -26,9 +27,10 @@ import styles from './styles.module.scss'
 type SettingsViewProps = {
   user: CurrentUser
   sessions: SessionSummary[]
+  hasPassword: boolean
 }
 
-export const SettingsView = ({ user, sessions }: SettingsViewProps) => {
+export const SettingsView = ({ user, sessions, hasPassword }: SettingsViewProps) => {
   const router = useRouter()
 
   const handleProfile = async (values: UpdateProfileInput) => {
@@ -126,10 +128,23 @@ export const SettingsView = ({ user, sessions }: SettingsViewProps) => {
       <Card>
         <CardHeader>
           <CardTitle>Password</CardTitle>
-          <CardDescription>Changing it signs out every other device.</CardDescription>
+          <CardDescription>
+            {hasPassword
+              ? 'Changing it signs out every other device.'
+              : 'Your account has no password yet.'}
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <PasswordForm onSubmit={handlePassword} />
+          {hasPassword ? (
+            <PasswordForm onSubmit={handlePassword} />
+          ) : (
+            <p className={styles.note}>
+              You signed in with Google. To set a password, use{' '}
+              <Link href={ROUTE_FORGOT_PASSWORD}>Forgot password</Link> with {user.email}: the
+              emailed link creates one. It also signs you out everywhere, so you sign in again
+              afterwards.
+            </p>
+          )}
         </CardContent>
       </Card>
 
@@ -155,7 +170,14 @@ export const SettingsView = ({ user, sessions }: SettingsViewProps) => {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <DeleteAccountDialog onConfirm={handleDelete} />
+          {hasPassword ? (
+            <DeleteAccountDialog onConfirm={handleDelete} />
+          ) : (
+            <p className={styles.note}>
+              Deleting an account asks for its password, and yours has none yet. Set one with{' '}
+              <Link href={ROUTE_FORGOT_PASSWORD}>Forgot password</Link> first.
+            </p>
+          )}
         </CardContent>
       </Card>
     </div>

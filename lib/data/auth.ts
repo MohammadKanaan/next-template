@@ -7,6 +7,7 @@ import { cache } from 'react'
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, signUpInput } from '@/lib/dto/auth'
 import type { JobPayload } from '@/jobs/definitions'
 import { roleSchema, type Role } from '@/lib/dto/users'
+import { deriveUsername } from '@/lib/username'
 import { invalidateTags } from '@/lib/server/cache'
 import { logger } from '@/lib/server/logger'
 import { enqueue } from '@/lib/server/queue'
@@ -22,6 +23,30 @@ const log = logger.child({ module: 'auth' })
  */
 const queueEmail = (payload: JobPayload<'send-email'>) => {
   enqueue('send-email', payload).catch((error) => log.error({ err: error }, 'email not queued'))
+}
+
+/**
+ * Google sign-in is on only when both variables are set. They are read from `process.env` here,
+ * like `BETTER_AUTH_SECRET` and `BETTER_AUTH_URL`, because this config is built when the module is
+ * imported and `serverEnv()` is lazy and demands every server variable. `serverEnv()` still lists
+ * the pair so one without the other fails at boot in production.
+ */
+const googleProvider = () => {
+  const clientId = process.env.GOOGLE_CLIENT_ID
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET
+  if (!clientId || !clientSecret) {
+    return {}
+  }
+  return {
+    google: {
+      clientId,
+      clientSecret,
+      // The `username` column is required and unique, and Google has no such field.
+      mapProfileToUser: (profile: { email?: string }) => ({
+        username: deriveUsername(profile.email ?? ''),
+      }),
+    },
+  }
 }
 
 export const auth = betterAuth({
@@ -44,6 +69,10 @@ export const auth = betterAuth({
       queueEmail({ template: 'verify-email', to: user.email, props: { name: user.name, url } })
     },
   },
+  // Account linking stays at Better Auth's default: a Google sign-in whose email is verified links
+  // to the existing account with that email, but only when that account's own email is verified
+  // too (`requireLocalEmailVerified`), so nobody can take over an address they merely registered.
+  socialProviders: googleProvider(),
   // Better Auth's HTTP router would bypass our rules: sign-up goes only through `signUpAction`
   // (validated with `signUpInput`), profile edits only through `updateProfile` (same username and
   // name rules), and deleting an account only through `deleteAccountAction`, which always demands
@@ -110,6 +139,11 @@ export const auth = betterAuth({
   // nextCookies must stay the last plugin: it writes Set-Cookie through next/headers in Server Actions.
   plugins: [nextCookies()],
 })
+
+/** Whether the Google button should be offered. Public: it only says what the login page can do. */
+export const isGoogleAuthEnabled = (): boolean => {
+  return Boolean(auth.options.socialProviders?.google)
+}
 
 export type SessionUser = { id: string; role: Role; sessionId: string }
 

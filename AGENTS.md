@@ -205,6 +205,22 @@ docs/DECISIONS.md        # Framework and library choices, with reasons
     `sessionId` to mark the current one. `SessionSummary` never contains the token.
   - **Profile edits** go through `updateProfile` in `lib/data/users.ts`, which invalidates the cached
     viewer and `POSTS_TAG` (cached post lists embed the author's name and username).
+- **Google sign-in (optional):** `socialProviders.google` is built only when `GOOGLE_CLIENT_ID` and
+  `GOOGLE_CLIENT_SECRET` are both set. `lib/data/auth.ts` reads them from `process.env` directly
+  (the config is built at import and `serverEnv()` is lazy and needs every variable), the same
+  documented exception as `BETTER_AUTH_SECRET` / `BETTER_AUTH_URL`; `serverEnv()` lists the pair as
+  optional and rejects one without the other so production fails at boot. `isGoogleAuthEnabled()`
+  (public, no auth: it only says what the login page can offer) feeds the `googleEnabled` prop of
+  the login and signup views, which render `GoogleButton` only then. `signInWithGoogleAction(nextPath)`
+  sanitizes the path with `safeRedirectPath`, calls `auth.api.signInSocial` and `redirect()`s; the
+  callback `/api/auth/callback/google` runs through Better Auth's HTTP router and must not be added
+  to `disabledPaths`. `mapProfileToUser` supplies the required unique `username` through
+  `deriveUsername` (`lib/username.ts`: email local part reduced to `a-z0-9_`, trimmed, plus a random
+  six-character suffix; always passes the sign-up rule). Account linking stays at the default
+  (verified Google email and verified local email). A Google-only user has no `credential` account:
+  `hasPassword()` (`lib/data/users.ts`) drives `/settings`, which then shows no password form or
+  delete button and points to "Forgot password" (Better Auth's reset creates the credential
+  account). The round trip with Google itself is not covered by tests.
 - Only `lib/data/auth.ts`, `actions/auth.ts`, `app/api/auth/[...all]`, `proxy.ts`, and
   `prisma/seed.ts` (password hashing via `better-auth/crypto`) import `better-auth`. Everything else asks the DAL: `getSessionUser()`, `requireUser()`,
   `requireAdmin()`, `getViewer()`.
@@ -247,7 +263,7 @@ docs/DECISIONS.md        # Framework and library choices, with reasons
   their actions.
 - Auth and upload actions that an attacker could spam (`signInAction`, `signUpAction`,
   `requestPasswordResetAction`, `resetPasswordAction`, `resendVerificationAction`,
-  `createAvatarUploadAction`, and per user `updateProfileAction`, `changePasswordAction`,
+  `signInWithGoogleAction`, `createAvatarUploadAction`, and per user `updateProfileAction`, `changePasswordAction`,
   `changeEmailAction`, `revokeSessionAction`, `revokeOtherSessionsAction`, `deleteAccountAction`)
   are rate limited in production with `consumeRateLimit`
   (`lib/data/rateLimit.ts`, Redis-backed so the limits hold across instances), because Better
@@ -665,11 +681,12 @@ records the result.
 - Server-only config (`REDIS_URL`, `RESEND_API_KEY` (optional), `EMAIL_FROM`, `S3_ENDPOINT`,
   `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_PUBLIC_URL`,
   `S3_PUBLIC_ENDPOINT` (optional: the endpoint as the browser reaches it, for presigned uploads;
-  defaults to `S3_ENDPOINT`)) is read through `serverEnv()` in `lib/server/env.ts`: Zod-validated,
+  defaults to `S3_ENDPOINT`), `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` (optional pair)) is read through `serverEnv()` in `lib/server/env.ts`: Zod-validated,
   parsed on first use (so `next build` works without it), one error listing every bad variable. An
   empty optional variable counts as unset. In production `instrumentation.ts` and the worker's
   start call it at boot, so a bad config fails loudly instead of degrading the rate limiter or
-  cache. Never read these from `process.env` elsewhere.
+  cache. Never read these from `process.env` elsewhere (the one exception is the Google pair, which
+  `lib/data/auth.ts` reads directly; see **Authentication**).
 - `.env.test` points `REDIS_URL` at **database 15**; the test helpers flush it and refuse to run
   against any other database.
 

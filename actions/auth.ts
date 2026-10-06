@@ -3,8 +3,14 @@
 import { APIError } from 'better-auth/api'
 import { refresh } from 'next/cache'
 import { headers } from 'next/headers'
-import { ROUTE_RESET_PASSWORD, ROUTE_SETTINGS } from '@/lib/constants-routes'
-import { auth, requireUser } from '@/lib/data/auth'
+import { redirect } from 'next/navigation'
+import {
+  ROUTE_LOGIN,
+  ROUTE_RESET_PASSWORD,
+  ROUTE_SETTINGS,
+  safeRedirectPath,
+} from '@/lib/constants-routes'
+import { auth, isGoogleAuthEnabled, requireUser } from '@/lib/data/auth'
 import { parseInput, toActionFailure, ValidationError } from '@/lib/data/errors'
 import { consumeRateLimit, getClientIp, isRateLimitEnabled } from '@/lib/data/rateLimit'
 import { revokeOtherSessions, revokeSession } from '@/lib/data/sessions'
@@ -73,6 +79,44 @@ export const signUpAction = async (input: SignUpInput): Promise<ActionResult<nul
     }
     if (error instanceof APIError) {
       return { ok: false, code: 'VALIDATION', message: 'Could not create your account. Try again.' }
+    }
+    return toActionFailure(error)
+  }
+}
+
+/**
+ * Sends the browser to Google. Returns only on failure (provider off, Better Auth error); on
+ * success it redirects, and Next's redirect error is rethrown by `toActionFailure`. Better Auth
+ * brings the user back through `/api/auth/callback/google`, which stays enabled in its HTTP
+ * router, and from there to `nextPath` (or to the login page on an error).
+ */
+export const signInWithGoogleAction = async (nextPath: string): Promise<ActionResult<null>> => {
+  try {
+    if (!isGoogleAuthEnabled()) {
+      return { ok: false, code: 'VALIDATION', message: 'Google sign-in is not available.' }
+    }
+    if (isRateLimitEnabled()) {
+      await consumeRateLimit(`google-sign-in:ip:${await getClientIp()}`, {
+        max: 20,
+        windowMs: 60_000,
+      })
+    }
+    const { url } = await auth.api.signInSocial({
+      body: {
+        provider: 'google',
+        callbackURL: safeRedirectPath(nextPath),
+        errorCallbackURL: ROUTE_LOGIN,
+        disableRedirect: true,
+      },
+      headers: await headers(),
+    })
+    if (!url) {
+      return { ok: false, code: 'VALIDATION', message: 'Could not start Google sign-in.' }
+    }
+    redirect(url)
+  } catch (error) {
+    if (error instanceof APIError) {
+      return { ok: false, code: 'VALIDATION', message: 'Could not start Google sign-in.' }
     }
     return toActionFailure(error)
   }

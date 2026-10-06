@@ -90,6 +90,20 @@ export const getCurrentUser = async (): Promise<CurrentUser> => {
   return viewer
 }
 
+/**
+ * Whether the viewer has a password (a `credential` account). An account created through Google
+ * has none until it sets one with the "Forgot password" flow, so password-gated settings (change
+ * password, delete account) cannot work for it yet. Not cached: one indexed lookup.
+ */
+export const hasPassword = async (): Promise<boolean> => {
+  const viewer = await requireUser()
+  const account = await db.account.findFirst({
+    where: { userId: viewer.id, providerId: 'credential' },
+    select: { id: true },
+  })
+  return account !== null
+}
+
 export const isUsernameTaken = async (username: string) => {
   return (await db.user.count({ where: { username } })) > 0
 }
