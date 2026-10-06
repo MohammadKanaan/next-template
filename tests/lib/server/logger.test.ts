@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { Writable } from 'node:stream'
 import { describe, expect, it } from 'vitest'
-import { createLogger, logger } from '@/lib/server/logger'
+import { createLogger, logger, usesPrettyTransport } from '@/lib/server/logger'
 
 function capture() {
   const lines: string[] = []
@@ -33,6 +33,16 @@ describe('createLogger level', () => {
 
   it('exports a default logger that is silent under test', () => {
     expect(logger.level).toBe('silent')
+  })
+})
+
+describe('usesPrettyTransport', () => {
+  it('is only on in development, where devDependencies (pino-pretty) are installed', () => {
+    expect(usesPrettyTransport({ NODE_ENV: 'development' })).toBe(true)
+    expect(usesPrettyTransport({ NODE_ENV: 'production' })).toBe(false)
+    expect(usesPrettyTransport({ NODE_ENV: 'test' })).toBe(false)
+    // A plain `bun run worker` has no NODE_ENV and may have pruned devDependencies.
+    expect(usesPrettyTransport({})).toBe(false)
   })
 })
 

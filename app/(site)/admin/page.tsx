@@ -6,6 +6,7 @@ import { ROUTE_ADMIN } from '@/lib/constants-routes'
 import { loadPage } from '@/lib/data/page'
 import { getCurrentUser, listUsers } from '@/lib/data/users'
 import { usersUrlQuery } from '@/lib/dto/users'
+import { toScalarParams } from '@/lib/searchParams'
 import { AdminView } from './view'
 import styles from './styles.module.scss'
 
@@ -19,7 +20,7 @@ type AdminUsersProps = Pick<PageProps<'/admin'>, 'searchParams'>
 
 async function AdminUsers({ searchParams }: AdminUsersProps) {
   // A garbled URL falls back to the defaults, like the post lists.
-  const query = usersUrlQuery.parse(await searchParams)
+  const query = usersUrlQuery.parse(toScalarParams(await searchParams))
   const { users, viewer } = await loadPage(async () => {
     // `listUsers` demands an admin first: a regular user gets the not-found page.
     const users = await listUsers({ ...query, perPage: PER_PAGE })

@@ -223,7 +223,7 @@ describe('PostForm draft', () => {
     })
   })
 
-  it('keeps typed fields but adopts a draft saved elsewhere for untouched ones', async () => {
+  it('does not feed a draft saved elsewhere back into a form the user has touched', async () => {
     function Harness() {
       const { value } = useLocalStorage('post-draft:test', postDraftSchema)
       return (
@@ -248,7 +248,7 @@ describe('PostForm draft', () => {
       )
     })
     expect(screen.getByLabelText(/Title/)).toHaveValue('Mine')
-    expect(screen.getByLabelText(/Body/)).toHaveValue('Remote body')
+    expect(screen.getByLabelText(/Body/)).toHaveValue('')
   })
 
   it('restores a draft that was already in storage when the form mounts', () => {

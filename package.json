@@ -8,7 +8,7 @@
     "build": "next build",
     "start": "next start",
     "worker": "tsx --tsconfig worker/tsconfig.json --env-file-if-exists=.env worker/index.ts",
-    "dev:worker": "tsx watch --tsconfig worker/tsconfig.json --env-file-if-exists=.env worker/index.ts",
+    "dev:worker": "NODE_ENV=development tsx watch --tsconfig worker/tsconfig.json --env-file-if-exists=.env worker/index.ts",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

@@ -211,8 +211,8 @@ docs/DECISIONS.md        # Framework and library choices, with reasons
   private pages to `/login?next=…`. It has no guest-only redirect, because a stale cookie must not
   lock anyone out of `/login`; the `/login` and `/signup` pages call `getViewer()` and redirect
   signed-in users themselves. The real check is always in the DAL.
-- Better Auth's HTTP router has `disabledPaths: ['/sign-up/email', '/update-user', '/delete-user']`
-  (returns 404): sign-up goes only through `signUpAction` (validated with `signUpInput`, rate
+- Better Auth's HTTP router has `disabledPaths: ['/sign-up/email', '/update-user', '/delete-user',
+'/delete-user/callback']` (returns 404; the callback is inert while no deletion token is issued): sign-up goes only through `signUpAction` (validated with `signUpInput`, rate
   limited), profile edits only through `updateProfile` (the same username and name rules), and
   account deletion only through `deleteAccountAction`, because over HTTP a fresh session can delete
   without a password while the action always demands it. Direct `auth.api.*` calls from server code
@@ -407,8 +407,10 @@ records the result.
 - **Logging:** `lib/server/logger.ts` exports a pino `logger` (and `createLogger`, which tests use to
   capture output). Every module makes a child, `const log = logger.child({ module: 'cache' })`, and
   logs `log.error({ err: error }, 'read failed, loading from source')`: structured fields first,
-  message second. `LOG_LEVEL` sets the level; otherwise `silent` in test, `debug` in development
-  (pretty-printed with `pino-pretty`) and `info` in production (JSON on stdout). It is read from
+  message second. `LOG_LEVEL` sets the level; otherwise `silent` in test, `info` in production
+  and `debug` elsewhere. Output is JSON on stdout, except under `NODE_ENV=development` (`next dev`
+  and `bun run dev:worker` set it), where it is pretty-printed with `pino-pretty`; that is a
+  devDependency, so a plain `bun run worker` must never load it. `LOG_LEVEL` is read from
   `process.env` directly so the logger works before `serverEnv()` validates. `url`, `token`,
   `password` (also one level down as `*.url` etc.) and the `cookie` / `authorization` headers are
   redacted, because job payloads carry live reset and verification links. Never log a payload or a
@@ -428,8 +430,11 @@ records the result.
 - **URL state:** `useUrlState(schema, { history })` (`hooks/useUrlState.ts`) keeps list filters in
   the query string. The schema is a Zod object whose fields all have `.default()` / `.catch()`, so
   any URL parses (`postsUrlQuery` in `lib/dto/posts.ts` is the one contract, shared with the SSR
-  page's `searchParams`). `setState(patch)` is one navigation per patch; keys that are empty or
-  equal to the default leave the URL, unknown params stay. Scalars only. The component using it
+  page's `searchParams`, which the page reduces with `toScalarParams` from `lib/searchParams.ts`:
+  a repeated param reads as its last value on server and client alike). `setState(patch)` is one
+  navigation per patch and is stable; each patch builds on the last query requested (not the
+  committed URL), so two patches issued before the first lands both survive. Keys that are empty
+  or equal to the default leave the URL, unknown params stay. Scalars only. The component using it
   must sit inside `<Suspense>`. A filter change resets `page` in the same patch.
 - **Browser storage:** `useLocalStorage(key, schema)` / `useSessionStorage(key, schema)` return
   `{ value, setValue, removeValue }`. They sit on `useSyncExternalStore` with a `null` server
@@ -439,8 +444,10 @@ records the result.
   `lib/browserStorage.ts`; tabs stay in sync through the `storage` event. Do not render
   storage-dependent UI as if the value were already known on the first render. Live example: the
   `/posts/new` draft (`post-draft:v1`, `postDraftSchema`): `PostForm` takes `draft` and
-  `onDraftChange` (debounced; `null` = empty form), seeds with `values` + `keepDirtyValues`, and the
-  view clears the draft when `createPostAction` succeeds.
+  `onDraftChange` (debounced; `null` = empty form). The stored draft is restored into the form
+  once, when it first shows up and nothing has been typed; later storage changes are never fed back
+  (that would reset the form and its errors on every autosave). After a successful submit nothing
+  more is written, and the view clears the draft when `createPostAction` succeeds.
 - Only write a hook for independent logic or logic shared across components (e.g. `useScrollLock`). Never extract a hook for logic that is married to one component and gains
   nothing from the abstraction.
 

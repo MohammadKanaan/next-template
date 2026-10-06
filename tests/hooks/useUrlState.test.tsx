@@ -10,8 +10,14 @@ const navigation = vi.hoisted(() => ({
   replace: vi.fn(),
 }))
 
+// Next's router object is stable across renders; the mock must be too.
+const router = vi.hoisted(() => ({
+  push: (...args: unknown[]) => navigation.push(...args),
+  replace: (...args: unknown[]) => navigation.replace(...args),
+}))
+
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: navigation.push, replace: navigation.replace }),
+  useRouter: () => router,
   usePathname: () => navigation.pathname,
   useSearchParams: () => new URLSearchParams(navigation.search),
 }))
@@ -68,11 +74,61 @@ describe('useUrlState', () => {
     const { result } = renderHook(() => useUrlState(schema))
     act(() => result.current.setState({ q: '', sort: 'newest' }))
     expect(navigation.replace).toHaveBeenCalledWith('/posts/csr?page=3', { scroll: false })
+  })
 
+  it('removes a page equal to the default', () => {
+    navigation.search = 'page=3&q=cats&sort=oldest'
+    const { result } = renderHook(() => useUrlState(schema))
     act(() => result.current.setState({ page: 1 }))
-    expect(navigation.replace).toHaveBeenLastCalledWith('/posts/csr?q=cats&sort=oldest', {
+    expect(navigation.replace).toHaveBeenCalledWith('/posts/csr?q=cats&sort=oldest', {
       scroll: false,
     })
+  })
+
+  it('builds a second patch on the first one while the URL has not committed yet', () => {
+    const { result } = renderHook(() => useUrlState(schema))
+    act(() => result.current.setState({ q: 'cats' }))
+    act(() => result.current.setState({ sort: 'oldest' }))
+    expect(navigation.replace).toHaveBeenCalledTimes(2)
+    expect(navigation.replace).toHaveBeenNthCalledWith(1, '/posts/csr?q=cats', { scroll: false })
+    expect(navigation.replace).toHaveBeenNthCalledWith(2, '/posts/csr?q=cats&sort=oldest', {
+      scroll: false,
+    })
+  })
+
+  it('lets a later patch undo an earlier pending one', () => {
+    navigation.search = 'q=cats'
+    const { result } = renderHook(() => useUrlState(schema))
+    act(() => result.current.setState({ q: '' }))
+    act(() => result.current.setState({ page: 2 }))
+    expect(navigation.replace).toHaveBeenLastCalledWith('/posts/csr?page=2', { scroll: false })
+  })
+
+  it('starts from the committed URL again once it changes', () => {
+    const { result, rerender } = renderHook(() => useUrlState(schema))
+    act(() => result.current.setState({ q: 'cats' }))
+    // The navigation was superseded (say, by back/forward) and the URL is something else now.
+    navigation.search = 'sort=oldest'
+    rerender()
+    act(() => result.current.setState({ page: 2 }))
+    expect(navigation.replace).toHaveBeenLastCalledWith('/posts/csr?sort=oldest&page=2', {
+      scroll: false,
+    })
+  })
+
+  it('reads a repeated param the way the server pages do: the last value wins', () => {
+    navigation.search = 'q=a&q=b&sort=oldest&sort=garbage'
+    const { result } = renderHook(() => useUrlState(schema))
+    expect(result.current.state).toMatchObject({ q: 'b', sort: 'newest' })
+  })
+
+  it('keeps setState stable across URL changes', () => {
+    const { result, rerender } = renderHook(() => useUrlState(schema))
+    const first = result.current.setState
+    navigation.search = 'q=cats'
+    rerender()
+    expect(result.current.setState).toBe(first)
+    expect(result.current.state.q).toBe('cats')
   })
 
   it('navigates to the bare path when nothing is left', () => {

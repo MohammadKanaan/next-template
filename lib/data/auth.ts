@@ -47,9 +47,10 @@ export const auth = betterAuth({
   // Better Auth's HTTP router would bypass our rules: sign-up goes only through `signUpAction`
   // (validated with `signUpInput`), profile edits only through `updateProfile` (same username and
   // name rules), and deleting an account only through `deleteAccountAction`, which always demands
-  // the password (over HTTP a fresh session alone could delete). `auth.api.*` calls made directly
-  // from server code are unaffected; only the `/api/auth/*` router honours this list.
-  disabledPaths: ['/sign-up/email', '/update-user', '/delete-user'],
+  // the password (over HTTP a fresh session alone could delete); its `/delete-user/callback` goes
+  // too, though it is inert while no deletion token is ever issued. `auth.api.*` calls made
+  // directly from server code are unaffected; only the `/api/auth/*` router honours this list.
+  disabledPaths: ['/sign-up/email', '/update-user', '/delete-user', '/delete-user/callback'],
   user: {
     changeEmail: {
       enabled: true,

@@ -15,6 +15,15 @@ const REDACT_PATHS = [
 
 type Env = Record<string, string | undefined>
 
+/**
+ * `pino-pretty` is a devDependency, so it may only be loaded where devDependencies exist: under
+ * `next dev` and `bun run dev:worker`, which both set NODE_ENV=development. Anything else (tests,
+ * production, a plain `bun run worker`) writes JSON.
+ */
+export function usesPrettyTransport(env: Env) {
+  return env.NODE_ENV === 'development'
+}
+
 type CreateLoggerOptions = {
   env?: Env
   /** Writes here instead of stdout (and skips the pretty transport); for tests. */
@@ -45,8 +54,7 @@ export function createLogger({ env = process.env, destination }: CreateLoggerOpt
   if (destination) {
     return pino(options, destination)
   }
-  // The worker runs without NODE_ENV in development, so "not production, not test" is development.
-  if (env.NODE_ENV !== 'production' && env.NODE_ENV !== 'test') {
+  if (usesPrettyTransport(env)) {
     options.transport = { target: 'pino-pretty' }
   }
   return pino(options)

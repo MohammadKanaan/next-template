@@ -44,6 +44,11 @@ export function PostsFilters({ q, sort, onChange, disabled }: PostsFiltersProps)
   function handleSearch(value: string) {
     setText(value)
     clearTimeout(timer.current)
+    // A keystroke that leaves the trimmed search as it is (a trailing space, or typing back to
+    // what is already applied) is no change: reporting it would reset the page for nothing.
+    if (value.trim() === reported) {
+      return
+    }
     timer.current = setTimeout(() => {
       const next = value.trim()
       setReported(next)

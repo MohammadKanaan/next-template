@@ -105,6 +105,16 @@ describe('DAL auth', () => {
       expect(await db.user.count({ where: { id: user.id } })).toBe(1)
     })
 
+    it('does not expose the delete-user callback either', async () => {
+      const response = await auth.handler(
+        new Request('http://localhost:3000/api/auth/delete-user/callback?token=x', {
+          method: 'GET',
+          headers: { origin: 'http://localhost:3000' },
+        }),
+      )
+      expect(response.status).toBe(404)
+    })
+
     it('still serves change-password and change-email (same rules as the actions)', async () => {
       const user = await createUser({})
       await signInAs(user)

@@ -25,7 +25,10 @@ export type PostFormProps = {
   submitLabel: string
   onSubmit: (values: CreatePostInput) => Promise<ActionResult<unknown>>
   onCancel?: () => void
-  /** Saved draft that seeds a new post's fields (ignored when editing a post). */
+  /**
+   * Saved draft for a new post (ignored when editing). It is put into the fields once, when it
+   * first becomes available and nothing has been typed yet; later changes to it are not fed back.
+   */
   draft?: PostDraft | null
   /** Called, debounced, as the user types; `null` means the form is empty again. */
   onDraftChange?: (draft: PostDraft | null) => void
@@ -39,21 +42,37 @@ export function PostForm({
   draft,
   onDraftChange,
 }: PostFormProps) {
-  const values = useMemo(() => hydratePostForm(post, draft), [post, draft])
+  // An existing post follows the `post` prop. A new post only starts from the draft: feeding the
+  // draft back through `values` would reset the form (and its errors) on every autosave.
+  const postValues = useMemo(() => (post ? hydratePostForm(post) : undefined), [post])
   const {
     register,
     handleSubmit,
     setError,
+    reset,
     subscribe,
     getValues,
     formState: { errors, isDirty, isSubmitting },
   } = useForm<CreatePostInput>({
     resolver: zodResolver(createPostInput),
-    values,
-    // The draft is written back into `values` as the user types; keep what they typed instead of
-    // resetting the fields. Only the draft-aware (new post) form needs this.
-    resetOptions: onDraftChange ? { keepDirtyValues: true } : undefined,
+    defaultValues: hydratePostForm(post, draft),
+    values: postValues,
   })
+
+  // The stored draft is unknown while hydrating and shows up on a later render: restore it once.
+  const draftRestored = useRef(false)
+  useEffect(() => {
+    if (post !== null || !draft || draftRestored.current) {
+      return
+    }
+    draftRestored.current = true
+    if (isEmptyPostForm(getValues())) {
+      reset(draft)
+    }
+  }, [post, draft, reset, getValues])
+
+  // Set once the post was created: nothing may be written to the draft after that.
+  const submitted = useRef(false)
 
   const onDraftChangeRef = useRef(onDraftChange)
   useEffect(() => {
@@ -62,6 +81,9 @@ export function PostForm({
   const draftTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
 
   const saveDraft = useCallback(() => {
+    if (submitted.current) {
+      return
+    }
     const current = getValues()
     onDraftChangeRef.current?.(isEmptyPostForm(current) ? null : current)
   }, [getValues])
@@ -91,7 +113,10 @@ export function PostForm({
       // A pending write must not recreate the draft after the caller cleared it on success.
       clearTimeout(draftTimer.current)
       const result = await onSubmit(formValues)
-      if (!result.ok) {
+      if (result.ok) {
+        submitted.current = true
+        clearTimeout(draftTimer.current)
+      } else {
         applyActionErrors(result, POST_FORM_FIELDS, setError)
         // The form stays open: keep what was typed.
         saveDraft()

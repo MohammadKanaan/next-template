@@ -37,8 +37,8 @@ type AdminViewProps = {
 
 export function AdminView({ users, viewerId }: AdminViewProps) {
   const { state, setState, isPending } = useUrlState(usersUrlQuery)
-  // The id of the user whose role is being saved.
-  const [savingId, setSavingId] = useState<string | null>(null)
+  // A role change is in flight: every role select waits, so changes cannot overlap.
+  const [isSavingRole, setIsSavingRole] = useState(false)
 
   const handleSearch = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -51,7 +51,7 @@ export function AdminView({ users, viewerId }: AdminViewProps) {
     if (!role.success || role.data === user.role) {
       return
     }
-    setSavingId(user.id)
+    setIsSavingRole(true)
     try {
       const result = await setUserRoleAction({ id: user.id, role: role.data })
       if (result.ok) {
@@ -62,7 +62,7 @@ export function AdminView({ users, viewerId }: AdminViewProps) {
         toast.error(result.message)
       }
     } finally {
-      setSavingId(null)
+      setIsSavingRole(false)
     }
   }
 
@@ -120,7 +120,7 @@ export function AdminView({ users, viewerId }: AdminViewProps) {
                     <Select
                       value={user.role}
                       onValueChange={(value) => handleRole(user, value)}
-                      disabled={isSelf || savingId !== null}
+                      disabled={isSelf || isSavingRole}
                     >
                       <SelectTrigger size="sm" aria-label={`Role of ${user.name}`}>
                         <SelectValue />

@@ -222,6 +222,7 @@ export async function changeEmailAction(input: ChangeEmailInput): Promise<Action
       body: { newEmail: body.newEmail, callbackURL: ROUTE_SETTINGS },
       headers: await headers(),
     })
+    refresh()
     return { ok: true, data: null }
   } catch (error) {
     if (error instanceof APIError) {

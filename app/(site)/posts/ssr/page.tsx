@@ -8,6 +8,7 @@ import { ROUTE_POSTS, ROUTE_POSTS_CSR, ROUTE_POSTS_SSR } from '@/lib/constants-r
 import { loadPage } from '@/lib/data/page'
 import { listPosts } from '@/lib/data/posts'
 import { postsUrlQuery } from '@/lib/dto/posts'
+import { toScalarParams } from '@/lib/searchParams'
 import styles from '../styles.module.scss'
 import { PostsSsrView } from './view'
 
@@ -22,7 +23,7 @@ type PostsListProps = Pick<PageProps<'/posts/ssr'>, 'searchParams'>
 
 async function PostsList({ searchParams }: PostsListProps) {
   // The same tolerant schema the client hook uses: a garbled URL falls back to the defaults.
-  const query = postsUrlQuery.parse(await searchParams)
+  const query = postsUrlQuery.parse(toScalarParams(await searchParams))
   const posts = await loadPage(() => listPosts({ ...query, perPage: PER_PAGE }), ROUTE_POSTS_SSR)
 
   return <PostsSsrView posts={posts} />

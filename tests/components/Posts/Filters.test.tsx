@@ -34,6 +34,32 @@ describe('PostsFilters', () => {
     expect(onChange).toHaveBeenCalledWith({ q: 'cat' })
   })
 
+  it('does not report a keystroke that leaves the trimmed search unchanged', () => {
+    const onChange = vi.fn()
+    render(<PostsFilters q="cat" sort="newest" onChange={onChange} />)
+    const input = screen.getByLabelText('Search')
+    fireEvent.change(input, { target: { value: 'cat ' } })
+    act(() => vi.advanceTimersByTime(1000))
+    expect(onChange).not.toHaveBeenCalled()
+
+    // Changing and then typing back before the debounce ends cancels the pending report too.
+    fireEvent.change(input, { target: { value: 'cats' } })
+    fireEvent.change(input, { target: { value: 'cat' } })
+    act(() => vi.advanceTimersByTime(1000))
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
+  it('does not report the same search twice', () => {
+    const onChange = vi.fn()
+    render(<PostsFilters q="" sort="newest" onChange={onChange} />)
+    const input = screen.getByLabelText('Search')
+    fireEvent.change(input, { target: { value: 'cat' } })
+    act(() => vi.advanceTimersByTime(300))
+    fireEvent.change(input, { target: { value: 'cat ' } })
+    act(() => vi.advanceTimersByTime(300))
+    expect(onChange).toHaveBeenCalledTimes(1)
+  })
+
   it('does not report after unmounting', () => {
     const onChange = vi.fn()
     const { unmount } = render(<PostsFilters q="" sort="newest" onChange={onChange} />)

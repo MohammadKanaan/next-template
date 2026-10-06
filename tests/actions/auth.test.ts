@@ -479,6 +479,7 @@ describe('account actions', () => {
         ok: true,
         data: null,
       })
+      expect(refresh).toHaveBeenCalledTimes(1)
       expect(emails()).toEqual([
         expect.objectContaining({
           template: 'confirm-email-change',
