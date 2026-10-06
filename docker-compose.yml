@@ -1,3 +1,33 @@
+# `docker compose up -d` starts only the infrastructure (db, redis, minio), for local development
+# with `bun run dev`. `docker compose --profile app up --build` also builds the app image and runs
+# the migrations, the web process and the worker (see "Run everything with Docker" in README.md).
+
+# Environment shared by the three app containers. Inside compose the services reach each other by
+# service name; the browser reaches MinIO through the published port, hence S3_PUBLIC_ENDPOINT.
+# A variable from the shell or from `.env` overrides the `${NAME:-default}` fallbacks below. The
+# fallback secret is for trying the stack locally only: set BETTER_AUTH_SECRET for anything else.
+x-app-env: &app-env
+  NODE_ENV: production
+  DATABASE_URL: postgresql://postgres:postgres@db:5432/next_template_dev
+  BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-local-only-secret-change-me-0123456789abcdef}
+  BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
+  REDIS_URL: redis://redis:6379/0
+  RESEND_API_KEY: ${RESEND_API_KEY:-}
+  EMAIL_FROM: ${EMAIL_FROM:-Next Template <noreply@example.com>}
+  S3_ENDPOINT: http://minio:9000
+  S3_PUBLIC_ENDPOINT: http://localhost:9000
+  S3_REGION: us-east-1
+  S3_BUCKET: next-template
+  S3_ACCESS_KEY_ID: minioadmin
+  S3_SECRET_ACCESS_KEY: minioadmin
+  S3_PUBLIC_URL: http://localhost:9000/next-template
+
+x-app-build: &app-build
+  context: .
+  args:
+    NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-Next Template}
+    NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-/api/v1}
+
 services:
   db:
     image: postgres:18-alpine
@@ -9,6 +39,11 @@ services:
       - '5432:5432'
     volumes:
       - db-data:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d next_template_dev']
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   redis:
     image: redis:7-alpine
@@ -19,6 +54,11 @@ services:
       - '6379:6379'
     volumes:
       - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   # The upstream minio/minio and minio/mc images are no longer published, hence Chainguard's builds.
   minio:
@@ -45,6 +85,62 @@ services:
         mc mb --ignore-existing local/next-template &&
         mc anonymous set download local/next-template/avatars
     restart: 'no'
+
+  # One-shot: applies the Prisma migrations, then installs or upgrades the `pgboss` schema.
+  # Seeding stays an explicit command because the seed replaces rows:
+  #   docker compose --profile app run --rm migrate bun run db:seed
+  migrate:
+    profiles: ['app']
+    build: *app-build
+    image: next-template-app
+    command:
+      - sh
+      - -c
+      - bun run db:deploy && node_modules/.bin/tsx --tsconfig worker/tsconfig.json worker/migrate.ts
+    environment: *app-env
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: 'no'
+
+  web:
+    profiles: ['app']
+    image: next-template-app
+    command: ['bun', 'run', 'start']
+    environment: *app-env
+    ports:
+      - '3000:3000'
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    healthcheck:
+      # The image has no curl; Node's fetch does the probe. 200 means PostgreSQL and Redis answer.
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://localhost:3000/api/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  worker:
+    profiles: ['app']
+    image: next-template-app
+    command: ['bun', 'run', 'worker']
+    environment: *app-env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
 
 volumes:
   db-data:

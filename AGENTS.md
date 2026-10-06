@@ -432,9 +432,12 @@ records the result.
   mocks `@/lib/server/logger` with a fake child.
 - Singletons (Redis, pg-boss, S3) hang off `globalThis` and are created lazily, so importing a file
   never needs its environment variables.
-- `docker-compose.yml` provides Postgres, Redis and MinIO for development. Docker images for the web
-  and worker processes are a planned follow-up; today both run on Node with `bun run start` and
-  `bun run worker`.
+- `docker-compose.yml` provides Postgres, Redis and MinIO for development (`docker compose up -d`).
+  Under `profiles: ['app']` it also builds the single `Dockerfile` (`node:24-slim` + bun 1.3.10, no
+  `output: 'standalone'`) and runs `migrate` (one-shot: `db:deploy`, then the `pgboss` schema), `web`
+  (`bun run start`, healthcheck on `/api/health`) and `worker` (`bun run worker`) from it. The
+  containers get every `serverEnv()` variable with service hosts and `S3_PUBLIC_ENDPOINT`. CI is
+  `.github/workflows/ci.yml` (Postgres 18 + Redis 7 services, `.env.test` from the example)
 
 ## Hooks
 

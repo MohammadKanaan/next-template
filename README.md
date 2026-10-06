@@ -62,6 +62,48 @@ worker does not need that variable.
 old Prisma 8 schema. Run `bun run db:reset` once; it drops, re-migrates, and re-seeds the dev
 database (it destroys that data).
 
+## Run everything with Docker
+
+```bash
+cp .env.example .env              # optional: set BETTER_AUTH_SECRET, RESEND_API_KEY, EMAIL_FROM
+docker compose --profile app up --build
+docker compose --profile app run --rm migrate bun run db:seed   # once, in a second terminal
+```
+
+Then open http://localhost:3000 (same seeded accounts as above) and check
+`curl localhost:3000/api/health`.
+
+`docker compose up -d` without the profile still starts only PostgreSQL, Redis and MinIO, which is what
+`bun run dev` expects. The `app` profile adds three services built from one `Dockerfile`
+(`node:24-slim` plus bun 1.3.10, because the scripts run on Node and bun only installs and launches
+them):
+
+| Service   | Command                                       | Notes                                                                    |
+| --------- | --------------------------------------------- | ------------------------------------------------------------------------ |
+| `migrate` | `bun run db:deploy`, then `worker/migrate.ts` | One-shot: Prisma migrations, then the `pgboss` schema. Builds the image. |
+| `web`     | `bun run start`                               | Port 3000; healthcheck on `/api/health`; waits for `migrate`.            |
+| `worker`  | `bun run worker`                              | Background jobs; waits for `migrate`.                                    |
+
+The containers get every variable the app validates at boot. Hosts are the compose service names
+(`db`, `redis`, `minio`); `S3_PUBLIC_ENDPOINT=http://localhost:9000` is what the browser uses for
+avatar uploads. Compose reads `.env` from the project directory for `BETTER_AUTH_SECRET`,
+`BETTER_AUTH_URL`, `RESEND_API_KEY`, `EMAIL_FROM` and the `NEXT_PUBLIC_*` build args, and falls back
+to a local-only secret when they are unset. Every other container variable is fixed in
+`docker-compose.yml`, so the `localhost` URLs in your `.env` never leak into the containers. Set a
+real `BETTER_AUTH_SECRET` for anything beyond a local try-out. The containers run with
+`NODE_ENV=production`, so without `RESEND_API_KEY` the email jobs fail and are retried (nothing is
+logged); sign-in with the seeded accounts does not need email.
+
+`NEXT_PUBLIC_*` values are baked into the bundle at build time (build args); everything else is read
+at runtime. The seed replaces the seeded rows, so it is an explicit command and not part of
+`migrate`; like `bun run db:seed` it does not flush Redis.
+
+> **Not verified on the machine this was written on:** Docker was not running there, so the image
+> build and the full stack run were never executed. `docker compose config` and
+> `docker compose --profile app config` pass, and `.github/workflows/ci.yml` (PostgreSQL 18 and
+> Redis 7 service containers, then `db:test:prepare`, `format:check`, `lint`, `typecheck`, `test`,
+> `build`) has not run either. Treat the first `docker compose --profile app up --build` as the test.
+
 ## Scripts
 
 | Script                    | What it does                                                            |
@@ -106,10 +148,11 @@ presenter, and DTO tests need no database.
 `GET /api/health` returns 200 when PostgreSQL and Redis answer and 503 otherwise (ok/fail per
 dependency, no error text); point a load balancer or container probe at it.
 
-Docker images for the web and worker processes are a planned follow-up. For now run `bun run build`
-then `bun run start` for the web process and `bun run worker` for the worker, both with the same
+The web and worker processes run from the one `Dockerfile` (see "Run everything with Docker"), or
+directly with `bun run build` then `bun run start` and `bun run worker`, both with the same
 environment. In production both validate the server env at boot (`instrumentation.ts`, and the
-worker's start) and exit on a bad value. `output: 'standalone'` returns with the Dockerfile.
+worker's start) and exit on a bad value. The image does not use `output: 'standalone'`: the worker
+runs the TypeScript source through `tsx`, so it needs the source and `node_modules` anyway.
 
 ## Architecture
 
@@ -235,7 +278,7 @@ cannot set cookies), so a user who only browses is signed out when the session e
 - ZenStack or Postgres row-level security as a second enforcement layer.
 - Extend the existing lint rule to restrict `better-auth` imports as well.
 - The rate limiter fails open when Redis is down; decide per action whether that is acceptable.
-- Docker images for the web and worker, and a compose `app` profile.
+- A registry-published image and a deployment target (the Dockerfile and compose `app` profile cover running it locally).
 - Cursor pagination (`CursorPage<T> = { items, nextCursor }`) for feeds.
 - Generate OpenAPI from the Zod schemas if external API consumers appear.
 
