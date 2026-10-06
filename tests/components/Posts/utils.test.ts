@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  buildPostAttributes,
-  hydratePostForm,
-  isEmptyPostForm,
-} from '@/components/Posts/Form/utils'
+import { buildPostAttributes, hydratePostForm } from '@/components/Posts/Form/utils'
 import type { PostDetail } from '@/lib/dto/posts'
 
 const post: PostDetail = {
@@ -20,19 +16,6 @@ describe('post form utils', () => {
   it('hydrates from a post or empty values', () => {
     expect(hydratePostForm(post)).toEqual({ title: 'Hello', body: 'World' })
     expect(hydratePostForm(null)).toEqual({ title: '', body: '' })
-  })
-
-  it('hydrates a new post from the draft, but an existing post ignores it', () => {
-    const draft = { title: 'Draft', body: 'Text' }
-    expect(hydratePostForm(null, draft)).toEqual(draft)
-    expect(hydratePostForm(post, draft)).toEqual({ title: 'Hello', body: 'World' })
-    expect(hydratePostForm(null, null)).toEqual({ title: '', body: '' })
-  })
-
-  it('detects an empty form', () => {
-    expect(isEmptyPostForm({ title: '', body: '' })).toBe(true)
-    expect(isEmptyPostForm({ title: ' ', body: '' })).toBe(false)
-    expect(isEmptyPostForm({ title: '', body: 'x' })).toBe(false)
   })
 
   it('sends every field when creating', () => {

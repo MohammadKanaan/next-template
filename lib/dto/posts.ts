@@ -22,17 +22,6 @@ export const createPostInput = z.object({
 
 export type CreatePostInput = z.infer<typeof createPostInput>
 
-/**
- * An unsent post kept in the browser (`/posts/new` autosave). Untrimmed and not required, because
- * it holds whatever the user has typed so far; only the length caps match the real input.
- */
-export const postDraftSchema = z.object({
-  title: z.string().max(POST_TITLE_MAX_LENGTH),
-  body: z.string().max(POST_BODY_MAX_LENGTH),
-})
-
-export type PostDraft = z.infer<typeof postDraftSchema>
-
 export const updatePostInput = createPostInput
   .partial()
   .refine((value) => Object.keys(value).length > 0, 'Provide at least one attribute')

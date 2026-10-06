@@ -1,10 +1,8 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { act } from 'react'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { PostForm } from '@/components/Posts/Form'
-import { useLocalStorage } from '@/hooks/useLocalStorage'
-import { postDraftSchema, type PostDetail, type PostDraft } from '@/lib/dto/posts'
+import type { PostDetail } from '@/lib/dto/posts'
 
 const success = { ok: true, data: null }
 const post: PostDetail = {
@@ -69,196 +67,12 @@ describe('PostForm', () => {
     await userEvent.type(screen.getByLabelText(/Title/), '!')
     expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
   })
-})
 
-describe('PostForm draft', () => {
-  beforeEach(() => vi.useFakeTimers({ shouldAdvanceTime: true }))
-  afterEach(() => {
-    vi.useRealTimers()
-    localStorage.clear()
-  })
-
-  const setup = () => userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
-
-  it('seeds a new post from the draft', () => {
-    render(
-      <PostForm
-        post={null}
-        draft={{ title: 'Saved title', body: 'Saved body' }}
-        submitLabel="Create post"
-        onSubmit={vi.fn()}
-      />,
+  it('follows the post it edits when a save refreshes it', () => {
+    const { rerender } = render(<PostForm post={post} submitLabel="Save" onSubmit={vi.fn()} />)
+    rerender(
+      <PostForm post={{ ...post, title: 'Saved title' }} submitLabel="Save" onSubmit={vi.fn()} />,
     )
     expect(screen.getByLabelText(/Title/)).toHaveValue('Saved title')
-    expect(screen.getByLabelText(/Body/)).toHaveValue('Saved body')
-  })
-
-  it('ignores the draft when editing an existing post', () => {
-    render(
-      <PostForm
-        post={post}
-        draft={{ title: 'Saved title', body: 'Saved body' }}
-        submitLabel="Save"
-        onSubmit={vi.fn()}
-      />,
-    )
-    expect(screen.getByLabelText(/Title/)).toHaveValue('Hello')
-  })
-
-  it('reports the draft once, after typing pauses', async () => {
-    const onDraftChange = vi.fn()
-    render(
-      <PostForm
-        post={null}
-        submitLabel="Create post"
-        onSubmit={vi.fn()}
-        onDraftChange={onDraftChange}
-      />,
-    )
-    await setup().type(screen.getByLabelText(/Title/), 'Hey')
-    expect(onDraftChange).not.toHaveBeenCalled()
-    act(() => vi.advanceTimersByTime(500))
-    expect(onDraftChange).toHaveBeenCalledTimes(1)
-    expect(onDraftChange).toHaveBeenCalledWith({ title: 'Hey', body: '' })
-  })
-
-  it('reports null when the form is emptied again', async () => {
-    const onDraftChange = vi.fn()
-    render(
-      <PostForm
-        post={null}
-        draft={{ title: 'ab', body: '' }}
-        submitLabel="Create post"
-        onSubmit={vi.fn()}
-        onDraftChange={onDraftChange}
-      />,
-    )
-    await setup().clear(screen.getByLabelText(/Title/))
-    act(() => vi.advanceTimersByTime(500))
-    expect(onDraftChange).toHaveBeenLastCalledWith(null)
-  })
-
-  it('does not report drafts for an edit form that passes no handler', async () => {
-    render(<PostForm post={post} submitLabel="Save" onSubmit={vi.fn()} />)
-    await setup().type(screen.getByLabelText(/Title/), '!')
-    act(() => vi.advanceTimersByTime(1000))
-    expect(screen.getByLabelText(/Title/)).toHaveValue('Hello!')
-  })
-
-  it('does not write a pending draft after a successful submit', async () => {
-    const onDraftChange = vi.fn()
-    const onSubmit = vi.fn().mockResolvedValue(success)
-    render(
-      <PostForm
-        post={null}
-        submitLabel="Create post"
-        onSubmit={onSubmit}
-        onDraftChange={onDraftChange}
-      />,
-    )
-    const user = setup()
-    await user.type(screen.getByLabelText(/Title/), 'Hello')
-    await user.type(screen.getByLabelText(/Body/), 'World')
-    await user.click(screen.getByRole('button', { name: 'Create post' }))
-    act(() => vi.advanceTimersByTime(1000))
-    expect(onSubmit).toHaveBeenCalledTimes(1)
-    expect(onDraftChange).not.toHaveBeenCalled()
-  })
-
-  it('keeps the draft when the submit fails', async () => {
-    const onDraftChange = vi.fn()
-    const onSubmit = vi.fn().mockResolvedValue({
-      ok: false,
-      code: 'FORBIDDEN',
-      message: 'Nope',
-    })
-    render(
-      <PostForm
-        post={null}
-        submitLabel="Create post"
-        onSubmit={onSubmit}
-        onDraftChange={onDraftChange}
-      />,
-    )
-    const user = setup()
-    await user.type(screen.getByLabelText(/Title/), 'Hello')
-    await user.type(screen.getByLabelText(/Body/), 'World')
-    await user.click(screen.getByRole('button', { name: 'Create post' }))
-    expect(onDraftChange).toHaveBeenLastCalledWith({ title: 'Hello', body: 'World' })
-  })
-
-  it('never resets what is being typed while the draft is written back into the form', async () => {
-    const Harness = () => {
-      const { value, setValue, removeValue } = useLocalStorage('post-draft:test', postDraftSchema)
-      return (
-        <PostForm
-          post={null}
-          draft={value}
-          submitLabel="Create post"
-          onSubmit={vi.fn()}
-          onDraftChange={(next: PostDraft | null) => (next ? setValue(next) : removeValue())}
-        />
-      )
-    }
-    render(<Harness />)
-    const user = setup()
-    const title = screen.getByLabelText(/Title/)
-    await user.type(title, 'First')
-    act(() => vi.advanceTimersByTime(500))
-    expect(JSON.parse(localStorage.getItem('post-draft:test') ?? 'null')).toEqual({
-      title: 'First',
-      body: '',
-    })
-    // The saved draft flowed back into `values`; typing carries on from where it was.
-    expect(title).toHaveValue('First')
-    await user.type(title, ' draft')
-    expect(title).toHaveValue('First draft')
-    await user.type(screen.getByLabelText(/Body/), 'Body text')
-    act(() => vi.advanceTimersByTime(500))
-    expect(title).toHaveValue('First draft')
-    expect(screen.getByLabelText(/Body/)).toHaveValue('Body text')
-    expect(JSON.parse(localStorage.getItem('post-draft:test') ?? 'null')).toEqual({
-      title: 'First draft',
-      body: 'Body text',
-    })
-  })
-
-  it('does not feed a draft saved elsewhere back into a form the user has touched', async () => {
-    const Harness = () => {
-      const { value } = useLocalStorage('post-draft:test', postDraftSchema)
-      return (
-        <PostForm
-          post={null}
-          draft={value}
-          submitLabel="Create"
-          onSubmit={vi.fn()}
-          onDraftChange={() => {}}
-        />
-      )
-    }
-    render(<Harness />)
-    await setup().type(screen.getByLabelText(/Title/), 'Mine')
-    act(() => {
-      localStorage.setItem(
-        'post-draft:test',
-        JSON.stringify({ title: 'Other tab', body: 'Remote body' }),
-      )
-      window.dispatchEvent(
-        new StorageEvent('storage', { key: 'post-draft:test', storageArea: localStorage }),
-      )
-    })
-    expect(screen.getByLabelText(/Title/)).toHaveValue('Mine')
-    expect(screen.getByLabelText(/Body/)).toHaveValue('')
-  })
-
-  it('restores a draft that was already in storage when the form mounts', () => {
-    localStorage.setItem('post-draft:test', JSON.stringify({ title: 'Back again', body: 'Text' }))
-    const Harness = () => {
-      const { value } = useLocalStorage('post-draft:test', postDraftSchema)
-      return <PostForm post={null} draft={value} submitLabel="Create" onSubmit={vi.fn()} />
-    }
-    render(<Harness />)
-    expect(screen.getByLabelText(/Title/)).toHaveValue('Back again')
-    expect(screen.getByLabelText(/Body/)).toHaveValue('Text')
   })
 })
