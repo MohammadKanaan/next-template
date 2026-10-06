@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { parseInput, readJsonBody, toErrorResponse } from '@/lib/data/errors'
 import { createPost, listPosts } from '@/lib/data/posts'
-import { listPostsQuery } from '@/lib/dto/posts'
+import { createPostInput, listPostsQuery } from '@/lib/dto/posts'
 
 export const GET = async (request: Request) => {
   try {
@@ -16,7 +16,7 @@ export const GET = async (request: Request) => {
 
 export const POST = async (request: Request) => {
   try {
-    const post = await createPost(await readJsonBody(request))
+    const post = await createPost(parseInput(createPostInput, await readJsonBody(request)))
     return NextResponse.json(post, { status: 201 })
   } catch (error) {
     return toErrorResponse(error)

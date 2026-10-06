@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createComment, listComments } from '@/lib/data/comments'
-import { readJsonBody, toErrorResponse } from '@/lib/data/errors'
+import { parseInput, readJsonBody, toErrorResponse } from '@/lib/data/errors'
+import { createCommentInput } from '@/lib/dto/comments'
 
 export const GET = async (
   _request: Request,
@@ -20,7 +21,10 @@ export const POST = async (
 ) => {
   try {
     const { id } = await context.params
-    const comment = await createComment(id, await readJsonBody(request))
+    const comment = await createComment(
+      id,
+      parseInput(createCommentInput, await readJsonBody(request)),
+    )
     return NextResponse.json(comment, { status: 201 })
   } catch (error) {
     return toErrorResponse(error)

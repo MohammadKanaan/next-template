@@ -342,7 +342,8 @@ catch (error) { return toActionFailure(error) }`. Return `ActionResult<T>`; neve
 - Use a Route Handler only when a client component must fetch (the `/posts/csr` example) or when an
   HTTP API is required (the REST endpoints under `app/api/v1/posts`, below). It stays thin: for a
   query, `parseInput` it to decode it (every value arrives as a string); for a body,
-  `readJsonBody(request)`; then call the DAL (which validates again, because it trusts no caller),
+  `readJsonBody(request)` and decode it with the DTO schema (`parseInput(createPostInput, …)`), as a
+  query is decoded; then call the DAL (which validates again, because it trusts no caller),
   return JSON or `toErrorResponse(error)`.
 - The client calls it through a facade in `lib/client` (`fetchPosts`) that parses the response with
   the shared `lib/dto` schema and throws `RequestError` (message + status) on failure. Components do
@@ -354,8 +355,9 @@ catch (error) { return toActionFailure(error) }`. Return `ActionResult<T>`; neve
   `application/json` and maps malformed JSON to a `ValidationError` (both 422); that requirement
   plus the `SameSite=Lax` cookie is the CSRF guard, since a cross-site form cannot send JSON without
   a CORS preflight. Handlers type their context with the generated `RouteContext<'/api/v1/posts/[id]'>`,
-  await `params`, and hand the raw `id` string and the parsed body (`unknown`) to the DAL, which
-  validates both. Status codes: 201 for a create (with the created DTO), 200 for reads and updates,
+  await `params`, decode the body with the DTO schema (`parseInput(updatePostInput, …)`, as the
+  GET handler decodes its query) and pass it, with the raw `id` string, to the DAL, which validates
+  both again. Status codes: 201 for a create (with the created DTO), 200 for reads and updates,
   204 with an empty body for a delete, errors through `toErrorResponse` (401/403/404/422/429).
   There is deliberately no status endpoint: transitions stay in `setPostStatusAction`. There are no
   client facades for these endpoints because no UI calls them; their tests call the handlers

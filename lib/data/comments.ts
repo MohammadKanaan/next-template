@@ -4,6 +4,7 @@ import { idSchema } from '@/lib/dto/common'
 import {
   commentsBaseSchema,
   createCommentInput,
+  type CreateCommentInput,
   type Comment,
   type CommentBase,
 } from '@/lib/dto/comments'
@@ -84,7 +85,10 @@ export const listComments = async (postId: number | string): Promise<Comment[]> 
  * Signed in (401) → valid input (422) → the post exists and the viewer may see it (404) → it is
  * published (403: comments are closed on drafts and archived posts).
  */
-export const createComment = async (postId: number | string, input: unknown): Promise<Comment> => {
+export const createComment = async (
+  postId: number | string,
+  input: CreateCommentInput,
+): Promise<Comment> => {
   const viewer = await requireUser()
   const id = parseInput(idSchema, postId)
   const { body } = parseInput(createCommentInput, input)

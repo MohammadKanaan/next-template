@@ -221,7 +221,7 @@ of the replaced avatar. Abandoned uploads are cleaned up hourly.
 **Route Handlers and facade.** `GET /api/v1/posts` is called by a client component (`/posts/csr`)
 through `lib/client/posts.ts`, which parses the response with the shared schema. The write endpoints
 below exist for HTTP API clients; no UI calls them, so they have no facade. Each handler reads the
-body with `readJsonBody` and passes it, with the raw route `id`, to the DAL, which validates and
+body with `readJsonBody`, decodes it with the DTO schema, and passes it, with the raw route `id`, to the DAL, which validates again and
 authorizes. Authentication is the session cookie; writes require `Content-Type: application/json`
 (a cross-site form cannot send it without a CORS preflight, which together with the `SameSite=Lax`
 cookie is the CSRF guard).
