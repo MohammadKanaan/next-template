@@ -5,22 +5,25 @@ import { getJobDefinition, jobs, type JobName } from '@/jobs/definitions'
 import { handleSendEmail } from '@/jobs/sendEmail'
 import { db } from '@/lib/data/db'
 import { serverEnv } from '@/lib/server/env'
+import { logger } from '@/lib/server/logger'
 
 /**
  * Background worker: the one process that owns pg-boss (its `pgboss` schema migrations, queue
  * creation, supervision and cron). The web process only enqueues. Run with `bun run worker`.
  */
 
+const log = logger.child({ module: 'worker' })
+
 const SHUTDOWN_TIMEOUT_MS = 30_000
 
 const connectionString = process.env.DATABASE_URL
 if (!connectionString) {
-  console.error('[worker] DATABASE_URL is required')
+  log.fatal('DATABASE_URL is required')
   process.exit(1)
 }
 
 const boss = new PgBoss({ connectionString })
-boss.on('error', (error) => console.error('[worker] pg-boss error:', error))
+boss.on('error', (error) => log.error({ err: error }, 'pg-boss error'))
 
 /** Handlers receive job arrays; each handler re-validates the payload it is given. */
 async function register(name: JobName, handler: (payload: unknown) => Promise<void>) {
@@ -29,7 +32,7 @@ async function register(name: JobName, handler: (payload: unknown) => Promise<vo
       try {
         await handler(job.data)
       } catch (error) {
-        console.error(`[worker] ${name} job ${job.id} failed:`, error)
+        log.error({ err: error, job: name, jobId: job.id }, 'job failed')
         throw error
       }
     }
@@ -60,7 +63,7 @@ async function start() {
   await register('delete-object', handleDeleteObject)
   await register('cleanup', handleCleanup)
 
-  console.log(`[worker] ready: ${Object.keys(jobs).join(', ')}`)
+  log.info({ jobs: Object.keys(jobs) }, 'ready')
 }
 
 let shuttingDown = false
@@ -70,13 +73,13 @@ async function shutdown(signal: string) {
     return
   }
   shuttingDown = true
-  console.log(`[worker] ${signal} received, finishing active jobs`)
+  log.info({ signal }, 'received signal, finishing active jobs')
   try {
     await boss.stop({ graceful: true, timeout: SHUTDOWN_TIMEOUT_MS })
     await db.$disconnect()
     process.exit(0)
   } catch (error) {
-    console.error('[worker] shutdown failed:', error)
+    log.error({ err: error }, 'shutdown failed')
     process.exit(1)
   }
 }
@@ -85,6 +88,6 @@ process.on('SIGTERM', () => void shutdown('SIGTERM'))
 process.on('SIGINT', () => void shutdown('SIGINT'))
 
 start().catch((error) => {
-  console.error('[worker] failed to start:', error)
+  log.fatal({ err: error }, 'failed to start')
   process.exit(1)
 })

@@ -1,6 +1,9 @@
 import 'server-only'
 import Redis from 'ioredis'
 import { serverEnv } from './env'
+import { logger } from './logger'
+
+const log = logger.child({ module: 'redis' })
 
 function createClient() {
   const client = new Redis(serverEnv().REDIS_URL, {
@@ -12,7 +15,7 @@ function createClient() {
     retryStrategy: (attempt) => Math.min(attempt * 200, 2000),
   })
   // Without a listener, a connection error is an unhandled 'error' event and crashes the process.
-  client.on('error', (error) => console.error('[redis]', error.message))
+  client.on('error', (error) => log.error({ err: error }, 'connection error'))
   return client
 }
 

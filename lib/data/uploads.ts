@@ -8,6 +8,7 @@ import {
 } from '@/lib/dto/uploads'
 import type { CurrentUser } from '@/lib/dto/users'
 import { invalidateTags } from '@/lib/server/cache'
+import { logger } from '@/lib/server/logger'
 import { enqueue } from '@/lib/server/queue'
 import { createUploadTicket, deleteObject, headObject, publicUrl } from '@/lib/server/storage'
 import { requireUser } from './auth'
@@ -15,6 +16,8 @@ import { userTag } from './cacheTags'
 import { db } from './db'
 import { ForbiddenError, NotFoundError, ValidationError } from './errors'
 import { currentUserSelect } from './users'
+
+const log = logger.child({ module: 'uploads' })
 
 /** Signed in → returns a presigned POST for a new avatar object and the pending upload's id. */
 export async function createAvatarUpload(input: CreateAvatarUploadInput): Promise<UploadTicket> {
@@ -109,7 +112,7 @@ export async function attachAvatar(uploadId: string): Promise<CurrentUser> {
   for (const { key } of replaced) {
     // The row is already gone; a failure to queue leaves an orphaned object, never a broken avatar.
     enqueue('delete-object', { key }).catch((error) =>
-      console.error('[uploads] old avatar not queued for deletion:', error),
+      log.error({ err: error, key }, 'old avatar not queued for deletion'),
     )
   }
   return user

@@ -77,6 +77,12 @@ const eslintConfig = defineConfig([
       ],
     },
   },
+  // Server code logs through lib/server/logger. The CLI scripts (worker/migrate.ts, prisma/seed.ts)
+  // keep console on purpose.
+  {
+    files: ['lib/data/**/*.ts', 'lib/server/**/*.ts', 'jobs/**/*.ts', 'worker/index.ts'],
+    rules: { 'no-console': 'error' },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:

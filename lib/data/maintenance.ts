@@ -1,6 +1,9 @@
 import 'server-only'
+import { logger } from '@/lib/server/logger'
 import { deleteObject } from '@/lib/server/storage'
 import { db } from './db'
+
+const log = logger.child({ module: 'maintenance' })
 
 /**
  * System DAL for background jobs. There is no viewer here, so these functions skip
@@ -43,7 +46,7 @@ export async function deleteStalePendingUploads(
       await db.upload.delete({ where: { id: upload.id } })
       deleted += 1
     } catch (error) {
-      console.error(`[cleanup] could not delete stale upload ${upload.id}:`, error)
+      log.error({ err: error, uploadId: upload.id }, 'could not delete stale upload')
     }
   }
   return { uploads: deleted }

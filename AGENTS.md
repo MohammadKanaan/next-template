@@ -63,7 +63,8 @@ record-level rules), so a caller that forgets a check cannot bypass it.
 - **Database:** Prisma ORM 7.10 (`prisma-client` generator, `@prisma/adapter-pg`) on PostgreSQL 18
 - **Cache + rate limits:** Redis (`ioredis`) behind `lib/server`; Next Cache Components for pure UI
 - **Jobs:** pg-boss on the same PostgreSQL, run by a separate worker process (`worker/`)
-- **Email:** Resend + React Email templates (`emails/`), console transport without an API key
+- **Email:** Resend + React Email templates (`emails/`), logged to the logger without an API key
+- **Logging:** pino (`lib/server/logger.ts`), pino-pretty in development
 - **Storage:** S3-compatible (MinIO in dev) via presigned POST
 - **Auth:** Better Auth (email + password, official Prisma adapter, `nextCookies`)
 - **Forms:** React Hook Form + Zod 4
@@ -359,10 +360,21 @@ records the result.
 ## Infrastructure (`lib/server`)
 
 - Server-only code that is not the database: `env.ts`, `redis.ts`, `cache.ts`, `queue.ts`,
-  `mailer.ts`, `storage.ts`. Every file starts with `import 'server-only'`.
+  `mailer.ts`, `storage.ts`, `logger.ts`. Every file starts with `import 'server-only'`.
 - **Only `lib/data` (including the Better Auth config), `jobs/`, `worker/` and tests import
   `@/lib/server/*`.** ESLint forbids it from `app/`, `actions/`, `components/`, `hooks/`, `presenters/`, `lib/client` and
   `lib/dto`. A page or action that needs infrastructure asks the DAL.
+- **Logging:** `lib/server/logger.ts` exports a pino `logger` (and `createLogger`, which tests use to
+  capture output). Every module makes a child, `const log = logger.child({ module: 'cache' })`, and
+  logs `log.error({ err: error }, 'read failed, loading from source')`: structured fields first,
+  message second. `LOG_LEVEL` sets the level; otherwise `silent` in test, `debug` in development
+  (pretty-printed with `pino-pretty`) and `info` in production (JSON on stdout). It is read from
+  `process.env` directly so the logger works before `serverEnv()` validates. `url`, `token`,
+  `password` (also one level down as `*.url` etc.) and the `cookie` / `authorization` headers are
+  redacted, because job payloads carry live reset and verification links. Never log a payload or a
+  message body. ESLint forbids `console` in `lib/data`, `lib/server`, `jobs` and `worker/index.ts`;
+  the CLI scripts `worker/migrate.ts` and `prisma/seed.ts` keep it. A test that asserts a log line
+  mocks `@/lib/server/logger` with a fake child.
 - Singletons (Redis, pg-boss, S3) hang off `globalThis` and are created lazily, so importing a file
   never needs its environment variables.
 - `docker-compose.yml` provides Postgres, Redis and MinIO for development. Docker images for the web
@@ -466,6 +478,7 @@ records the result.
   URLs or app names.
 - `DATABASE_URL`, `BETTER_AUTH_SECRET`, and `BETTER_AUTH_URL` live in `.env` (dev) and `.env.test`
   (tests). Both are untracked; update the `*.example` files when adding a variable.
+- `LOG_LEVEL` (optional) is read directly by `lib/server/logger.ts`, not through `serverEnv()`.
 - Server-only config (`REDIS_URL`, `RESEND_API_KEY` (optional), `EMAIL_FROM`, `S3_ENDPOINT`,
   `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_PUBLIC_URL`,
   `S3_PUBLIC_ENDPOINT` (optional: the endpoint as the browser reaches it, for presigned uploads;

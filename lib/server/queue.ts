@@ -1,6 +1,9 @@
 import 'server-only'
 import { PgBoss, type SendOptions } from 'pg-boss'
 import { jobs, type JobName, type JobPayload } from '@/jobs/definitions'
+import { logger } from './logger'
+
+const log = logger.child({ module: 'queue' })
 
 const globalForQueue = globalThis as unknown as { boss?: Promise<PgBoss> }
 
@@ -19,7 +22,7 @@ async function startBoss() {
     schedule: false,
   })
   // Without a listener a connection error is an unhandled 'error' event and crashes the process.
-  boss.on('error', (error) => console.error('[queue]', error))
+  boss.on('error', (error) => log.error({ err: error }, 'pg-boss error'))
   await boss.start()
   return boss
 }

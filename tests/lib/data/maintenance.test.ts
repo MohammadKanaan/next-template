@@ -97,7 +97,6 @@ describe('maintenance DAL', () => {
           throw new Error('storage down')
         }
       })
-      vi.spyOn(console, 'error').mockImplementation(() => {})
 
       expect(await deleteStalePendingUploads()).toEqual({ uploads: 1 })
 

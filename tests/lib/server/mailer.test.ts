@@ -6,6 +6,8 @@ import { sendMail } from '@/lib/server/mailer'
 import { createElement } from 'react'
 
 const send = vi.hoisted(() => vi.fn())
+const log = vi.hoisted(() => ({ info: vi.fn(), error: vi.fn() }))
+vi.mock('@/lib/server/logger', () => ({ logger: { child: () => log } }))
 vi.mock('resend', () => ({
   Resend: class {
     emails = { send }
@@ -22,6 +24,7 @@ const mail = {
 describe('sendMail', () => {
   beforeEach(() => {
     send.mockReset()
+    log.info.mockReset()
     resetServerEnv()
   })
   afterEach(() => {
@@ -32,22 +35,20 @@ describe('sendMail', () => {
 
   it('logs the recipient, subject and link when no Resend key is set', async () => {
     vi.stubEnv('RESEND_API_KEY', undefined)
-    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
     await sendMail(mail)
     expect(send).not.toHaveBeenCalled()
-    const logged = log.mock.calls.flat().join('\n')
-    expect(logged).toContain('ada@example.com')
-    expect(logged).toContain('Verify your email')
-    expect(logged).toContain(url)
+    expect(log.info).toHaveBeenCalledWith(
+      { to: 'ada@example.com', subject: 'Verify your email' },
+      expect.stringContaining(url),
+    )
   })
 
   it('throws in production without a Resend key and never logs the message', async () => {
     vi.stubEnv('NODE_ENV', 'production')
     vi.stubEnv('RESEND_API_KEY', '')
-    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
     await expect(sendMail(mail)).rejects.toThrow('RESEND_API_KEY')
     expect(send).not.toHaveBeenCalled()
-    expect(log).not.toHaveBeenCalled()
+    expect(log.info).not.toHaveBeenCalled()
   })
 
   it('sends rendered html and text through Resend when a key is set', async () => {

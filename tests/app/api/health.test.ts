@@ -25,7 +25,6 @@ describe('GET /api/health', () => {
   })
 
   it('returns 503 when the database check fails, without leaking the error', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {})
     vi.spyOn(db, '$queryRaw').mockRejectedValue(new Error('password authentication failed'))
     const response = await GET()
     expect(response.status).toBe(503)
@@ -35,7 +34,6 @@ describe('GET /api/health', () => {
   })
 
   it('returns 503 when Redis does not answer', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {})
     vi.spyOn(getRedis(), 'ping').mockRejectedValue(new Error('connection refused'))
     const response = await GET()
     expect(response.status).toBe(503)
@@ -47,7 +45,6 @@ describe('GET /api/health', () => {
 
   it('treats a check that never settles as failed', async () => {
     vi.useFakeTimers()
-    vi.spyOn(console, 'error').mockImplementation(() => {})
     vi.spyOn(getRedis(), 'ping').mockReturnValue(new Promise(() => {}) as never)
     const pending = GET()
     await vi.advanceTimersByTimeAsync(2500)

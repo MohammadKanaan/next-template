@@ -3,12 +3,15 @@ import { render } from '@react-email/components'
 import type { ReactElement } from 'react'
 import { Resend } from 'resend'
 import { serverEnv } from './env'
+import { logger } from './logger'
 
 type Mail = {
   to: string
   subject: string
   react: ReactElement
 }
+
+const log = logger.child({ module: 'mailer' })
 
 let resend: Resend | undefined
 
@@ -28,7 +31,7 @@ export async function sendMail({ to, subject, react }: Mail): Promise<void> {
   const [html, text] = await Promise.all([render(react), render(react, { plainText: true })])
 
   if (!RESEND_API_KEY) {
-    console.log(`[mailer] to: ${to}\n[mailer] subject: ${subject}\n${text}`)
+    log.info({ to, subject }, text)
     return
   }
 

@@ -1,7 +1,10 @@
 import 'server-only'
 import { headers } from 'next/headers'
+import { logger } from '@/lib/server/logger'
 import { getRedis } from '@/lib/server/redis'
 import { RateLimitedError } from './errors'
+
+const log = logger.child({ module: 'rateLimit' })
 
 export type RateLimitRule = { max: number; windowMs: number }
 
@@ -33,7 +36,7 @@ export async function consumeRateLimit(key: string, rule: RateLimitRule): Promis
     }
     count = Number(incr[1])
   } catch (error) {
-    console.error('[rateLimit] Redis unavailable, allowing the attempt:', error)
+    log.error({ err: error }, 'Redis unavailable, allowing the attempt')
     return
   }
   if (count > rule.max) {

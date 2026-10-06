@@ -1,12 +1,20 @@
 import { deleteExpiredAuthRows, deleteStalePendingUploads } from '@/lib/data/maintenance'
+import { logger } from '@/lib/server/logger'
 import { jobs } from './definitions'
+
+const log = logger.child({ module: 'cleanup' })
 
 /** Hourly: drops expired sessions and verification tokens, and abandoned pending uploads. */
 export async function handleCleanup(payload: unknown) {
   jobs.cleanup.schema.parse(payload)
   const deleted = await deleteExpiredAuthRows()
   const uploads = await deleteStalePendingUploads()
-  console.log(
-    `[cleanup] deleted ${deleted.sessions} expired sessions, ${deleted.verifications} expired verifications, ${uploads.uploads} stale uploads`,
+  log.info(
+    {
+      sessions: deleted.sessions,
+      verifications: deleted.verifications,
+      uploads: uploads.uploads,
+    },
+    `deleted ${deleted.sessions} expired sessions, ${deleted.verifications} expired verifications, ${uploads.uploads} stale uploads`,
   )
 }

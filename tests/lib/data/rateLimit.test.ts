@@ -12,6 +12,8 @@ import { resetRedis } from '../../helpers/server'
 
 const headerValues = vi.hoisted(() => ({ current: new Headers() }))
 vi.mock('next/headers', () => ({ headers: async () => headerValues.current }))
+const log = vi.hoisted(() => ({ error: vi.fn() }))
+vi.mock('@/lib/server/logger', () => ({ logger: { child: () => log } }))
 
 const rule = { max: 3, windowMs: 1000 }
 
@@ -60,14 +62,15 @@ describe('consumeRateLimit', () => {
   })
 
   it('allows the attempt and logs when Redis is unavailable', async () => {
-    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
     const multi = vi.spyOn(getRedis(), 'multi').mockImplementation(() => {
       throw new Error('redis down')
     })
     await expect(consumeRateLimit('k', rule)).resolves.toBeUndefined()
-    expect(log).toHaveBeenCalled()
+    expect(log.error).toHaveBeenCalledWith(
+      { err: expect.any(Error) },
+      'Redis unavailable, allowing the attempt',
+    )
     multi.mockRestore()
-    log.mockRestore()
   })
 
   it('resetRateLimits clears every counter', async () => {

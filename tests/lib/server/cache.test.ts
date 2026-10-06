@@ -83,7 +83,6 @@ describe('remember', () => {
   })
 
   it('falls through to load when Redis fails on read', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {})
     vi.spyOn(getRedis(), 'mget').mockRejectedValue(new Error('redis down'))
     const load = counted()
     expect(await remember('k', options, load)).toEqual({ id: 1, createdAt })
@@ -91,13 +90,11 @@ describe('remember', () => {
   })
 
   it('still returns the value when Redis fails on write', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {})
     vi.spyOn(getRedis(), 'set').mockRejectedValue(new Error('redis down'))
     expect(await remember('k', options, counted())).toEqual({ id: 1, createdAt })
   })
 
   it('treats an entry that no longer matches the schema as a miss', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {})
     await remember('k', options, counted())
     const [key] = await getRedis().keys('cache:v:k|*')
     await getRedis().set(key, '{"id":"not a number"}')
@@ -107,7 +104,6 @@ describe('remember', () => {
   })
 
   it('does not throw when invalidation cannot reach Redis', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {})
     vi.spyOn(getRedis(), 'multi').mockImplementation(() => {
       throw new Error('redis down')
     })

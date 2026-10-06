@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { handleCleanup } from '@/jobs/cleanup'
 import { deleteExpiredAuthRows, deleteStalePendingUploads } from '@/lib/data/maintenance'
 
+const log = vi.hoisted(() => ({ info: vi.fn() }))
+vi.mock('@/lib/server/logger', () => ({ logger: { child: () => log } }))
 vi.mock('@/lib/data/maintenance', () => ({
   deleteExpiredAuthRows: vi.fn(async () => ({ sessions: 2, verifications: 1 })),
   deleteStalePendingUploads: vi.fn(async () => ({ uploads: 3 })),
@@ -12,12 +14,13 @@ describe('cleanup job', () => {
   afterEach(() => vi.restoreAllMocks())
 
   it('deletes expired auth rows and logs the counts', async () => {
-    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
     await handleCleanup({})
     expect(deleteExpiredAuthRows).toHaveBeenCalledTimes(1)
     expect(deleteStalePendingUploads).toHaveBeenCalledTimes(1)
-    expect(log).toHaveBeenCalledWith(expect.stringContaining('2 expired sessions'))
-    expect(log).toHaveBeenCalledWith(expect.stringContaining('3 stale uploads'))
+    expect(log.info).toHaveBeenCalledWith(
+      { sessions: 2, verifications: 1, uploads: 3 },
+      expect.stringContaining('2 expired sessions'),
+    )
   })
 
   it('re-validates the payload', async () => {

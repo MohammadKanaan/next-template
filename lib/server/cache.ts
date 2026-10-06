@@ -1,6 +1,9 @@
 import 'server-only'
 import type { z } from 'zod'
+import { logger } from './logger'
 import { getRedis } from './redis'
+
+const log = logger.child({ module: 'cache' })
 
 const TAG_PREFIX = 'cache:tag:'
 const KEY_PREFIX = 'cache:v:'
@@ -40,7 +43,7 @@ export async function remember<S extends z.ZodType>(
       return schema.parse(JSON.parse(hit))
     }
   } catch (error) {
-    console.error('[cache] read failed, loading from source:', error)
+    log.error({ err: error }, 'read failed, loading from source')
   }
 
   const value = await load()
@@ -49,7 +52,7 @@ export async function remember<S extends z.ZodType>(
     try {
       await getRedis().set(cacheKey, JSON.stringify(value), 'EX', ttl)
     } catch (error) {
-      console.error('[cache] write failed:', error)
+      log.error({ err: error }, 'write failed')
     }
   }
   return value
@@ -71,6 +74,6 @@ export async function invalidateTags(...tags: string[]): Promise<void> {
       throw failed[0]
     }
   } catch (error) {
-    console.error('[cache] invalidation failed:', error)
+    log.error({ err: error }, 'invalidation failed')
   }
 }

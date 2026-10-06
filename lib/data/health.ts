@@ -1,6 +1,9 @@
 import 'server-only'
+import { logger } from '@/lib/server/logger'
 import { getRedis } from '@/lib/server/redis'
 import { db } from './db'
+
+const log = logger.child({ module: 'health' })
 
 export type HealthCheck = 'ok' | 'fail'
 export type Health = {
@@ -24,7 +27,7 @@ async function withTimeout(name: string, probe: () => Promise<unknown>): Promise
     return 'ok'
   } catch (error) {
     // The cause goes to the log only; the endpoint is public and must not reveal internals.
-    console.error(`[health] ${name} check failed:`, error instanceof Error ? error.message : error)
+    log.error({ err: error, check: name }, 'check failed')
     return 'fail'
   } finally {
     clearTimeout(timer)

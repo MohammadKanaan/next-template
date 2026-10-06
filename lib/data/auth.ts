@@ -8,17 +8,20 @@ import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, signUpInput } from '@/lib/dto
 import type { JobPayload } from '@/jobs/definitions'
 import { roleSchema, type Role } from '@/lib/dto/users'
 import { invalidateTags } from '@/lib/server/cache'
+import { logger } from '@/lib/server/logger'
 import { enqueue } from '@/lib/server/queue'
 import { userTag } from './cacheTags'
 import { db } from './db'
 import { ForbiddenError, UnauthorizedError } from './errors'
+
+const log = logger.child({ module: 'auth' })
 
 /**
  * Queues an email without awaiting it: the caller's response time must not reveal whether an
  * account exists. A failure to queue is logged; the user can ask again.
  */
 function queueEmail(payload: JobPayload<'send-email'>) {
-  enqueue('send-email', payload).catch((error) => console.error('[auth] email not queued:', error))
+  enqueue('send-email', payload).catch((error) => log.error({ err: error }, 'email not queued'))
 }
 
 export const auth = betterAuth({
