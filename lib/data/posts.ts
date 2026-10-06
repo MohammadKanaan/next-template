@@ -4,7 +4,7 @@ import { toPage, type Page } from '@/lib/dto/common'
 import {
   POST_EXCERPT_LENGTH,
   type CreatePostInput,
-  type ListPostsQuery,
+  type ListPostsParams,
   postDetailBaseSchema,
   postsPageSchema,
   type PostDetail,
@@ -41,6 +41,11 @@ const postDetailSelect = {
 
 type PostSummaryRow = Prisma.PostGetPayload<{ select: typeof postSummarySelect }>
 type PostDetailRow = Prisma.PostGetPayload<{ select: typeof postDetailSelect }>
+
+/** Prisma's `contains` does not escape LIKE wildcards; a search for "100%" must not match everything. */
+function escapeLike(value: string) {
+  return value.replace(/[\\%_]/g, (character) => `\\${character}`)
+}
 
 export function toExcerpt(body: string, maxLength = POST_EXCERPT_LENGTH) {
   return body.length <= maxLength ? body : `${body.slice(0, maxLength).trimEnd()}…`
@@ -82,25 +87,36 @@ export async function listPosts({
   page,
   perPage,
   authorId,
-}: ListPostsQuery): Promise<Page<PostSummary>> {
-  const where: Prisma.PostWhereInput = authorId ? { userId: authorId } : {}
+  q,
+  sort = 'newest',
+}: ListPostsParams): Promise<Page<PostSummary>> {
+  const where: Prisma.PostWhereInput = {
+    ...(authorId ? { userId: authorId } : {}),
+    ...(q ? { title: { contains: escapeLike(q), mode: 'insensitive' } } : {}),
+  }
+  const load = async () => {
+    const [rows, totalItems] = await Promise.all([
+      db.post.findMany({
+        where,
+        select: postSummarySelect,
+        orderBy: { id: sort === 'oldest' ? 'asc' : 'desc' },
+        skip: (page - 1) * perPage,
+        take: perPage,
+      }),
+      db.post.count({ where }),
+    ])
+    return toPage(rows.map(toPostSummary), totalItems, { page, perPage })
+  }
+  // Free-text searches are high-cardinality: caching them would mint unbounded keys, so they go
+  // straight to the database. Unfiltered lists (and author lists) keep the cache.
+  if (q) {
+    return load()
+  }
   return remember(
     // JSON keeps the parts unambiguous: no author value can spell the unfiltered list's key.
-    JSON.stringify(['posts:list', page, perPage, authorId ?? null]),
+    JSON.stringify(['posts:list', page, perPage, authorId ?? null, sort]),
     { ttl: POSTS_CACHE_TTL, tags: [POSTS_TAG], schema: postsPageSchema },
-    async () => {
-      const [rows, totalItems] = await Promise.all([
-        db.post.findMany({
-          where,
-          select: postSummarySelect,
-          orderBy: { id: 'desc' },
-          skip: (page - 1) * perPage,
-          take: perPage,
-        }),
-        db.post.count({ where }),
-      ])
-      return toPage(rows.map(toPostSummary), totalItems, { page, perPage })
-    },
+    load,
   )
 }
 

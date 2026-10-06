@@ -10,6 +10,7 @@ import { LoadingButton } from '@/components/LoadingButton'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { PageHeader } from '@/components/PageHeader'
 import { Pagination } from '@/components/Pagination'
+import { PostsFilters } from '@/components/Posts/Filters'
 import { PostForm } from '@/components/Posts/Form'
 import { AvatarUploader } from '@/components/Settings/AvatarUploader'
 import {
@@ -63,6 +64,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/SCN/tooltip'
 import { UserAvatar } from '@/components/UserAvatar'
 import styles from './styles.module.scss'
+import type { PostsSort } from '@/lib/dto/posts'
 
 type ButtonVariant = NonNullable<ComponentProps<typeof Button>['variant']>
 type ButtonSize = NonNullable<ComponentProps<typeof Button>['size']>
@@ -124,6 +126,10 @@ function Section({ id, eyebrow, title, description, children }: SectionProps) {
 
 export function UiKitView() {
   const [page, setPage] = useState(2)
+  const [filters, setFilters] = useState<{ q: string; sort: PostsSort }>({
+    q: '',
+    sort: 'newest',
+  })
 
   return (
     <div className={styles.page}>
@@ -470,6 +476,22 @@ export function UiKitView() {
         description="Previous and next controls driven by local state."
       >
         <Pagination page={page} totalPages={5} onPageChange={setPage} />
+      </Section>
+
+      <Section
+        id="posts-filters"
+        eyebrow="Application components"
+        title="PostsFilters"
+        description="Debounced title search and sort order; the page decides where the values live (URL state on the post lists)."
+      >
+        <PostsFilters
+          q={filters.q}
+          sort={filters.sort}
+          onChange={(patch) => setFilters((current) => ({ ...current, ...patch }))}
+        />
+        <p>
+          Search: {filters.q || 'none'}, sort: {filters.sort}
+        </p>
       </Section>
 
       <Section

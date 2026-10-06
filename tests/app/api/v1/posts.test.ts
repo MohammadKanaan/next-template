@@ -48,4 +48,22 @@ describe('GET /api/v1/posts', () => {
     const body = await (await GET(request(`?authorId=${b.id}`))).json()
     expect(body.items.map((post: { title: string }) => post.title)).toEqual(['B'])
   })
+
+  it('searches titles and sorts', async () => {
+    const author = await createUser({})
+    for (const title of ['Cats one', 'Dogs', 'Cats two']) {
+      await db.post.create({ data: { userId: author.id, title, body: 'Body' } })
+    }
+    const body = await (await GET(request('?q=cats&sort=oldest'))).json()
+    expect(body.items.map((post: { title: string }) => post.title)).toEqual([
+      'Cats one',
+      'Cats two',
+    ])
+  })
+
+  it('rejects an unknown sort order', async () => {
+    const response = await GET(request('?sort=garbage'))
+    expect(response.status).toBe(422)
+    expect((await response.json()).fieldErrors.sort).toHaveLength(1)
+  })
 })

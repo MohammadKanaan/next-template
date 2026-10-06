@@ -4,13 +4,15 @@ import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { PageHeader } from '@/components/PageHeader'
 import { Pagination } from '@/components/Pagination'
+import { PostsFilters } from '@/components/Posts/Filters'
 import { PostsGrid } from '@/components/Posts/Grid'
 import { PostsState } from '@/components/Posts/State'
 import { Button } from '@/components/SCN/button'
+import { useUrlState } from '@/hooks/useUrlState'
 import { fetchPosts, RequestError } from '@/lib/client/posts'
 import { ROUTE_POSTS, ROUTE_POSTS_SSR } from '@/lib/constants-routes'
 import type { Page } from '@/lib/dto/common'
-import type { PostSummary } from '@/lib/dto/posts'
+import { postsUrlQuery, type PostSummary } from '@/lib/dto/posts'
 import styles from '../styles.module.scss'
 
 const PER_PAGE = 9
@@ -24,14 +26,15 @@ function toErrorMessage(error: unknown) {
 }
 
 export function PostsCsrView() {
-  const [page, setPage] = useState(1)
+  const { state, setState } = useUrlState(postsUrlQuery)
+  const { page, q, sort } = state
   const [attempt, setAttempt] = useState(0)
   const [result, setResult] = useState<LoadResult | null>(null)
-  const requestKey = `${page}:${attempt}`
+  const requestKey = JSON.stringify([page, q, sort, attempt])
 
   useEffect(() => {
     const controller = new AbortController()
-    fetchPosts({ page, perPage: PER_PAGE }, controller.signal).then(
+    fetchPosts({ page, perPage: PER_PAGE, q, sort }, controller.signal).then(
       (data) => setResult({ key: requestKey, data, errorMessage: '' }),
       (error: unknown) => {
         if (!controller.signal.aborted) {
@@ -40,7 +43,7 @@ export function PostsCsrView() {
       },
     )
     return () => controller.abort()
-  }, [page, requestKey])
+  }, [page, q, sort, requestKey])
 
   // A result for an older page/attempt counts as still loading.
   const loaded = result?.key === requestKey ? result : null
@@ -65,6 +68,7 @@ export function PostsCsrView() {
           </>
         }
       />
+      <PostsFilters q={q} sort={sort} onChange={(patch) => setState({ ...patch, page: 1 })} />
       <PostsState
         loading={isLoading}
         empty={!isLoading && !errorMessage && posts.length === 0}
@@ -76,7 +80,7 @@ export function PostsCsrView() {
         <Pagination
           page={page}
           totalPages={data?.totalPages ?? 1}
-          onPageChange={setPage}
+          onPageChange={(next) => setState({ page: next })}
           disabled={isLoading}
         />
       </PostsState>

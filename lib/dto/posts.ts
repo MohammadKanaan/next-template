@@ -5,6 +5,7 @@ import { userProfileSchema } from './users'
 export const POST_TITLE_MAX_LENGTH = 200
 export const POST_BODY_MAX_LENGTH = 5000
 export const POST_EXCERPT_LENGTH = 160
+export const POST_SEARCH_MAX_LENGTH = 100
 
 export const createPostInput = z.object({
   title: z
@@ -33,11 +34,34 @@ export type UpdatePostInput = z.infer<typeof updatePostInput>
  */
 export const userIdSchema = z.string().regex(/^[A-Za-z0-9-]{1,64}$/, 'Invalid user id')
 
+export const postsSortSchema = z.enum(['newest', 'oldest'])
+
+export type PostsSort = z.infer<typeof postsSortSchema>
+
 export const listPostsQuery = pageQuerySchema.extend({
   authorId: userIdSchema.optional(),
+  /** Case-insensitive title search; bounded because it is free text. */
+  q: z.string().trim().max(POST_SEARCH_MAX_LENGTH).optional(),
+  sort: postsSortSchema.default('newest'),
 })
 
 export type ListPostsQuery = z.infer<typeof listPostsQuery>
+
+/** What callers pass to `listPosts` / `fetchPosts`: `sort` has a schema default, so it may be omitted. */
+export type ListPostsParams = Omit<ListPostsQuery, 'sort'> & Partial<Pick<ListPostsQuery, 'sort'>>
+
+/**
+ * The tolerant URL contract of the post lists: every field falls back to its default, so any
+ * query string parses (`?sort=garbage&page=abc` is the default list). Used by the SSR page's
+ * `searchParams` and by `useUrlState` in the views, so there is one contract for the URL.
+ */
+export const postsUrlQuery = z.object({
+  page: pageQuerySchema.shape.page.catch(1),
+  q: z.string().trim().max(POST_SEARCH_MAX_LENGTH).catch(''),
+  sort: postsSortSchema.catch('newest'),
+})
+
+export type PostsUrlQuery = z.infer<typeof postsUrlQuery>
 
 /** List variant: excerpt instead of body. */
 export const postSummarySchema = z.object({

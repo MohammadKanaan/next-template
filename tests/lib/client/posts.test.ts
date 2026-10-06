@@ -38,6 +38,25 @@ describe('fetchPosts', () => {
     expect(page.items[0].createdAt).toBeInstanceOf(Date)
   })
 
+  it('forwards the search and sort order to the Route Handler', async () => {
+    const author = await createUser({})
+    await db.post.create({ data: { userId: author.id, title: 'Cats', body: 'b' } })
+    await db.post.create({ data: { userId: author.id, title: 'Dogs', body: 'b' } })
+    await db.post.create({ data: { userId: author.id, title: 'More cats', body: 'b' } })
+    const page = await fetchPosts({ page: 1, perPage: 9, q: 'cats', sort: 'oldest' })
+    expect(page.items.map((post) => post.title)).toEqual(['Cats', 'More cats'])
+  })
+
+  it('omits an empty search from the request', async () => {
+    const calls: string[] = []
+    vi.stubGlobal('fetch', (input: string, init?: RequestInit) => {
+      calls.push(input)
+      return GET(new Request(new URL(input, 'http://localhost'), init))
+    })
+    await fetchPosts({ page: 1, perPage: 9, q: '' })
+    expect(calls[0]).not.toContain('q=')
+  })
+
   it('throws a RequestError carrying the server message and status', async () => {
     const error = await fetchPosts({ page: 0, perPage: 9 }).catch((caught: unknown) => caught)
     expect(error).toBeInstanceOf(RequestError)

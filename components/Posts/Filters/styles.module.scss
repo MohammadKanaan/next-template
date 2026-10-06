@@ -1,0 +1,26 @@
+.filters {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  width: 100%;
+}
+
+.search {
+  flex: 1;
+}
+
+.sort {
+  display: grid;
+  gap: 0.5rem;
+}
+
+@media (width >= $breakpoint-md) {
+  .filters {
+    flex-direction: row;
+    align-items: flex-end;
+  }
+
+  .search {
+    max-width: 24rem;
+  }
+}

@@ -284,6 +284,9 @@ How the DAL caches:
 - **Invalidate inside the DAL**, right after the write succeeds, so a caller cannot forget
   (`createPost` / `updatePost` / `deletePost`, `attachAvatar`; Better Auth user updates via its
   database hook). Actions still call `revalidatePath` / `refresh()` for the router cache.
+- **Free-text search is never cached.** `listPosts` skips `remember()` when `q` is set: search terms
+  are high-cardinality and would mint unbounded keys. Unfiltered and author lists keep the cache
+  (`sort` is part of their key). Search input is escaped for LIKE wildcards in the DAL.
 - Cache keys are built from unambiguous parts (`JSON.stringify([...])`, as `listPosts` does), never
   by joining user-controlled strings, and every input that reaches a key is bounded in its DTO
   (`page`, `authorId`), so a caller cannot collide with another entry or mint unlimited keys.
@@ -385,6 +388,12 @@ records the result.
 
 - Located in `hooks/`. Named `useXxx` and exported as named functions.
 - Return objects with state and stable callbacks.
+- **URL state:** `useUrlState(schema, { history })` (`hooks/useUrlState.ts`) keeps list filters in
+  the query string. The schema is a Zod object whose fields all have `.default()` / `.catch()`, so
+  any URL parses (`postsUrlQuery` in `lib/dto/posts.ts` is the one contract, shared with the SSR
+  page's `searchParams`). `setState(patch)` is one navigation per patch; keys that are empty or
+  equal to the default leave the URL, unknown params stay. Scalars only. The component using it
+  must sit inside `<Suspense>`. A filter change resets `page` in the same patch.
 - Only write a hook for independent logic or logic shared across components (e.g. `useScrollLock`). Never extract a hook for logic that is married to one component and gains
   nothing from the abstraction.
 

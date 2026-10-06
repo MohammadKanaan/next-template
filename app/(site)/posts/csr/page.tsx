@@ -1,4 +1,6 @@
 import type { Metadata } from 'next'
+import { Suspense } from 'react'
+import { PageLoading } from '@/components/PageLoading'
 import { PostsCsrView } from './view'
 
 export const metadata: Metadata = {
@@ -7,5 +9,9 @@ export const metadata: Metadata = {
 }
 
 export default function PostsCsrPage() {
-  return <PostsCsrView />
+  return (
+    <Suspense fallback={<PageLoading />}>
+      <PostsCsrView />
+    </Suspense>
+  )
 }

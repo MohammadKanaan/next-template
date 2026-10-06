@@ -3,6 +3,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vites
 import { db } from '@/lib/data/db'
 import { ForbiddenError, NotFoundError, UnauthorizedError } from '@/lib/data/errors'
 import { createPost, deletePost, getPost, listPosts, toExcerpt, updatePost } from '@/lib/data/posts'
+import { getRedis } from '@/lib/server/redis'
 import { createUser, resetDatabase, signInAs, signOut } from '../../helpers/server'
 
 const { cookieStore, requestHeaders } = await vi.hoisted(
@@ -20,7 +21,10 @@ async function seedPost(userId: string, title = 'Post', body = 'Body') {
 
 describe('posts DAL', () => {
   beforeEach(resetDatabase)
-  afterAll(() => db.$disconnect())
+  afterAll(async () => {
+    await getRedis().quit()
+    await db.$disconnect()
+  })
   afterEach(() => vi.restoreAllMocks())
 
   it('lists newest first as a Page of summaries with an excerpt and author', async () => {
@@ -49,6 +53,81 @@ describe('posts DAL', () => {
     await seedPost(b.id)
     const page = await listPosts({ page: 1, perPage: 10, authorId: b.id })
     expect(page.items.map((post) => post.author.id)).toEqual([b.id])
+  })
+
+  it('sorts oldest first when asked, newest first by default', async () => {
+    const author = await createUser({})
+    for (const n of [1, 2, 3]) {
+      await seedPost(author.id, `Post ${n}`)
+    }
+    const titles = async (sort?: 'newest' | 'oldest') =>
+      (await listPosts({ page: 1, perPage: 10, sort })).items.map((post) => post.title)
+    expect(await titles('oldest')).toEqual(['Post 1', 'Post 2', 'Post 3'])
+    expect(await titles('newest')).toEqual(['Post 3', 'Post 2', 'Post 1'])
+    expect(await titles()).toEqual(['Post 3', 'Post 2', 'Post 1'])
+  })
+
+  it('does not serve one sort order from the other order cache entry', async () => {
+    const author = await createUser({})
+    await seedPost(author.id, 'First')
+    await seedPost(author.id, 'Second')
+    const newest = await listPosts({ page: 1, perPage: 10, sort: 'newest' })
+    const oldest = await listPosts({ page: 1, perPage: 10, sort: 'oldest' })
+    expect(newest.items.map((post) => post.title)).toEqual(['Second', 'First'])
+    expect(oldest.items.map((post) => post.title)).toEqual(['First', 'Second'])
+  })
+
+  it('searches titles case-insensitively and counts only the matches', async () => {
+    const author = await createUser({})
+    await seedPost(author.id, 'Learning TypeScript')
+    await seedPost(author.id, 'Cooking pasta')
+    await seedPost(author.id, 'typescript tips')
+    const page = await listPosts({ page: 1, perPage: 10, q: 'TYPESCRIPT' })
+    expect(page.items.map((post) => post.title)).toEqual(['typescript tips', 'Learning TypeScript'])
+    expect(page.totalItems).toBe(2)
+  })
+
+  it('treats LIKE wildcards in a search literally', async () => {
+    const author = await createUser({})
+    await seedPost(author.id, '100% done')
+    await seedPost(author.id, 'Plain title')
+    await seedPost(author.id, 'snake_case')
+    await seedPost(author.id, 'snakeXcase')
+    const percent = await listPosts({ page: 1, perPage: 10, q: '%' })
+    expect(percent.items.map((post) => post.title)).toEqual(['100% done'])
+    const underscore = await listPosts({ page: 1, perPage: 10, q: 'snake_case' })
+    expect(underscore.items.map((post) => post.title)).toEqual(['snake_case'])
+  })
+
+  it('combines search with sort and author filter', async () => {
+    const a = await createUser({})
+    const b = await createUser({})
+    await seedPost(a.id, 'alpha one')
+    await seedPost(b.id, 'alpha two')
+    await seedPost(a.id, 'alpha three')
+    const page = await listPosts({
+      page: 1,
+      perPage: 10,
+      q: 'alpha',
+      authorId: a.id,
+      sort: 'oldest',
+    })
+    expect(page.items.map((post) => post.title)).toEqual(['alpha one', 'alpha three'])
+  })
+
+  it('caches unfiltered lists but never a search', async () => {
+    const author = await createUser({})
+    await seedPost(author.id, 'Findable')
+    await listPosts({ page: 1, perPage: 10, q: 'find' })
+    expect(await getRedis().keys('cache:v:*')).toEqual([])
+
+    await listPosts({ page: 1, perPage: 10 })
+    expect(await getRedis().keys('cache:v:*')).toHaveLength(1)
+
+    // A search sees a new post at once: nothing cached could hide it.
+    await seedPost(author.id, 'Findable too')
+    const page = await listPosts({ page: 1, perPage: 10, q: 'find' })
+    expect(page.totalItems).toBe(2)
   })
 
   it('throws NotFoundError for a missing post', async () => {

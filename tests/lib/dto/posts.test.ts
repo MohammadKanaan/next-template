@@ -4,6 +4,7 @@ import {
   createPostInput,
   listPostsQuery,
   postSummarySchema,
+  postsUrlQuery,
   updatePostInput,
 } from '@/lib/dto/posts'
 
@@ -46,6 +47,52 @@ describe('listPostsQuery', () => {
   it('bounds page', () => {
     expect(listPostsQuery.parse({ page: String(MAX_PAGE) }).page).toBe(MAX_PAGE)
     expect(listPostsQuery.safeParse({ page: String(MAX_PAGE + 1) }).success).toBe(false)
+  })
+})
+
+describe('listPostsQuery search and sort', () => {
+  it('defaults sort to newest and leaves q unset', () => {
+    expect(listPostsQuery.parse({})).toMatchObject({ page: 1, sort: 'newest' })
+    expect(listPostsQuery.parse({}).q).toBeUndefined()
+  })
+
+  it('trims q and bounds it', () => {
+    expect(listPostsQuery.parse({ q: '  hello ' }).q).toBe('hello')
+    expect(listPostsQuery.parse({ q: 'a'.repeat(100) }).q).toHaveLength(100)
+    expect(listPostsQuery.safeParse({ q: 'a'.repeat(101) }).success).toBe(false)
+  })
+
+  it('accepts only known sort orders', () => {
+    expect(listPostsQuery.parse({ sort: 'oldest' }).sort).toBe('oldest')
+    expect(listPostsQuery.safeParse({ sort: 'garbage' }).success).toBe(false)
+  })
+})
+
+describe('postsUrlQuery', () => {
+  it('parses an empty URL to the defaults', () => {
+    expect(postsUrlQuery.parse({})).toEqual({ page: 1, q: '', sort: 'newest' })
+  })
+
+  it('falls back per field instead of failing', () => {
+    expect(postsUrlQuery.parse({ sort: 'garbage', page: 'abc', q: 'a'.repeat(101) })).toEqual({
+      page: 1,
+      q: '',
+      sort: 'newest',
+    })
+    expect(postsUrlQuery.parse({ page: '0' }).page).toBe(1)
+    expect(postsUrlQuery.parse({ page: String(MAX_PAGE + 1) }).page).toBe(1)
+    expect(postsUrlQuery.parse({ page: ['1', '2'], sort: ['oldest'] })).toMatchObject({
+      page: 1,
+      sort: 'newest',
+    })
+  })
+
+  it('keeps valid values', () => {
+    expect(postsUrlQuery.parse({ page: '3', q: ' cats ', sort: 'oldest' })).toEqual({
+      page: 3,
+      q: 'cats',
+      sort: 'oldest',
+    })
   })
 })
 
