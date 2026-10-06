@@ -5,6 +5,7 @@ import { useState, type ComponentProps, type ReactNode } from 'react'
 import { toast } from 'sonner'
 import { Empty } from '@/components/Empty'
 import { Input } from '@/components/Form/Input'
+import { TagsInput } from '@/components/Form/TagsInput'
 import { Textarea } from '@/components/Form/Textarea'
 import { LoadingButton } from '@/components/LoadingButton'
 import { ThemeToggle } from '@/components/ThemeToggle'
@@ -12,6 +13,8 @@ import { PageHeader } from '@/components/PageHeader'
 import { Pagination } from '@/components/Pagination'
 import { PostsFilters } from '@/components/Posts/Filters'
 import { PostForm } from '@/components/Posts/Form'
+import { PostStatusBadge } from '@/components/Posts/StatusBadge'
+import { PostTags } from '@/components/Posts/Tags'
 import { AvatarUploader } from '@/components/Settings/AvatarUploader'
 import {
   Avatar,
@@ -64,7 +67,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/SCN/tooltip'
 import { UserAvatar } from '@/components/UserAvatar'
 import styles from './styles.module.scss'
-import type { PostsSort } from '@/lib/dto/posts'
+import { normalizeTagName, postStatusSchema, type PostsSort } from '@/lib/dto/posts'
 
 type ButtonVariant = NonNullable<ComponentProps<typeof Button>['variant']>
 type ButtonSize = NonNullable<ComponentProps<typeof Button>['size']>
@@ -126,6 +129,7 @@ const Section = ({ id, eyebrow, title, description, children }: SectionProps) =>
 
 export const UiKitView = () => {
   const [page, setPage] = useState(2)
+  const [tags, setTags] = useState(['news', 'tips'])
   const [filters, setFilters] = useState<{ q: string; sort: PostsSort }>({
     q: '',
     sort: 'newest',
@@ -199,6 +203,31 @@ export const UiKitView = () => {
           <Textarea label="With label" placeholder="Write something" />
           <Textarea label="Required" required placeholder="Required field" />
           <Textarea label="With error" error="This field is required" />
+        </div>
+      </Section>
+
+      <Section
+        id="tags-input"
+        eyebrow="Forms"
+        title="TagsInput"
+        description="Chips with a text entry: Enter or a comma adds, Backspace on an empty field removes the last. Controlled, with the same label and error treatment as Input."
+      >
+        <div className={styles.formGrid}>
+          <TagsInput
+            label="Tags"
+            value={tags}
+            onChange={setTags}
+            normalize={normalizeTagName}
+            maxTags={5}
+            maxLength={30}
+          />
+          <TagsInput
+            label="With error"
+            value={['one']}
+            onChange={() => {}}
+            error="Use at most 5 tags"
+          />
+          <TagsInput label="Disabled" value={['locked']} onChange={() => {}} disabled />
         </div>
       </Section>
 
@@ -492,6 +521,22 @@ export const UiKitView = () => {
         <p>
           Search: {filters.q || 'none'}, sort: {filters.sort}
         </p>
+      </Section>
+
+      <Section
+        id="post-status"
+        eyebrow="Application components"
+        title="Post status and tags"
+        description="The workflow status badge (draft, published, archived) and a post's tag list."
+      >
+        <div className={styles.stack}>
+          <div className={styles.row}>
+            {postStatusSchema.options.map((status) => (
+              <PostStatusBadge key={status} status={status} />
+            ))}
+          </div>
+          <PostTags tags={['news', 'tips', 'typescript']} />
+        </div>
       </Section>
 
       <Section

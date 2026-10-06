@@ -27,7 +27,9 @@ describe('fetchPosts', () => {
 
   it('returns the same Page<PostSummary> the DAL returns, with Dates restored', async () => {
     const author = await createUser({})
-    await db.post.create({ data: { userId: author.id, title: 'Hello', body: 'World' } })
+    await db.post.create({
+      data: { userId: author.id, title: 'Hello', body: 'World', status: 'published' },
+    })
     const page = await fetchPosts({ page: 1, perPage: 9 })
     expect(page).toMatchObject({ page: 1, perPage: 9, totalItems: 1, totalPages: 1 })
     expect(page.items[0]).toMatchObject({
@@ -40,9 +42,15 @@ describe('fetchPosts', () => {
 
   it('forwards the search and sort order to the Route Handler', async () => {
     const author = await createUser({})
-    await db.post.create({ data: { userId: author.id, title: 'Cats', body: 'b' } })
-    await db.post.create({ data: { userId: author.id, title: 'Dogs', body: 'b' } })
-    await db.post.create({ data: { userId: author.id, title: 'More cats', body: 'b' } })
+    await db.post.create({
+      data: { userId: author.id, title: 'Cats', body: 'b', status: 'published' },
+    })
+    await db.post.create({
+      data: { userId: author.id, title: 'Dogs', body: 'b', status: 'published' },
+    })
+    await db.post.create({
+      data: { userId: author.id, title: 'More cats', body: 'b', status: 'published' },
+    })
     const page = await fetchPosts({ page: 1, perPage: 9, q: 'cats', sort: 'oldest' })
     expect(page.items.map((post) => post.title)).toEqual(['Cats', 'More cats'])
   })

@@ -25,7 +25,7 @@ describe('PostNewView', () => {
     render(<PostNewView />)
     await typeInto('Published', 'Text')
     await userEvent.click(screen.getByRole('button', { name: 'Create post' }))
-    expect(createPostAction).toHaveBeenCalledWith({ title: 'Published', body: 'Text' })
+    expect(createPostAction).toHaveBeenCalledWith({ title: 'Published', body: 'Text', tags: [] })
     expect(push).toHaveBeenCalledWith('/posts/u1/7')
   })
 

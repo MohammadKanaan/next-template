@@ -23,7 +23,7 @@ cp .env.test.example .env.test    # same for the test database
 docker compose up -d              # PostgreSQL, Redis, MinIO (+ bucket init); or run them yourself
 bun install                       # also generates the Prisma client (postinstall)
 bun run db:deploy                 # apply migrations
-bun run db:seed                   # 4 users, 16 posts
+bun run db:seed                   # 4 users, 16 posts (drafts, published, archived), tags, comments
 bun run dev                       # web process, http://localhost:3000
 bun run dev:worker                # in a second terminal: background jobs (emails, cleanup)
 ```
@@ -259,6 +259,15 @@ button. Resetting a password signs out every session. Better Auth's `/verify-ema
 
 Sessions last 7 days and refresh only through Server Actions or the auth route (Server Components
 cannot set cookies), so a user who only browses is signed out when the session expires.
+
+**Posts: relations and workflow.** The posts example also shows the domain patterns an app needs:
+a status workflow (`draft` → `published` → `archived`, defined once in `POST_STATUS_TRANSITIONS` and
+enforced by `setPostStatus`), visibility that depends on the viewer (only published posts are public;
+a draft or archived post is visible to its author and admins and is "not found" for everyone else),
+nested comments (`Comment`, with per-viewer delete permission), tags as a many-to-many (`Tag` +
+`PostTag`) written together with the post in one `db.$transaction`, and the viewer's own list at
+`/posts/mine`. Because `commentCount` and `tags` live inside cached lists, every comment, tag and
+status write invalidates the tags those entries were cached under. New posts start as drafts.
 
 ## Design decisions
 

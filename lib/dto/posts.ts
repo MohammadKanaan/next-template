@@ -1,13 +1,53 @@
 import { z } from 'zod'
-import { pageQuerySchema, pageSchema, permissionsSchema } from './common'
+import { idSchema, pageQuerySchema, pageSchema, permissionsSchema } from './common'
 import { userIdSchema, userProfileSchema } from './users'
 
 export const POST_TITLE_MAX_LENGTH = 200
 export const POST_BODY_MAX_LENGTH = 5000
 export const POST_EXCERPT_LENGTH = 160
 export const POST_SEARCH_MAX_LENGTH = 100
+export const POST_TAGS_MAX = 5
+export const TAG_NAME_MAX_LENGTH = 30
 
-export const createPostInput = z.object({
+/** Tags are stored lowercased and trimmed, so `React` and `react ` are the same tag. */
+export const normalizeTagName = (name: string) => name.trim().toLowerCase()
+
+export const tagNameSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .min(1, 'A tag cannot be empty')
+  .max(TAG_NAME_MAX_LENGTH, `A tag must be ${TAG_NAME_MAX_LENGTH} characters or fewer`)
+
+export const postStatusSchema = z.enum(['draft', 'published', 'archived'])
+
+export type PostStatus = z.infer<typeof postStatusSchema>
+
+/**
+ * The status workflow, defined once: the DAL enforces it (`setPostStatus`) and the UI offers only
+ * these moves. Unpublishing keeps `publishedAt`; it records the first publication.
+ */
+export const POST_STATUS_TRANSITIONS: Record<PostStatus, readonly PostStatus[]> = {
+  draft: ['published'],
+  published: ['archived', 'draft'],
+  archived: ['published'],
+}
+
+export const canTransitionPostStatus = (from: PostStatus, to: PostStatus) => {
+  return POST_STATUS_TRANSITIONS[from].includes(to)
+}
+
+export const setPostStatusInput = z.object({ id: idSchema, status: postStatusSchema })
+
+export type SetPostStatusInput = z.infer<typeof setPostStatusInput>
+
+/** Lowercased, de-duplicated names. */
+const postTagsSchema = z
+  .array(tagNameSchema)
+  .max(POST_TAGS_MAX, `Use at most ${POST_TAGS_MAX} tags`)
+  .transform((names) => [...new Set(names)])
+
+const postFieldsSchema = z.object({
   title: z
     .string()
     .trim()
@@ -18,15 +58,24 @@ export const createPostInput = z.object({
     .trim()
     .min(1, 'Body is required')
     .max(POST_BODY_MAX_LENGTH, `Body must be ${POST_BODY_MAX_LENGTH} characters or fewer`),
+  tags: postTagsSchema,
 })
 
-export type CreatePostInput = z.infer<typeof createPostInput>
+/** New posts always start as drafts; `tags` may be omitted (no tags). */
+export const createPostInput = postFieldsSchema.extend({ tags: postTagsSchema.default([]) })
 
-export const updatePostInput = createPostInput
+/** What `createPost` accepts: `tags` may be omitted. */
+export type CreatePostParams = z.input<typeof createPostInput>
+
+/** The parsed values: `tags` is always present. The form works with this shape. */
+export type CreatePostInput = z.output<typeof createPostInput>
+
+/** Every field is optional; omitting `tags` leaves the post's tags as they are, `[]` clears them. */
+export const updatePostInput = postFieldsSchema
   .partial()
   .refine((value) => Object.keys(value).length > 0, 'Provide at least one attribute')
 
-export type UpdatePostInput = z.infer<typeof updatePostInput>
+export type UpdatePostInput = z.input<typeof updatePostInput>
 
 export const postsSortSchema = z.enum(['newest', 'oldest'])
 
@@ -62,6 +111,9 @@ export const postSummarySchema = z.object({
   id: z.number().int(),
   title: z.string(),
   excerpt: z.string(),
+  status: postStatusSchema,
+  tags: z.array(z.string()),
+  commentCount: z.number().int(),
   createdAt: z.coerce.date(),
   author: userProfileSchema,
 })
@@ -73,6 +125,10 @@ export const postDetailSchema = z.object({
   id: z.number().int(),
   title: z.string(),
   body: z.string(),
+  status: postStatusSchema,
+  tags: z.array(z.string()),
+  commentCount: z.number().int(),
+  publishedAt: z.coerce.date().nullable(),
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date(),
   author: userProfileSchema,
@@ -88,3 +144,10 @@ export const postsPageSchema = pageSchema(postSummarySchema)
 export const postDetailBaseSchema = postDetailSchema.omit({ permissions: true })
 
 export type PostDetailBase = z.infer<typeof postDetailBaseSchema>
+
+/** A tag with how many published posts use it. */
+export const tagSummarySchema = z.object({ name: z.string(), postCount: z.number().int() })
+
+export type TagSummary = z.infer<typeof tagSummarySchema>
+
+export const tagSummariesSchema = z.array(tagSummarySchema)

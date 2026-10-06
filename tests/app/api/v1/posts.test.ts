@@ -22,7 +22,9 @@ describe('GET /api/v1/posts', () => {
   it('returns a page of summaries with ISO date strings', async () => {
     const author = await createUser({})
     for (const n of [1, 2, 3]) {
-      await db.post.create({ data: { userId: author.id, title: `Post ${n}`, body: 'Body' } })
+      await db.post.create({
+        data: { userId: author.id, title: `Post ${n}`, body: 'Body', status: 'published' },
+      })
     }
     const response = await GET(request('?page=1&perPage=2'))
     expect(response.status).toBe(200)
@@ -43,8 +45,8 @@ describe('GET /api/v1/posts', () => {
   it('filters by author', async () => {
     const a = await createUser({})
     const b = await createUser({})
-    await db.post.create({ data: { userId: a.id, title: 'A', body: 'Body' } })
-    await db.post.create({ data: { userId: b.id, title: 'B', body: 'Body' } })
+    await db.post.create({ data: { userId: a.id, title: 'A', body: 'Body', status: 'published' } })
+    await db.post.create({ data: { userId: b.id, title: 'B', body: 'Body', status: 'published' } })
     const body = await (await GET(request(`?authorId=${b.id}`))).json()
     expect(body.items.map((post: { title: string }) => post.title)).toEqual(['B'])
   })
@@ -52,7 +54,9 @@ describe('GET /api/v1/posts', () => {
   it('searches titles and sorts', async () => {
     const author = await createUser({})
     for (const title of ['Cats one', 'Dogs', 'Cats two']) {
-      await db.post.create({ data: { userId: author.id, title, body: 'Body' } })
+      await db.post.create({
+        data: { userId: author.id, title, body: 'Body', status: 'published' },
+      })
     }
     const body = await (await GET(request('?q=cats&sort=oldest'))).json()
     expect(body.items.map((post: { title: string }) => post.title)).toEqual([

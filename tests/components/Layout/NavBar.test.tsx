@@ -44,4 +44,15 @@ describe('NavBar', () => {
     render(<NavBar user={user} />)
     expect(screen.getAllByRole('link', { name: 'Posts', hidden: true }).length).toBeGreaterThan(0)
   })
+
+  it('links signed-in users to their own posts, in both menus', () => {
+    const { rerender } = render(<NavBar user={user} />)
+    const links = screen.getAllByRole('link', { name: 'My posts', hidden: true })
+    expect(links).toHaveLength(2)
+    for (const link of links) {
+      expect(link).toHaveAttribute('href', '/posts/mine')
+    }
+    rerender(<NavBar user={null} />)
+    expect(screen.queryAllByRole('link', { name: 'My posts', hidden: true })).toHaveLength(0)
+  })
 })

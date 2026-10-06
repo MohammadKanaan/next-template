@@ -9,6 +9,10 @@ const post: PostDetail = {
   id: 1,
   title: 'Hello',
   body: 'World',
+  status: 'draft',
+  tags: ['news'],
+  commentCount: 0,
+  publishedAt: null,
   createdAt: new Date('2026-01-01T00:00:00.000Z'),
   updatedAt: new Date('2026-01-01T00:00:00.000Z'),
   author: { id: 'u1', name: 'Leanne Graham', username: 'leanne', website: null },
@@ -32,7 +36,25 @@ describe('PostForm', () => {
     await userEvent.type(screen.getByLabelText(/Title/), '  Hello  ')
     await userEvent.type(screen.getByLabelText(/Body/), 'World')
     await userEvent.click(screen.getByRole('button', { name: 'Create post' }))
-    expect(onSubmit).toHaveBeenCalledWith({ title: 'Hello', body: 'World' })
+    expect(onSubmit).toHaveBeenCalledWith({ title: 'Hello', body: 'World', tags: [] })
+  })
+
+  it('submits the tags entered in the tags field', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(success)
+    render(<PostForm post={null} submitLabel="Create post" onSubmit={onSubmit} />)
+    await userEvent.type(screen.getByLabelText(/Title/), 'Hello')
+    await userEvent.type(screen.getByLabelText(/Body/), 'World')
+    await userEvent.type(screen.getByLabelText('Tags'), 'News{Enter}Tech{Enter}')
+    await userEvent.click(screen.getByRole('button', { name: 'Create post' }))
+    expect(onSubmit).toHaveBeenCalledWith({ title: 'Hello', body: 'World', tags: ['news', 'tech'] })
+  })
+
+  it('shows the tags of an existing post and enables Save when they change', async () => {
+    render(<PostForm post={post} submitLabel="Save" onSubmit={vi.fn()} />)
+    expect(screen.getByText('news')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+    await userEvent.click(screen.getByRole('button', { name: 'Remove tag news' }))
+    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
   })
 
   it('maps server validation errors onto fields', async () => {

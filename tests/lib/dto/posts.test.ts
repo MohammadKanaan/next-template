@@ -1,9 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { MAX_PAGE } from '@/lib/dto/common'
 import {
+  POST_STATUS_TRANSITIONS,
+  canTransitionPostStatus,
   createPostInput,
   listPostsQuery,
+  postStatusSchema,
   postSummarySchema,
+  setPostStatusInput,
+  tagNameSchema,
   postsUrlQuery,
   updatePostInput,
 } from '@/lib/dto/posts'
@@ -13,6 +18,7 @@ describe('post inputs', () => {
     expect(createPostInput.parse({ title: ' Hi ', body: ' There ' })).toEqual({
       title: 'Hi',
       body: 'There',
+      tags: [],
     })
     const result = createPostInput.safeParse({ title: '  ', body: '' })
     expect(result.success).toBe(false)
@@ -25,6 +31,59 @@ describe('post inputs', () => {
   it('requires at least one attribute to update', () => {
     expect(updatePostInput.safeParse({}).success).toBe(false)
     expect(updatePostInput.parse({ title: 'New' })).toEqual({ title: 'New' })
+  })
+})
+
+describe('tags', () => {
+  it('normalizes a tag name: trimmed and lowercased', () => {
+    expect(tagNameSchema.parse('  TypeScript ')).toBe('typescript')
+  })
+
+  it('rejects empty and overlong tag names', () => {
+    expect(tagNameSchema.safeParse('   ').success).toBe(false)
+    expect(tagNameSchema.safeParse('a'.repeat(30)).success).toBe(true)
+    expect(tagNameSchema.safeParse('a'.repeat(31)).success).toBe(false)
+  })
+
+  it('lowercases and de-duplicates the tags of a post, and allows at most five', () => {
+    expect(createPostInput.parse({ title: 'T', body: 'B', tags: ['A', ' a ', 'b'] }).tags).toEqual([
+      'a',
+      'b',
+    ])
+    expect(
+      createPostInput.safeParse({ title: 'T', body: 'B', tags: ['a', 'b', 'c', 'd', 'e', 'f'] })
+        .success,
+    ).toBe(false)
+  })
+
+  it('leaves the tags out of an update that does not mention them', () => {
+    expect(updatePostInput.parse({ title: 'New' })).not.toHaveProperty('tags')
+    expect(updatePostInput.parse({ tags: [] })).toEqual({ tags: [] })
+  })
+})
+
+describe('status workflow', () => {
+  it('defines every move once', () => {
+    expect(POST_STATUS_TRANSITIONS).toEqual({
+      draft: ['published'],
+      published: ['archived', 'draft'],
+      archived: ['published'],
+    })
+  })
+
+  it('answers canTransitionPostStatus from the map', () => {
+    expect(canTransitionPostStatus('draft', 'published')).toBe(true)
+    expect(canTransitionPostStatus('draft', 'archived')).toBe(false)
+    expect(canTransitionPostStatus('published', 'published')).toBe(false)
+  })
+
+  it('validates the input of a status change', () => {
+    expect(setPostStatusInput.parse({ id: '3', status: 'archived' })).toEqual({
+      id: 3,
+      status: 'archived',
+    })
+    expect(setPostStatusInput.safeParse({ id: 3, status: 'deleted' }).success).toBe(false)
+    expect(postStatusSchema.options).toEqual(['draft', 'published', 'archived'])
   })
 })
 
@@ -102,6 +161,9 @@ describe('postSummarySchema', () => {
       id: 1,
       title: 'T',
       excerpt: 'E',
+      status: 'published',
+      tags: ['news'],
+      commentCount: 2,
       createdAt: '2026-10-05T10:00:00.000Z',
       author: { id: 'u1', name: 'N', username: 'n', website: null },
     })

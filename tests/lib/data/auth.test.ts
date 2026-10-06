@@ -273,7 +273,9 @@ describe('DAL auth', () => {
     it('drops the cached post lists and viewer', async () => {
       const { listPosts } = await import('@/lib/data/posts')
       const user = await createUser({})
-      await db.post.create({ data: { userId: user.id, title: 'Soon gone', body: 'b' } })
+      await db.post.create({
+        data: { userId: user.id, title: 'Soon gone', body: 'b', status: 'published' },
+      })
       await signInAs(user)
       expect((await listPosts({ page: 1, perPage: 10 })).totalItems).toBe(1)
       expect(await getViewer()).not.toBeNull()

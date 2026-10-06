@@ -81,7 +81,7 @@ forgets a check cannot bypass it.
 ```
 app/                     # App Router: route groups (site), (minimal); api/auth, api/v1, api/health
   (site)/<route>/        # page.tsx (Server Component) + optional view.tsx ('use client') + styles.module.scss
-actions/                 # 'use server' Server Actions (posts.ts, auth.ts, uploads.ts)
+actions/                 # 'use server' Server Actions (posts.ts, comments.ts, auth.ts, uploads.ts)
 components/              # React components (ComponentName/index.tsx + styles.module.scss)
 components/SCN/          # shadcn/ui primitives (the only place Tailwind is allowed)
 hooks/                   # Reusable React hooks (useXxx)
@@ -89,7 +89,7 @@ presenters/              # Override functions for views that need reshaped data
 types/                   # Cross-cutting types (types/api.ts: ActionResult, ErrorBody, FieldErrors)
 lib/                     # Pure helpers, constants, env, formErrors
 lib/dto/                 # Zod schemas + inferred types (inputs and outputs); client- and server-safe
-lib/data/                # Server-only DAL: db client, auth, errors, users, posts, uploads, health,
+lib/data/                # Server-only DAL: db client, auth, errors, users, posts, comments, uploads, health,
                          # page loader; maintenance is the system DAL (jobs only)
 lib/server/              # Server-only infrastructure that is not the database: env, redis, cache,
                          # queue, mailer, storage
@@ -244,6 +244,48 @@ docs/DECISIONS.md        # Framework and library choices, with reasons
 - Sessions refresh only through Server Actions or the auth route (Server Components cannot set
   cookies), so a user who only browses is signed out when the 7-day session expires.
 - Client code never reads or sends a token; the cookie is httpOnly and travels on its own.
+
+## Posts: workflow, visibility, comments, tags
+
+The posts example carries the domain patterns an app needs (all in `lib/data/posts.ts` and
+`lib/data/comments.ts`, shapes in `lib/dto/posts.ts` and `lib/dto/comments.ts`).
+
+- **Schema:** `Post.status` (`draft` | `published` | `archived`, default `draft`) and
+  `publishedAt`; `Comment` (cascades from post and user); `Tag` (`name` unique, stored lowercased)
+  and the explicit join table `PostTag` (composite id, cascades). The migration backfills posts
+  that existed before the workflow to `published`.
+- **Visibility:** only `published` posts are public. A draft or archived post is visible to its
+  author and to admins; for anyone else `getPost` throws `NotFoundError`, the same answer as a
+  missing post. `getPost` caches the viewer-independent part (`getPostBase`) and applies
+  `canViewPost` and `permissions` after the cache read. `listPosts` forces `published` unless the
+  viewer is an admin or lists their own posts (`authorId` equals their id); such a viewer-dependent
+  result skips `remember()`. `/posts/mine` (`ROUTE_POSTS_MINE`, private) is the author's own list,
+  every status, with `PostStatusActions` per row.
+- **Status workflow:** `POST_STATUS_TRANSITIONS` in `lib/dto/posts.ts` is the one definition (draft
+  → published; published → archived | draft; archived → published). `setPostStatus` enforces it
+  (signed in → exists → author or admin → transition allowed, else `ValidationError` on `status`),
+  stamps `publishedAt` on the first publication, and writes conditionally on the checked status so
+  concurrent moves cannot both win. The UI (`components/Posts/StatusActions`) only offers the moves
+  the map allows. `createPost` always creates a draft.
+- **Transaction:** `createPost` / `updatePost` write the post and its tags in one `db.$transaction`
+  (`replacePostTags`: upsert tag rows in sorted order, drop the links no longer wanted). On update,
+  omitting `tags` leaves them alone and `[]` clears them. Tag names are normalized by
+  `tagNameSchema` (trimmed, lowercased, at most 30 characters; at most 5 per post, de-duplicated).
+- **Comments** (the nested resource): `listComments(postId)` (oldest first, capped, cached per post,
+  `permissions.delete` added per viewer; it applies the same visibility rule as the post),
+  `createComment` (signed in; the post must be visible and published, read from the database, not
+  the cache), `deleteComment` (the comment's author, the post's author or an admin).
+- **Invalidation:** `commentCount` and `tags` are embedded in cached lists and details, so every
+  comment write invalidates `POSTS_TAG`, `postTag(id)` and `commentsTag(id)`, and every tag or status
+  change invalidates `POSTS_TAG` and `postTag(id)`. Cached comments carry `POSTS_TAG` too, because
+  commenters' names are embedded (a profile edit drops them). `listTags()` (tags of published posts
+  with counts) is cached under `POSTS_TAG`.
+- **UI:** the detail page stays a Server Component (status badge, `PostTags`, an async
+  `CommentThread` in its own `<Suspense>`); the status buttons, `CommentForm` and
+  `DeleteCommentButton` are the client leaves. `components/Form/TagsInput` is the reusable chips
+  control (owns `label` / `error` like `Form/Input`); `PostForm` uses it through RHF's `Controller`.
+- Tests that create posts and expect them to be public set `status: 'published'` explicitly, since
+  the default is `draft`.
 
 ## Data Access Layer
 
@@ -518,7 +560,8 @@ records the result.
 - Server tests start with `// @vitest-environment node`, mock `next/headers` with the cookie jar in
   `tests/helpers/cookies.ts` and mock `next/cache`, create users with `createUser()` /
   `signInAs()` from `tests/helpers/server.ts`, and run against `next_template_test` only. Run
-  `bun run db:test:prepare` after schema changes.
+  `bun run db:test:prepare` after schema changes (it resets the test database; `resetDatabase()`
+  truncates `posts`, `tags` and the user tables, so new tables that hang off them are cleared too).
 - `vitest.config.mts` inlines `better-auth` so its internal `next/headers` import goes through the
   mock. It also runs the React Compiler (`reactCompilerPreset`), so component and hook tests
   exercise the same memoized code that ships.
@@ -550,6 +593,8 @@ records the result.
   alert).
 - Hydrate/build helpers (`hydrateXForm`, `buildXAttributes`) live in a `utils.ts` beside the form.
 - Keep field markup explicit — no field-definition arrays, no generic FormField wrapper.
+- A control that is not a native input (`components/Form/TagsInput`, a list of chips) is controlled
+  and goes through RHF's `Controller`; it still owns its `label` and `error`.
 
 ## Layouts
 

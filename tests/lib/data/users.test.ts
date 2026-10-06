@@ -174,7 +174,9 @@ describe('users DAL', () => {
 
     it('refreshes the cached viewer and the cached post lists that embed the author', async () => {
       const user = await createUser({ name: 'Before', username: 'before_name' })
-      await db.post.create({ data: { userId: user.id, title: 'T', body: 'B' } })
+      await db.post.create({
+        data: { userId: user.id, title: 'T', body: 'B', status: 'published' },
+      })
       await signInAs(user)
       expect((await getViewer())?.name).toBe('Before')
       expect((await listPosts({ page: 1, perPage: 10 })).items[0].author.name).toBe('Before')

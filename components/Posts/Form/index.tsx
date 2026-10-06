@@ -3,12 +3,21 @@
 'use no memo'
 
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useForm } from 'react-hook-form'
+import { Controller, useForm } from 'react-hook-form'
 import { Input } from '@/components/Form/Input'
+import { TagsInput } from '@/components/Form/TagsInput'
 import { Textarea } from '@/components/Form/Textarea'
 import { LoadingButton } from '@/components/LoadingButton'
 import { Button } from '@/components/SCN/button'
-import { createPostInput, type CreatePostInput, type PostDetail } from '@/lib/dto/posts'
+import {
+  createPostInput,
+  normalizeTagName,
+  POST_TAGS_MAX,
+  TAG_NAME_MAX_LENGTH,
+  type CreatePostInput,
+  type CreatePostParams,
+  type PostDetail,
+} from '@/lib/dto/posts'
 import { applyActionErrors } from '@/lib/formErrors'
 import type { ActionResult } from '@/types/api'
 import styles from './styles.module.scss'
@@ -25,10 +34,11 @@ export type PostFormProps = {
 export const PostForm = ({ post, submitLabel, onSubmit, onCancel }: PostFormProps) => {
   const {
     register,
+    control,
     handleSubmit,
     setError,
     formState: { errors, isDirty, isSubmitting },
-  } = useForm<CreatePostInput>({
+  } = useForm<CreatePostParams, unknown, CreatePostInput>({
     resolver: zodResolver(createPostInput),
     defaultValues: hydratePostForm(post),
     // An existing post follows the `post` prop, so the form shows what a save returned.
@@ -46,6 +56,25 @@ export const PostForm = ({ post, submitLabel, onSubmit, onCancel }: PostFormProp
     <form className={styles.form} onSubmit={submit} noValidate>
       <Input label="Title" required error={errors.title?.message} {...register('title')} />
       <Textarea label="Body" required rows={8} error={errors.body?.message} {...register('body')} />
+      {/* A controlled field: the chips live in the parent, so it goes through `Controller`. */}
+      <Controller
+        control={control}
+        name="tags"
+        render={({ field }) => (
+          <TagsInput
+            ref={field.ref}
+            name={field.name}
+            label="Tags"
+            value={field.value ?? []}
+            onChange={field.onChange}
+            onBlur={field.onBlur}
+            normalize={normalizeTagName}
+            maxTags={POST_TAGS_MAX}
+            maxLength={TAG_NAME_MAX_LENGTH}
+            error={errors.tags?.message}
+          />
+        )}
+      />
       {errors.root?.server && (
         <p className={styles.formError} role="alert">
           {errors.root.server.message}

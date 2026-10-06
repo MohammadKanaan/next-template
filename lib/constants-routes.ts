@@ -14,6 +14,7 @@ export const ROUTE_POSTS = '/posts'
 export const ROUTE_POSTS_SSR = `${ROUTE_POSTS}/ssr`
 export const ROUTE_POSTS_CSR = `${ROUTE_POSTS}/csr`
 export const ROUTE_POST_NEW = `${ROUTE_POSTS}/new`
+export const ROUTE_POSTS_MINE = `${ROUTE_POSTS}/mine`
 export const ROUTE_UI_KIT = '/ui-kit'
 
 export const loginPath = (next: string) => `${ROUTE_LOGIN}?next=${encodeURIComponent(next)}`
@@ -34,7 +35,7 @@ export const PUBLIC_ROUTES = [
   ROUTE_UI_KIT,
 ] as const
 
-const AUTHORING_ROUTE_PATTERN = /^\/posts\/(?:new|[^/]+\/[^/]+\/edit)\/?$/
+const AUTHORING_ROUTE_PATTERN = /^\/posts\/(?:new|mine|[^/]+\/[^/]+\/edit)\/?$/
 
 export const isPublicRoute = (path: string): boolean =>
   !AUTHORING_ROUTE_PATTERN.test(path) &&

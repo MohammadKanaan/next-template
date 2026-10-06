@@ -1,7 +1,12 @@
 // @vitest-environment node
 import { revalidatePath } from 'next/cache'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createPostAction, deletePostAction, updatePostAction } from '@/actions/posts'
+import {
+  createPostAction,
+  deletePostAction,
+  setPostStatusAction,
+  updatePostAction,
+} from '@/actions/posts'
 import { db } from '@/lib/data/db'
 import { createUser, resetDatabase, signInAs } from '../helpers/server'
 
@@ -91,5 +96,47 @@ describe('post actions', () => {
     expect(await deletePostAction(post.id)).toEqual({ ok: true, data: null })
     expect(await db.post.count()).toBe(0)
     expect(await deletePostAction(post.id)).toMatchObject({ ok: false, code: 'NOT_FOUND' })
+  })
+
+  it('creates a draft with tags', async () => {
+    await signInAs(await createUser({}))
+    const result = await createPostAction({ title: 'T', body: 'B', tags: ['News'] })
+    expect(result).toMatchObject({ ok: true, data: { status: 'draft', tags: ['news'] } })
+  })
+
+  it('moves a post through the workflow and revalidates the posts layout', async () => {
+    const owner = await createUser({})
+    const post = await db.post.create({ data: { userId: owner.id, title: 'T', body: 'B' } })
+    await signInAs(owner)
+    const result = await setPostStatusAction(post.id, 'published')
+    expect(result).toMatchObject({ ok: true, data: { status: 'published' } })
+    expect(revalidatePath).toHaveBeenCalledWith('/posts', 'layout')
+  })
+
+  it('maps status failures to codes and does not revalidate', async () => {
+    const owner = await createUser({})
+    const intruder = await createUser({})
+    const post = await db.post.create({ data: { userId: owner.id, title: 'T', body: 'B' } })
+
+    expect(await setPostStatusAction(post.id, 'published')).toMatchObject({
+      ok: false,
+      code: 'UNAUTHORIZED',
+    })
+    await signInAs(intruder)
+    expect(await setPostStatusAction(post.id, 'published')).toMatchObject({
+      ok: false,
+      code: 'FORBIDDEN',
+    })
+    await signInAs(owner)
+    expect(await setPostStatusAction(post.id, 'archived')).toMatchObject({
+      ok: false,
+      code: 'VALIDATION',
+      fieldErrors: { status: ['A draft post cannot become archived'] },
+    })
+    expect(await setPostStatusAction(999, 'published')).toMatchObject({
+      ok: false,
+      code: 'NOT_FOUND',
+    })
+    expect(revalidatePath).not.toHaveBeenCalled()
   })
 })

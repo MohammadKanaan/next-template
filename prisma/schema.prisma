@@ -29,6 +29,7 @@ model User {
   accounts      Account[]
   posts         Post[]
   uploads       Upload[]
+  comments      Comment[]
 
   @@map("users")
 }
@@ -80,17 +81,62 @@ model Verification {
   @@map("verifications")
 }
 
+enum PostStatus {
+  draft
+  published
+  archived
+}
+
 model Post {
+  id          Int        @id @default(autoincrement())
+  title       String
+  body        String
+  status      PostStatus @default(draft)
+  publishedAt DateTime?  @map("published_at") @db.Timestamptz(3)
+  userId      String     @map("user_id")
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  comments    Comment[]
+  tags        PostTag[]
+  createdAt   DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([userId])
+  @@index([status])
+  @@map("posts")
+}
+
+model Comment {
   id        Int      @id @default(autoincrement())
-  title     String
   body      String
+  postId    Int      @map("post_id")
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
   userId    String   @map("user_id")
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
+  @@index([postId])
   @@index([userId])
-  @@map("posts")
+  @@map("comments")
+}
+
+model Tag {
+  id    Int       @id @default(autoincrement())
+  name  String    @unique
+  posts PostTag[]
+
+  @@map("tags")
+}
+
+/// Explicit join table of the Post <-> Tag many-to-many.
+model PostTag {
+  postId Int  @map("post_id")
+  post   Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  tagId  Int  @map("tag_id")
+  tag    Tag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([postId, tagId])
+  @@index([tagId])
+  @@map("post_tags")
 }
 
 enum UploadPurpose {

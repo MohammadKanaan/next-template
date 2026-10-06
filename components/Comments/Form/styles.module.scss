@@ -1,0 +1,16 @@
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.formError {
+  margin: 0;
+  color: var(--destructive);
+  font-size: 0.875rem;
+}
