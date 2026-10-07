@@ -22,14 +22,6 @@ describe('post form utils', () => {
     expect(hydratePostForm(null)).toEqual({ title: '', body: '', tags: [] })
   })
 
-  it('sends every field when creating', () => {
-    expect(buildPostAttributes({ title: 'A', body: 'B', tags: ['x'] }, null)).toEqual({
-      title: 'A',
-      body: 'B',
-      tags: ['x'],
-    })
-  })
-
   it('sends only changed fields when updating', () => {
     expect(buildPostAttributes({ title: 'Hello', body: 'Changed', tags: ['news'] }, post)).toEqual({
       body: 'Changed',

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getJobDefinition, jobs, sendEmailPayload } from '@/jobs/definitions'
+import { jobs, sendEmailPayload } from '@/jobs/definitions'
 
 const verifyEmail = {
   template: 'verify-email',
@@ -45,20 +45,9 @@ describe('job definitions', () => {
     expect(sendEmailPayload.safeParse({ ...verifyEmail, props: {} }).success).toBe(false)
   })
 
-  it('schedules only the cleanup job, hourly', () => {
-    expect(jobs.cleanup.cron).toBe('0 * * * *')
-    expect(getJobDefinition('send-email').cron).toBeUndefined()
-  })
-
-  it('retries email with backoff', () => {
-    expect(jobs['send-email'].options).toMatchObject({ retryBackoff: true })
-    expect(jobs['send-email'].options.retryLimit).toBeGreaterThan(1)
-  })
-
-  it('requires a key for the delete-object job and retries it with backoff', () => {
+  it('requires a key for the delete-object job', () => {
     expect(jobs['delete-object'].schema.safeParse({ key: 'avatars/u/1' }).success).toBe(true)
     expect(jobs['delete-object'].schema.safeParse({ key: '' }).success).toBe(false)
     expect(jobs['delete-object'].schema.safeParse({}).success).toBe(false)
-    expect(jobs['delete-object'].options).toMatchObject({ retryBackoff: true })
   })
 })

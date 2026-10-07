@@ -39,8 +39,6 @@ export const canTransitionPostStatus = (from: PostStatus, to: PostStatus) => {
 
 export const setPostStatusInput = z.object({ id: idSchema, status: postStatusSchema })
 
-export type SetPostStatusInput = z.infer<typeof setPostStatusInput>
-
 /** Lowercased, de-duplicated names. */
 const postTagsSchema = z
   .array(tagNameSchema)
@@ -119,7 +117,7 @@ export const postsUrlQuery = z.object({
   to: isoDaySchema.catch(''),
 })
 
-export type PostsUrlQuery = z.infer<typeof postsUrlQuery>
+type PostsUrlQuery = z.infer<typeof postsUrlQuery>
 
 /** True when any filter (everything but `page` and `sort`) is set. */
 export const hasActivePostFilters = (

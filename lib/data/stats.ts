@@ -80,8 +80,11 @@ export const getMyStats = async (): Promise<MyStats> => {
  */
 export const getPostsPerDay = async (days?: number): Promise<DailyPostCount[]> => {
   const { days: windowDays } = parseInput(postsPerDayInput, { days })
+  // The series ends today, so today's UTC date is part of the key: after midnight the cached
+  // series that ends yesterday is never read again.
+  const today = new Date().toISOString().slice(0, 10)
   return remember(
-    JSON.stringify(['stats:posts-per-day', windowDays]),
+    JSON.stringify(['stats:posts-per-day', windowDays, today]),
     { ttl: STATS_CACHE_TTL, tags: [POSTS_TAG], schema: dailyPostCountsSchema },
     async () => {
       const rows = await db.$queryRaw<unknown[]>`

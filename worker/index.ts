@@ -1,16 +1,14 @@
 import { PgBoss } from 'pg-boss'
 import { handleCleanup } from '@/jobs/cleanup'
 import { handleDeleteObject } from '@/jobs/deleteObject'
-import { getJobDefinition, jobs, type JobName } from '@/jobs/definitions'
+import { jobs, type JobDefinition, type JobName } from '@/jobs/definitions'
 import { handleSendEmail } from '@/jobs/sendEmail'
 import { db } from '@/lib/data/db'
 import { serverEnv } from '@/lib/server/env'
 import { logger } from '@/lib/server/logger'
 
-/**
- * Background worker: the one process that owns pg-boss (its `pgboss` schema migrations, queue
- * creation, supervision and cron). The web process only enqueues. Run with `bun run worker`.
- */
+// Background worker: the one process that owns pg-boss (its `pgboss` schema migrations, queue
+// creation, supervision and cron). The web process only enqueues. Run with `bun run worker`.
 
 const log = logger.child({ module: 'worker' })
 
@@ -47,7 +45,8 @@ const start = async () => {
   await boss.start()
 
   for (const name of Object.keys(jobs) as JobName[]) {
-    const { options, cron } = getJobDefinition(name)
+    // Widened to the common shape: only some definitions have a `cron`.
+    const { options, cron }: JobDefinition = jobs[name]
     // Definition changes (retries, expiry) must reach queues that already exist.
     if (await boss.getQueue(name)) {
       await boss.updateQueue(name, options)

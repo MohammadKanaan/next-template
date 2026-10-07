@@ -105,8 +105,6 @@ export const usersUrlQuery = z.object({
   q: z.string().trim().max(USER_SEARCH_MAX_LENGTH).catch(''),
 })
 
-export type UsersUrlQuery = z.infer<typeof usersUrlQuery>
-
 export const setUserRoleInput = z.object({ id: userIdSchema, role: roleSchema })
 
 export type SetUserRoleInput = z.infer<typeof setUserRoleInput>

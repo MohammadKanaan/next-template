@@ -1,7 +1,8 @@
 // @vitest-environment node
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { GET } from '@/app/api/v1/posts/route'
-import { fetchPosts, RequestError } from '@/lib/client/posts'
+import { RequestError } from '@/lib/client/errors'
+import { fetchPosts } from '@/lib/client/posts'
 import { db } from '@/lib/data/db'
 import { createUser, resetDatabase } from '../../helpers/server'
 

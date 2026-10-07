@@ -2,7 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AvatarUploader } from '@/components/Settings/AvatarUploader'
-import { RequestError } from '@/lib/client/posts'
+import { RequestError } from '@/lib/client/errors'
 import { uploadFile } from '@/lib/client/uploads'
 import type { CurrentUser } from '@/lib/dto/users'
 

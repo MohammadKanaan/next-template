@@ -1,12 +1,7 @@
 // @vitest-environment node
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { RateLimitedError } from '@/lib/data/errors'
-import {
-  consumeRateLimit,
-  getClientIp,
-  isRateLimitEnabled,
-  resetRateLimits,
-} from '@/lib/data/rateLimit'
+import { consumeRateLimit, getClientIp } from '@/lib/data/rateLimit'
 import { getRedis } from '@/lib/server/redis'
 import { resetRedis } from '../../helpers/server'
 
@@ -72,32 +67,15 @@ describe('consumeRateLimit', () => {
     )
     multi.mockRestore()
   })
-
-  it('resetRateLimits clears every counter', async () => {
-    await consume('a', rule.max)
-    await consume('b', rule.max)
-    await resetRateLimits()
-    await expect(consumeRateLimit('a', rule)).resolves.toBeUndefined()
-  })
-})
-
-describe('isRateLimitEnabled', () => {
-  it('is on only in production', () => {
-    vi.stubEnv('NODE_ENV', 'production')
-    expect(isRateLimitEnabled()).toBe(true)
-    vi.stubEnv('NODE_ENV', 'test')
-    expect(isRateLimitEnabled()).toBe(false)
-    vi.unstubAllEnvs()
-  })
 })
 
 describe('getClientIp', () => {
-  it('prefers the first x-forwarded-for entry, then x-real-ip, then unknown', async () => {
+  it('prefers the last x-forwarded-for entry, then x-real-ip, then unknown', async () => {
     headerValues.current = new Headers({
       'x-forwarded-for': '1.1.1.1, 2.2.2.2',
       'x-real-ip': '3.3.3.3',
     })
-    expect(await getClientIp()).toBe('1.1.1.1')
+    expect(await getClientIp()).toBe('2.2.2.2')
     headerValues.current = new Headers({ 'x-real-ip': '3.3.3.3' })
     expect(await getClientIp()).toBe('3.3.3.3')
     headerValues.current = new Headers()

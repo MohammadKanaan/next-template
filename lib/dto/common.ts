@@ -20,8 +20,6 @@ export const permissionsSchema = z.object({
   delete: z.boolean(),
 })
 
-export type Permissions = z.infer<typeof permissionsSchema>
-
 export type Page<T> = {
   items: T[]
   page: number

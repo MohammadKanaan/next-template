@@ -61,12 +61,21 @@ describe('Google provider', () => {
     expect(signUpInput.shape.username.safeParse(fallback?.username).success).toBe(true)
   })
 
-  it('keeps the OAuth routes reachable while the email sign-up path stays disabled', async () => {
+  it('serves the OAuth routes through the HTTP router', async () => {
     const { auth } = await loadAuth({ id: 'id', secret: 'secret' })
-    const disabled = auth.options.disabledPaths ?? []
-    expect(disabled).toContain('/sign-up/email')
-    expect(disabled).not.toContain('/sign-in/social')
-    expect(disabled.some((path) => path.includes('callback/google'))).toBe(false)
+    const signIn = await auth.handler(
+      new Request('http://localhost:3000/api/auth/sign-in/social', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', origin: 'http://localhost:3000' },
+        body: JSON.stringify({ provider: 'google', disableRedirect: true }),
+      }),
+    )
+    expect(signIn.status).toBe(200)
+    // Without a valid state the callback bails out, but it must answer rather than 404.
+    const callback = await auth.handler(
+      new Request('http://localhost:3000/api/auth/callback/google?code=x&state=y'),
+    )
+    expect(callback.status).not.toBe(404)
   })
 })
 

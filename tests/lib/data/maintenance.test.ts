@@ -82,9 +82,9 @@ describe('maintenance DAL', () => {
       await upload('a-oldest', user.id, 'pending', 30 * hour)
       await upload('b-middle', user.id, 'pending', 28 * hour)
 
-      expect(await deleteStalePendingUploads(undefined, 2)).toEqual({ uploads: 2 })
+      expect(await deleteStalePendingUploads(2)).toEqual({ uploads: 2 })
       expect((await db.upload.findMany()).map((row) => row.key)).toEqual(['c-newest'])
-      expect(await deleteStalePendingUploads(undefined, 2)).toEqual({ uploads: 1 })
+      expect(await deleteStalePendingUploads(2)).toEqual({ uploads: 1 })
       expect(await db.upload.count()).toBe(0)
     })
 

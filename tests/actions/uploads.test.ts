@@ -3,8 +3,7 @@ import { refresh } from 'next/cache'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { attachAvatarAction, createAvatarUploadAction } from '@/actions/uploads'
 import { db } from '@/lib/data/db'
-import { resetRateLimits } from '@/lib/data/rateLimit'
-import { createUser, resetDatabase, signInAs, signOut } from '../helpers/server'
+import { createUser, resetDatabase, resetRedis, signInAs, signOut } from '../helpers/server'
 
 const { cookieStore, requestHeaders } = await vi.hoisted(async () => import('../helpers/cookies'))
 vi.mock('next/headers', () => ({
@@ -25,7 +24,6 @@ vi.mock('@/lib/server/storage', () => ({
 describe('upload actions', () => {
   beforeEach(async () => {
     await resetDatabase()
-    await resetRateLimits()
     vi.mocked(refresh).mockClear()
   })
   afterEach(() => {
@@ -104,7 +102,7 @@ describe('upload actions', () => {
       expect(await request()).toMatchObject({ ok: true })
     }
 
-    await resetRateLimits()
+    await resetRedis()
     vi.stubEnv('NODE_ENV', 'production')
     for (let n = 0; n < 10; n++) {
       expect(await request()).toMatchObject({ ok: true })

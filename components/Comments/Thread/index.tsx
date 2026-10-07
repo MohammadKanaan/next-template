@@ -14,6 +14,8 @@ import styles from './styles.module.scss'
 type CommentThreadProps = {
   postId: number
   postStatus: PostStatus
+  /** The post's total; the list itself is capped, so its length can fall short of it. */
+  commentCount: number
   /** Where the post lives, so the sign-in link can return to it. */
   path: string
 }
@@ -22,7 +24,12 @@ type CommentThreadProps = {
  * The comment thread of a post. An async Server Component that reads the DAL itself, so the page
  * puts it in its own `<Suspense>`. Only the form and the delete buttons are client components.
  */
-export const CommentThread = async ({ postId, postStatus, path }: CommentThreadProps) => {
+export const CommentThread = async ({
+  postId,
+  postStatus,
+  commentCount,
+  path,
+}: CommentThreadProps) => {
   const [comments, viewer] = await loadPage(
     () => Promise.all([listComments(postId), getViewer()]),
     path,
@@ -31,7 +38,7 @@ export const CommentThread = async ({ postId, postStatus, path }: CommentThreadP
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Comments ({comments.length})</CardTitle>
+        <CardTitle>Comments ({commentCount})</CardTitle>
       </CardHeader>
       <CardContent>
         <div className={styles.content}>

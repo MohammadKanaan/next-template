@@ -3,22 +3,6 @@
   padding: 1rem 0;
 }
 
-.header {
-  margin-bottom: 1rem;
-}
-
-.title {
-  margin: 0;
-  color: var(--foreground);
-  font-size: 1.5rem;
-  font-weight: 600;
-}
-
-.subtitle {
-  margin: 0.25rem 0 0;
-  color: var(--muted-foreground);
-}
-
 .state {
   display: flex;
   flex-direction: column;

@@ -15,6 +15,6 @@ export const handleCleanup = async (payload: unknown) => {
       verifications: deleted.verifications,
       uploads: uploads.uploads,
     },
-    `deleted ${deleted.sessions} expired sessions, ${deleted.verifications} expired verifications, ${uploads.uploads} stale uploads`,
+    'cleanup done',
   )
 }

@@ -2,18 +2,9 @@ import { z } from 'zod'
 import type { Page } from '@/lib/dto/common'
 import { postsPageSchema, type ListPostsParams, type PostSummary } from '@/lib/dto/posts'
 import { env } from '@/lib/env'
+import { RequestError } from './errors'
 
 const errorMessageSchema = z.object({ message: z.string() })
-
-export class RequestError extends Error {
-  constructor(
-    message: string,
-    readonly status: number,
-  ) {
-    super(message)
-    this.name = 'RequestError'
-  }
-}
 
 /**
  * Client facade for `GET /api/v1/posts`. Parses with the shared schema, so the caller gets the

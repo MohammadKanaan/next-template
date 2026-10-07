@@ -19,7 +19,7 @@ describe('cleanup job', () => {
     expect(deleteStalePendingUploads).toHaveBeenCalledTimes(1)
     expect(log.info).toHaveBeenCalledWith(
       { sessions: 2, verifications: 1, uploads: 3 },
-      expect.stringContaining('2 expired sessions'),
+      expect.any(String),
     )
   })
 

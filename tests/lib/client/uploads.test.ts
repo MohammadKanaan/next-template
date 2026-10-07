@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { RequestError } from '@/lib/client/posts'
+import { RequestError } from '@/lib/client/errors'
 import { uploadFile } from '@/lib/client/uploads'
 
 const ticket = {

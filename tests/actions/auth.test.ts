@@ -18,11 +18,10 @@ import {
 import { auth, requireUser } from '@/lib/data/auth'
 import { db } from '@/lib/data/db'
 import { UnauthorizedError } from '@/lib/data/errors'
-import { resetRateLimits } from '@/lib/data/rateLimit'
 import { jobs, type JobPayload } from '@/jobs/definitions'
 import { enqueue } from '@/lib/server/queue'
 import { cookieJar } from '../helpers/cookies'
-import { createUser, resetDatabase, signInAs, TEST_PASSWORD } from '../helpers/server'
+import { createUser, resetDatabase, resetRedis, signInAs, TEST_PASSWORD } from '../helpers/server'
 
 const { cookieStore, requestHeaders } = await vi.hoisted(async () => import('../helpers/cookies'))
 vi.mock('next/headers', () => ({
@@ -43,7 +42,6 @@ describe('auth actions', () => {
     await resetDatabase()
     vi.mocked(refresh).mockClear()
     vi.mocked(enqueue).mockClear()
-    resetRateLimits()
   })
   afterEach(() => {
     vi.restoreAllMocks()
@@ -158,7 +156,7 @@ describe('auth actions', () => {
       expect(await attempt()).toMatchObject({ code: 'UNAUTHORIZED' })
     }
 
-    resetRateLimits()
+    await resetRedis()
     vi.stubEnv('NODE_ENV', 'production')
     for (let n = 0; n < 5; n++) {
       expect(await attempt()).toMatchObject({ message: 'Invalid email or password' })
@@ -315,7 +313,7 @@ describe('auth actions', () => {
         expect(await attempt()).toMatchObject({ ok: true })
       }
 
-      await resetRateLimits()
+      await resetRedis()
       vi.stubEnv('NODE_ENV', 'production')
       for (let n = 0; n < 3; n++) {
         expect(await attempt()).toMatchObject({ ok: true })
@@ -366,7 +364,6 @@ describe('account actions', () => {
     await resetDatabase()
     vi.mocked(refresh).mockClear()
     vi.mocked(enqueue).mockClear()
-    await resetRateLimits()
   })
   afterEach(() => {
     vi.restoreAllMocks()

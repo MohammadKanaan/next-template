@@ -572,7 +572,7 @@ records the result.
   any URL parses (`postsUrlQuery` in `lib/dto/posts.ts` is the one contract, shared with the SSR
   page's `searchParams`, which the page reduces with `toScalarParams` from `lib/searchParams.ts`:
   a repeated param reads as its last value on server and client alike). `setState(patch)` is one
-  navigation per patch and is stable; each patch builds on the last query requested (not the
+  navigation per patch; each patch builds on the last query requested (not the
   committed URL), so two patches issued before the first lands both survive. Keys that are empty
   or equal to the default leave the URL, unknown params stay. Scalars only. On a page that
   reads nothing on the server the component using it must sit inside `<Suspense>` (see **React

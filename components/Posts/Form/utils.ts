@@ -13,20 +13,19 @@ const sameTags = (a: string[], b: string[]) => {
   return a.length === b.length && a.every((tag) => b.includes(tag))
 }
 
-/** New post: every field. Existing post: only the fields that changed. */
+/** Only the fields of an existing post that the form changed (a new post sends the values as is). */
 export const buildPostAttributes = (
   values: CreatePostInput,
-  post: PostDetail | null,
+  post: PostDetail,
 ): Partial<CreatePostInput> => {
-  const original = hydratePostForm(post)
   const attributes: Partial<CreatePostInput> = {}
-  if (post === null || values.title !== original.title) {
+  if (values.title !== post.title) {
     attributes.title = values.title
   }
-  if (post === null || values.body !== original.body) {
+  if (values.body !== post.body) {
     attributes.body = values.body
   }
-  if (post === null || !sameTags(values.tags, original.tags)) {
+  if (!sameTags(values.tags, post.tags)) {
     attributes.tags = values.tags
   }
   return attributes

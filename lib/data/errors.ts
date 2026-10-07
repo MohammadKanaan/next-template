@@ -45,7 +45,7 @@ export class RateLimitedError extends DataError {
   }
 }
 
-export const fieldErrorsFrom = (error: z.ZodError): FieldErrors => {
+const fieldErrorsFrom = (error: z.ZodError): FieldErrors => {
   const errors: FieldErrors = {}
   for (const issue of error.issues) {
     const field = issue.path.join('.') || 'base'

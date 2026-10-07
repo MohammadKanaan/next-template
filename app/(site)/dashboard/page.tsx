@@ -1,5 +1,4 @@
 import type { Metadata } from 'next'
-import { SignOutButton } from '@/components/Auth/SignOutButton'
 import { PageHeader } from '@/components/PageHeader'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/SCN/card'
 import { PostsPerDayChart } from '@/components/Stats/PostsPerDayChart'
@@ -26,7 +25,6 @@ const DashboardPage = async () => {
       <PageHeader
         title="Dashboard"
         description="Your posts and what is happening across the site."
-        actions={<SignOutButton />}
       />
 
       <section className={styles.section} aria-labelledby="my-stats-title">

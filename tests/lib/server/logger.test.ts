@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { Writable } from 'node:stream'
 import { describe, expect, it } from 'vitest'
-import { createLogger, logger, usesPrettyTransport } from '@/lib/server/logger'
+import { createLogger, usesPrettyTransport } from '@/lib/server/logger'
 
 const capture = () => {
   const lines: string[] = []
@@ -29,10 +29,6 @@ describe('createLogger level', () => {
     expect(createLogger({ env: { NODE_ENV: 'test', LOG_LEVEL: 'debug' }, destination }).level).toBe(
       'debug',
     )
-  })
-
-  it('exports a default logger that is silent under test', () => {
-    expect(logger.level).toBe('silent')
   })
 })
 

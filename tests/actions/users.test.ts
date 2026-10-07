@@ -3,7 +3,6 @@ import { refresh, revalidatePath } from 'next/cache'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { setUserRoleAction, updateProfileAction } from '@/actions/users'
 import { db } from '@/lib/data/db'
-import { resetRateLimits } from '@/lib/data/rateLimit'
 import { createUser, resetDatabase, signInAs } from '../helpers/server'
 
 const { cookieStore, requestHeaders } = await vi.hoisted(async () => import('../helpers/cookies'))
@@ -20,7 +19,6 @@ describe('updateProfileAction', () => {
     await resetDatabase()
     vi.mocked(refresh).mockClear()
     vi.mocked(revalidatePath).mockClear()
-    await resetRateLimits()
   })
   afterEach(() => vi.unstubAllEnvs())
   afterAll(() => db.$disconnect())

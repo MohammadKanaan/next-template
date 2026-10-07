@@ -44,18 +44,14 @@ export const consumeRateLimit = async (key: string, rule: RateLimitRule): Promis
   }
 }
 
-/** Deletes every rate-limit counter; for tests. */
-export const resetRateLimits = async (): Promise<void> => {
-  const redis = getRedis()
-  const keys = await redis.keys(`${KEY_PREFIX}*`)
-  if (keys.length > 0) {
-    await redis.del(...keys)
-  }
-}
-
-/** First `x-forwarded-for` entry, else `x-real-ip`, else `'unknown'`. */
+/**
+ * Last `x-forwarded-for` entry, else `x-real-ip`, else `'unknown'`. Next exposes no socket address,
+ * so this trusts the reverse proxy in front of the app: deploy behind exactly one proxy that
+ * appends the client address. The last entry is the one that proxy added; every entry before it
+ * comes from the client, so trusting the first would let anyone mint a new "IP" per request.
+ */
 export const getClientIp = async () => {
   const requestHeaders = await headers()
-  const forwarded = requestHeaders.get('x-forwarded-for')?.split(',')[0]?.trim()
+  const forwarded = requestHeaders.get('x-forwarded-for')?.split(',').at(-1)?.trim()
   return forwarded || requestHeaders.get('x-real-ip')?.trim() || 'unknown'
 }

@@ -99,6 +99,7 @@ const PostDetailPage = async ({ params }: PageProps<'/posts/[userId]/[id]'>) => 
         <CommentThread
           postId={post.id}
           postStatus={post.status}
+          commentCount={post.commentCount}
           path={ROUTE_POST_DETAILS(post.author.id, post.id)}
         />
       </Suspense>

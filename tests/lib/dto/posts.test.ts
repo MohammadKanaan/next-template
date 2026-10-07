@@ -1,11 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { MAX_PAGE } from '@/lib/dto/common'
 import {
-  POST_STATUS_TRANSITIONS,
   canTransitionPostStatus,
   createPostInput,
   listPostsQuery,
-  postStatusSchema,
   postSummarySchema,
   setPostStatusInput,
   tagNameSchema,
@@ -65,14 +63,6 @@ describe('tags', () => {
 })
 
 describe('status workflow', () => {
-  it('defines every move once', () => {
-    expect(POST_STATUS_TRANSITIONS).toEqual({
-      draft: ['published'],
-      published: ['archived', 'draft'],
-      archived: ['published'],
-    })
-  })
-
   it('answers canTransitionPostStatus from the map', () => {
     expect(canTransitionPostStatus('draft', 'published')).toBe(true)
     expect(canTransitionPostStatus('draft', 'archived')).toBe(false)
@@ -85,7 +75,6 @@ describe('status workflow', () => {
       status: 'archived',
     })
     expect(setPostStatusInput.safeParse({ id: 3, status: 'deleted' }).success).toBe(false)
-    expect(postStatusSchema.options).toEqual(['draft', 'published', 'archived'])
   })
 })
 

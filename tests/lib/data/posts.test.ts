@@ -346,6 +346,11 @@ describe('posts DAL', () => {
     expect(toExcerpt('abc   def', 6)).toBe('abc…')
   })
 
+  it('never cuts an emoji in half', () => {
+    // '😀' is two UTF-16 code units; a cut between them leaves a lone surrogate that renders as �.
+    expect(toExcerpt('ab😀cd', 3)).toBe('ab😀…')
+  })
+
   it('reports a post that vanishes between the access check and the write as not found', async () => {
     const owner = await createUser({})
     const post = await seedPost(owner.id)

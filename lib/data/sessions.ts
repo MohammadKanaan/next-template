@@ -14,10 +14,8 @@ const sessionSummarySelect = {
   expiresAt: true,
 } satisfies Prisma.SessionSelect
 
-/**
- * Sessions are plain database rows (there is no cookie cache), so deleting a row ends that
- * session on its next request.
- */
+// Sessions are plain database rows (there is no cookie cache), so deleting a row ends that
+// session on its next request.
 
 /** The viewer's own unexpired sessions, newest first; `current` marks the one making this call. */
 export const listSessions = async (): Promise<SessionSummary[]> => {

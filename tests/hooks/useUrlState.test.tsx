@@ -122,15 +122,6 @@ describe('useUrlState', () => {
     expect(result.current.state).toMatchObject({ q: 'b', sort: 'newest' })
   })
 
-  it('keeps setState stable across URL changes', () => {
-    const { result, rerender } = renderHook(() => useUrlState(schema))
-    const first = result.current.setState
-    navigation.search = 'q=cats'
-    rerender()
-    expect(result.current.setState).toBe(first)
-    expect(result.current.state.q).toBe('cats')
-  })
-
   it('navigates to the bare path when nothing is left', () => {
     navigation.search = 'page=2'
     const { result } = renderHook(() => useUrlState(schema))

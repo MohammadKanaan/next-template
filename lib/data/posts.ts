@@ -56,7 +56,6 @@ const postDetailSelect = {
   body: true,
   status: true,
   publishedAt: true,
-  userId: true,
   createdAt: true,
   updatedAt: true,
   user: { select: userProfileSelect },
@@ -67,8 +66,12 @@ const postDetailSelect = {
 type PostSummaryRow = Prisma.PostGetPayload<{ select: typeof postSummarySelect }>
 type PostDetailRow = Prisma.PostGetPayload<{ select: typeof postDetailSelect }>
 
+/** Counts code points, not UTF-16 units, so the cut never splits an emoji into a lone surrogate. */
 export const toExcerpt = (body: string, maxLength = POST_EXCERPT_LENGTH) => {
-  return body.length <= maxLength ? body : `${body.slice(0, maxLength).trimEnd()}…`
+  const characters = Array.from(body)
+  return characters.length <= maxLength
+    ? body
+    : `${characters.slice(0, maxLength).join('').trimEnd()}…`
 }
 
 /** Record-level rule: the author or an admin may change a post. */
@@ -82,11 +85,8 @@ const canModify = (viewer: SessionUser | null, authorId: string) => {
  * everyone else. Exported for `createComment`, which reads its row straight from the database; a
  * pure predicate that returns no data.
  */
-export const canViewPost = (
-  viewer: SessionUser | null,
-  post: { status: PostStatus; author: { id: string } },
-) => {
-  return post.status === 'published' || canModify(viewer, post.author.id)
+export const canViewPost = (viewer: SessionUser | null, status: PostStatus, authorId: string) => {
+  return status === 'published' || canModify(viewer, authorId)
 }
 
 const toPostSummary = (row: PostSummaryRow): PostSummary => {
@@ -241,7 +241,7 @@ const getPostBase = async (id: number | string): Promise<PostDetailBase> => {
 export const getPost = async (id: number | string): Promise<PostDetail> => {
   // Cached for everyone; the visibility check and `permissions` follow per viewer, never cached.
   const [post, viewer] = await Promise.all([getPostBase(id), getSessionUser()])
-  if (!canViewPost(viewer, post)) {
+  if (!canViewPost(viewer, post.status, post.author.id)) {
     throw new NotFoundError('Post not found')
   }
   return withPermissions(post, viewer)

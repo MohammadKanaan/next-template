@@ -5,10 +5,8 @@ import { db } from './db'
 
 const log = logger.child({ module: 'maintenance' })
 
-/**
- * System DAL for background jobs. There is no viewer here, so these functions skip
- * `requireUser()`; that is why only `jobs/**` may import this file (enforced by ESLint).
- */
+// System DAL for background jobs. There is no viewer here, so these functions skip
+// `requireUser()`; that is why only `jobs/**` may import this file (enforced by ESLint).
 
 /** Deletes sessions and verification tokens past their expiry; returns how many of each. */
 export const deleteExpiredAuthRows = async () => {
@@ -29,12 +27,9 @@ const STALE_UPLOAD_BATCH = 100
  * attach) together with their objects, oldest first and at most `batchSize` per run. The object
  * goes first, so if storage is down the row stays and the next run retries it.
  */
-export const deleteStalePendingUploads = async (
-  maxAgeMs = STALE_UPLOAD_AGE_MS,
-  batchSize = STALE_UPLOAD_BATCH,
-) => {
+export const deleteStalePendingUploads = async (batchSize = STALE_UPLOAD_BATCH) => {
   const stale = await db.upload.findMany({
-    where: { status: 'pending', createdAt: { lt: new Date(Date.now() - maxAgeMs) } },
+    where: { status: 'pending', createdAt: { lt: new Date(Date.now() - STALE_UPLOAD_AGE_MS) } },
     select: { id: true, key: true },
     orderBy: { createdAt: 'asc' },
     take: batchSize,

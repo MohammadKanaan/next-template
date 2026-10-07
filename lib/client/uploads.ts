@@ -1,5 +1,5 @@
 import type { UploadTicket } from '@/lib/dto/uploads'
-import { RequestError } from './posts'
+import { RequestError } from './errors'
 
 /**
  * Sends `file` straight to storage with the presigned POST `ticket` (the one client request that

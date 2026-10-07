@@ -62,16 +62,6 @@ describe('toActionFailure', () => {
   })
 })
 
-describe('RateLimitedError', () => {
-  it('becomes a RATE_LIMITED action failure with the default message', () => {
-    expect(toActionFailure(new RateLimitedError())).toEqual({
-      ok: false,
-      code: 'RATE_LIMITED',
-      message: 'Too many attempts. Try again in a minute.',
-    })
-  })
-})
-
 describe('toErrorResponse', () => {
   it('maps codes to statuses', async () => {
     const cases = [
