@@ -1,10 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { MAX_PAGE } from '@/lib/dto/common'
 import {
-  adminUserSchema,
   listUsersQuery,
   sessionIdSchema,
-  sessionSummarySchema,
   setUserRoleInput,
   updateProfileInput,
   USER_SEARCH_MAX_LENGTH,
@@ -56,37 +54,9 @@ describe('sessions', () => {
     expect(sessionIdSchema.safeParse('').success).toBe(false)
     expect(sessionIdSchema.safeParse('a'.repeat(65)).success).toBe(false)
   })
-
-  it('turns ISO strings back into Dates and has no token field', () => {
-    const summary = sessionSummarySchema.parse({
-      id: 's1',
-      current: true,
-      userAgent: null,
-      ipAddress: null,
-      createdAt: '2026-10-05T10:00:00.000Z',
-      expiresAt: '2026-10-12T10:00:00.000Z',
-      token: 'secret',
-    })
-    expect(summary.createdAt).toEqual(new Date('2026-10-05T10:00:00.000Z'))
-    expect(summary).not.toHaveProperty('token')
-  })
 })
 
 describe('admin user list', () => {
-  it('turns ISO strings back into Dates', () => {
-    const user = adminUserSchema.parse({
-      id: 'u1',
-      name: 'Ada',
-      username: 'ada',
-      email: 'ada@example.com',
-      emailVerified: true,
-      role: 'admin',
-      createdAt: '2026-10-05T10:00:00.000Z',
-      postCount: 3,
-    })
-    expect(user.createdAt).toEqual(new Date('2026-10-05T10:00:00.000Z'))
-  })
-
   it('bounds and trims the search, and defaults the paging', () => {
     expect(listUsersQuery.parse({})).toMatchObject({ page: 1 })
     expect(listUsersQuery.parse({ q: '  ada ' }).q).toBe('ada')

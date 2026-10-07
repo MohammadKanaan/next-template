@@ -18,6 +18,7 @@ type TagsInputProps = {
   /** Turns what was typed into a tag; an empty result is dropped. Defaults to trimming. */
   normalize?: (raw: string) => string
   maxTags?: number
+  /** The longest a single tag may be; a pasted list is split first, so it is not cut short. */
   maxLength?: number
   placeholder?: string
   disabled?: boolean
@@ -55,7 +56,7 @@ export const TagsInput = ({
   const commit = (raw: string) => {
     const next = [...value]
     for (const part of raw.split(',')) {
-      const tag = normalize(part)
+      const tag = normalize(part).slice(0, maxLength)
       if (tag && !next.includes(tag) && (maxTags === undefined || next.length < maxTags)) {
         next.push(tag)
       }
@@ -74,7 +75,7 @@ export const TagsInput = ({
       commit(text)
       return
     }
-    setDraft(text)
+    setDraft(text.slice(0, maxLength))
   }
 
   const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
@@ -130,7 +131,6 @@ export const TagsInput = ({
         name={name}
         value={draft}
         placeholder={isFull ? undefined : placeholder}
-        maxLength={maxLength}
         disabled={disabled || isFull}
         autoComplete="off"
         aria-invalid={error ? true : undefined}

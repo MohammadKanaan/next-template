@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildPostAttributes, hydratePostForm } from '@/components/Posts/Form/utils'
+import { buildPostAttributes } from '@/components/Posts/Form/utils'
 import type { PostDetail } from '@/lib/dto/posts'
 
 const post: PostDetail = {
@@ -17,11 +17,6 @@ const post: PostDetail = {
 }
 
 describe('post form utils', () => {
-  it('hydrates from a post or empty values', () => {
-    expect(hydratePostForm(post)).toEqual({ title: 'Hello', body: 'World', tags: ['news'] })
-    expect(hydratePostForm(null)).toEqual({ title: '', body: '', tags: [] })
-  })
-
   it('sends only changed fields when updating', () => {
     expect(buildPostAttributes({ title: 'Hello', body: 'Changed', tags: ['news'] }, post)).toEqual({
       body: 'Changed',

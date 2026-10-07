@@ -4,7 +4,7 @@ import { refresh, revalidatePath } from 'next/cache'
 import { ROUTE_POSTS } from '@/lib/constants-routes'
 import { requireUser } from '@/lib/data/auth'
 import { toActionFailure } from '@/lib/data/errors'
-import { consumeRateLimit, isRateLimitEnabled } from '@/lib/data/rateLimit'
+import { consumeRateLimit } from '@/lib/data/rateLimit'
 import { setUserRole, updateProfile } from '@/lib/data/users'
 import type { AdminUser, CurrentUser, SetUserRoleInput, UpdateProfileInput } from '@/lib/dto/users'
 import type { ActionResult } from '@/types/api'
@@ -14,9 +14,7 @@ export const updateProfileAction = async (
 ): Promise<ActionResult<CurrentUser>> => {
   try {
     const viewer = await requireUser()
-    if (isRateLimitEnabled()) {
-      await consumeRateLimit(`update-profile:user:${viewer.id}`, { max: 10, windowMs: 60_000 })
-    }
+    await consumeRateLimit(`update-profile:user:${viewer.id}`, { max: 10, windowMs: 60_000 })
     const user = await updateProfile(input)
     // The name and username also show on post cards and details.
     revalidatePath(ROUTE_POSTS, 'layout')

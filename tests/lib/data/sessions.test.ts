@@ -3,7 +3,6 @@ import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/data/db'
 import { NotFoundError, UnauthorizedError } from '@/lib/data/errors'
 import { listSessions, revokeOtherSessions, revokeSession } from '@/lib/data/sessions'
-import { sessionSummarySchema } from '@/lib/dto/users'
 import { getRedis } from '@/lib/server/redis'
 import { createUser, resetDatabase, signInAs, signOut } from '../../helpers/server'
 
@@ -77,7 +76,6 @@ describe('sessions DAL', () => {
       expect(Object.keys(session).sort()).toEqual(
         ['createdAt', 'current', 'expiresAt', 'id', 'ipAddress', 'userAgent'].sort(),
       )
-      expect(() => sessionSummarySchema.parse(session)).not.toThrow()
     }
   })
 

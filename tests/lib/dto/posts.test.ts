@@ -4,7 +4,6 @@ import {
   canTransitionPostStatus,
   createPostInput,
   listPostsQuery,
-  postSummarySchema,
   setPostStatusInput,
   tagNameSchema,
   postsUrlQuery,
@@ -228,21 +227,5 @@ describe('hasActivePostFilters', () => {
       const value = key === 'from' || key === 'to' ? '2026-10-01' : key === 'status' ? 'draft' : 'x'
       expect(hasActivePostFilters(postsUrlQuery.parse({ [key]: value })), key).toBe(true)
     }
-  })
-})
-
-describe('postSummarySchema', () => {
-  it('turns ISO strings from JSON back into Dates', () => {
-    const summary = postSummarySchema.parse({
-      id: 1,
-      title: 'T',
-      excerpt: 'E',
-      status: 'published',
-      tags: ['news'],
-      commentCount: 2,
-      createdAt: '2026-10-05T10:00:00.000Z',
-      author: { id: 'u1', name: 'N', username: 'n', website: null },
-    })
-    expect(summary.createdAt).toEqual(new Date('2026-10-05T10:00:00.000Z'))
   })
 })

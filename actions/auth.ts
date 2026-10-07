@@ -12,7 +12,7 @@ import {
 } from '@/lib/constants-routes'
 import { auth, isGoogleAuthEnabled, requireUser } from '@/lib/data/auth'
 import { parseInput, toActionFailure, ValidationError } from '@/lib/data/errors'
-import { consumeRateLimit, getClientIp, isRateLimitEnabled } from '@/lib/data/rateLimit'
+import { consumeRateLimit, getClientIp } from '@/lib/data/rateLimit'
 import { revokeOtherSessions, revokeSession } from '@/lib/data/sessions'
 import { getCurrentUser, isUsernameTaken } from '@/lib/data/users'
 import {
@@ -36,11 +36,9 @@ import type { ActionResult } from '@/types/api'
 export const signInAction = async (input: SignInInput): Promise<ActionResult<null>> => {
   try {
     const body = parseInput(signInInput, input)
-    if (isRateLimitEnabled()) {
-      const ip = await getClientIp()
-      await consumeRateLimit(`sign-in:ip:${ip}`, { max: 10, windowMs: 60_000 })
-      await consumeRateLimit(`sign-in:email:${body.email}`, { max: 5, windowMs: 60_000 })
-    }
+    const ip = await getClientIp()
+    await consumeRateLimit(`sign-in:ip:${ip}`, { max: 10, windowMs: 60_000 })
+    await consumeRateLimit(`sign-in:email:${body.email}`, { max: 5, windowMs: 60_000 })
     await auth.api.signInEmail({ body, headers: await headers() })
     refresh()
     return { ok: true, data: null }
@@ -62,9 +60,7 @@ export const signInAction = async (input: SignInInput): Promise<ActionResult<nul
 export const signUpAction = async (input: SignUpInput): Promise<ActionResult<null>> => {
   try {
     const body = parseInput(signUpInput, input)
-    if (isRateLimitEnabled()) {
-      await consumeRateLimit(`sign-up:ip:${await getClientIp()}`, { max: 5, windowMs: 60_000 })
-    }
+    await consumeRateLimit(`sign-up:ip:${await getClientIp()}`, { max: 5, windowMs: 60_000 })
     if (await isUsernameTaken(body.username)) {
       throw new ValidationError({ username: ['That username is taken'] })
     }
@@ -95,12 +91,10 @@ export const signInWithGoogleAction = async (nextPath: string): Promise<ActionRe
     if (!isGoogleAuthEnabled()) {
       return { ok: false, code: 'VALIDATION', message: 'Google sign-in is not available.' }
     }
-    if (isRateLimitEnabled()) {
-      await consumeRateLimit(`google-sign-in:ip:${await getClientIp()}`, {
-        max: 20,
-        windowMs: 60_000,
-      })
-    }
+    await consumeRateLimit(`google-sign-in:ip:${await getClientIp()}`, {
+      max: 20,
+      windowMs: 60_000,
+    })
     const { url } = await auth.api.signInSocial({
       body: {
         provider: 'google',
@@ -137,11 +131,9 @@ export const requestPasswordResetAction = async (
 ): Promise<ActionResult<null>> => {
   try {
     const body = parseInput(requestPasswordResetInput, input)
-    if (isRateLimitEnabled()) {
-      const ip = await getClientIp()
-      await consumeRateLimit(`password-reset:ip:${ip}`, { max: 10, windowMs: 60_000 })
-      await consumeRateLimit(`password-reset:email:${body.email}`, { max: 3, windowMs: 60_000 })
-    }
+    const ip = await getClientIp()
+    await consumeRateLimit(`password-reset:ip:${ip}`, { max: 10, windowMs: 60_000 })
+    await consumeRateLimit(`password-reset:email:${body.email}`, { max: 3, windowMs: 60_000 })
     await auth.api.requestPasswordReset({
       body: { email: body.email, redirectTo: ROUTE_RESET_PASSWORD },
     })
@@ -159,12 +151,10 @@ export const resetPasswordAction = async (
 ): Promise<ActionResult<null>> => {
   try {
     const body = parseInput(resetPasswordInput, input)
-    if (isRateLimitEnabled()) {
-      await consumeRateLimit(`reset-password:ip:${await getClientIp()}`, {
-        max: 10,
-        windowMs: 60_000,
-      })
-    }
+    await consumeRateLimit(`reset-password:ip:${await getClientIp()}`, {
+      max: 10,
+      windowMs: 60_000,
+    })
     await auth.api.resetPassword({
       body: { token: body.token, newPassword: body.password },
       headers: await headers(),
@@ -191,9 +181,7 @@ export const resetPasswordAction = async (
 export const resendVerificationAction = async (): Promise<ActionResult<null>> => {
   try {
     const user = await getCurrentUser()
-    if (isRateLimitEnabled()) {
-      await consumeRateLimit(`resend-verification:user:${user.id}`, { max: 3, windowMs: 60_000 })
-    }
+    await consumeRateLimit(`resend-verification:user:${user.id}`, { max: 3, windowMs: 60_000 })
     await auth.api.sendVerificationEmail({
       body: { email: user.email },
       headers: await headers(),
@@ -216,11 +204,9 @@ export const changePasswordAction = async (
   input: ChangePasswordInput,
 ): Promise<ActionResult<null>> => {
   try {
-    const body = parseInput(changePasswordInput, input)
     const viewer = await requireUser()
-    if (isRateLimitEnabled()) {
-      await consumeRateLimit(`change-password:user:${viewer.id}`, { max: 5, windowMs: 60_000 })
-    }
+    const body = parseInput(changePasswordInput, input)
+    await consumeRateLimit(`change-password:user:${viewer.id}`, { max: 5, windowMs: 60_000 })
     await auth.api.changePassword({
       body: {
         currentPassword: body.currentPassword,
@@ -255,14 +241,12 @@ export const changePasswordAction = async (
  */
 export const changeEmailAction = async (input: ChangeEmailInput): Promise<ActionResult<null>> => {
   try {
-    const body = parseInput(changeEmailInput, input)
     const user = await getCurrentUser()
+    const body = parseInput(changeEmailInput, input)
     if (body.newEmail === user.email) {
       throw new ValidationError({ newEmail: ['That is already your email address'] })
     }
-    if (isRateLimitEnabled()) {
-      await consumeRateLimit(`change-email:user:${user.id}`, { max: 3, windowMs: 60_000 })
-    }
+    await consumeRateLimit(`change-email:user:${user.id}`, { max: 3, windowMs: 60_000 })
     await auth.api.changeEmail({
       body: { newEmail: body.newEmail, callbackURL: ROUTE_SETTINGS },
       headers: await headers(),
@@ -281,9 +265,7 @@ export const changeEmailAction = async (input: ChangeEmailInput): Promise<Action
 export const revokeSessionAction = async (id: string): Promise<ActionResult<null>> => {
   try {
     const viewer = await requireUser()
-    if (isRateLimitEnabled()) {
-      await consumeRateLimit(`revoke-session:user:${viewer.id}`, { max: 20, windowMs: 60_000 })
-    }
+    await consumeRateLimit(`revoke-session:user:${viewer.id}`, { max: 20, windowMs: 60_000 })
     await revokeSession(id)
     refresh()
     return { ok: true, data: null }
@@ -296,9 +278,7 @@ export const revokeSessionAction = async (id: string): Promise<ActionResult<null
 export const revokeOtherSessionsAction = async (): Promise<ActionResult<null>> => {
   try {
     const viewer = await requireUser()
-    if (isRateLimitEnabled()) {
-      await consumeRateLimit(`revoke-sessions:user:${viewer.id}`, { max: 5, windowMs: 60_000 })
-    }
+    await consumeRateLimit(`revoke-sessions:user:${viewer.id}`, { max: 5, windowMs: 60_000 })
     await revokeOtherSessions()
     refresh()
     return { ok: true, data: null }
@@ -312,11 +292,9 @@ export const deleteAccountAction = async (
   input: DeleteAccountInput,
 ): Promise<ActionResult<null>> => {
   try {
-    const body = parseInput(deleteAccountInput, input)
     const viewer = await requireUser()
-    if (isRateLimitEnabled()) {
-      await consumeRateLimit(`delete-account:user:${viewer.id}`, { max: 3, windowMs: 60_000 })
-    }
+    const body = parseInput(deleteAccountInput, input)
+    await consumeRateLimit(`delete-account:user:${viewer.id}`, { max: 3, windowMs: 60_000 })
     await auth.api.deleteUser({ body: { password: body.password }, headers: await headers() })
     refresh()
     return { ok: true, data: null }

@@ -1,9 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
-  ROUTE_ADMIN,
   ROUTE_POST_DETAILS,
   ROUTE_POST_EDIT,
-  ROUTE_POSTS_MINE,
   isPrivateRoute,
   isPublicRoute,
   loginPath,
@@ -36,25 +34,15 @@ describe('route helpers', () => {
     for (const path of [
       '/posts/new',
       '/posts/mine',
+      '/posts/mine/',
       '/posts/1/2/edit',
       '/dashboard',
       '/admin',
+      '/admin/users',
       '/anything',
     ]) {
       expect(isPrivateRoute(path)).toBe(true)
     }
-  })
-
-  it('keeps the own-posts page private', () => {
-    expect(ROUTE_POSTS_MINE).toBe('/posts/mine')
-    expect(isPrivateRoute(ROUTE_POSTS_MINE)).toBe(true)
-    expect(isPrivateRoute('/posts/mine/')).toBe(true)
-  })
-
-  it('keeps the admin area private, subpaths included', () => {
-    expect(ROUTE_ADMIN).toBe('/admin')
-    expect(isPrivateRoute(ROUTE_ADMIN)).toBe(true)
-    expect(isPrivateRoute('/admin/users')).toBe(true)
   })
 
   it('builds a login path that carries the return target', () => {

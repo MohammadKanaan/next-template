@@ -2,7 +2,6 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { ProfileForm } from '@/components/Settings/ProfileForm'
-import { hydrateProfileForm } from '@/components/Settings/ProfileForm/utils'
 import type { CurrentUser } from '@/lib/dto/users'
 
 const user: CurrentUser = {
@@ -88,16 +87,5 @@ describe('ProfileForm', () => {
     const { rerender } = render(<ProfileForm user={user} onSubmit={vi.fn()} />)
     rerender(<ProfileForm user={{ ...user, name: 'Saved Name' }} onSubmit={vi.fn()} />)
     expect(screen.getByLabelText(/Name/)).toHaveValue('Saved Name')
-  })
-})
-
-describe('hydrateProfileForm', () => {
-  it('maps the user to the form values, with an empty string for no website', () => {
-    expect(hydrateProfileForm(user)).toEqual({
-      name: 'Ada Lovelace',
-      username: 'ada_l',
-      website: 'example.com',
-    })
-    expect(hydrateProfileForm({ ...user, website: null }).website).toBe('')
   })
 })

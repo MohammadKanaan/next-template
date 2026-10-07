@@ -9,11 +9,19 @@ type HarnessProps = {
   onChange?: (value: string[]) => void
   error?: string
   maxTags?: number
+  maxLength?: number
   normalize?: (raw: string) => string
 }
 
 /** TagsInput is controlled; this holds the value the way a form would. */
-const Harness = ({ initial = [], onChange, error, maxTags, normalize }: HarnessProps) => {
+const Harness = ({
+  initial = [],
+  onChange,
+  error,
+  maxTags,
+  maxLength,
+  normalize,
+}: HarnessProps) => {
   const [value, setValue] = useState(initial)
   return (
     <TagsInput
@@ -21,6 +29,7 @@ const Harness = ({ initial = [], onChange, error, maxTags, normalize }: HarnessP
       value={value}
       error={error}
       maxTags={maxTags}
+      maxLength={maxLength}
       normalize={normalize}
       onChange={(next) => {
         setValue(next)
@@ -62,6 +71,20 @@ describe('TagsInput', () => {
     await userEvent.click(screen.getByLabelText('Tags'))
     await userEvent.paste('b, c ,,d')
     expect(onChange).toHaveBeenLastCalledWith(['a', 'b', 'c', 'd'])
+  })
+
+  it('applies maxLength to each tag, not to a pasted list as a whole', async () => {
+    const onChange = vi.fn()
+    render(<Harness maxLength={10} onChange={onChange} />)
+    await userEvent.click(screen.getByLabelText('Tags'))
+    await userEvent.paste('typescript, react, nextjs, a-tag-that-is-too-long')
+    expect(onChange).toHaveBeenLastCalledWith(['typescript', 'react', 'nextjs', 'a-tag-that'])
+  })
+
+  it('stops a typed tag at maxLength', async () => {
+    render(<Harness maxLength={4} />)
+    await userEvent.type(screen.getByLabelText('Tags'), 'abcdef')
+    expect(screen.getByLabelText('Tags')).toHaveValue('abcd')
   })
 
   it('adds what is typed when the field loses focus', async () => {

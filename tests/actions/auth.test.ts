@@ -393,6 +393,13 @@ describe('account actions', () => {
       expect(await changePasswordAction(input)).toMatchObject({ ok: false, code: 'UNAUTHORIZED' })
     })
 
+    it('answers UNAUTHORIZED before looking at the input when signed out', async () => {
+      expect(await changePasswordAction({ currentPassword: '', newPassword: '' })).toMatchObject({
+        ok: false,
+        code: 'UNAUTHORIZED',
+      })
+    })
+
     it('validates the new password', async () => {
       await signedInUser()
       const result = await changePasswordAction({ ...input, newPassword: 'short' })
@@ -450,6 +457,13 @@ describe('account actions', () => {
 
     it('requires a session', async () => {
       expect(await changeEmailAction({ newEmail: 'x@example.com' })).toMatchObject({
+        ok: false,
+        code: 'UNAUTHORIZED',
+      })
+    })
+
+    it('answers UNAUTHORIZED before looking at the input when signed out', async () => {
+      expect(await changeEmailAction({ newEmail: 'nope' })).toMatchObject({
         ok: false,
         code: 'UNAUTHORIZED',
       })
@@ -543,6 +557,13 @@ describe('account actions', () => {
   describe('deleteAccountAction', () => {
     it('requires a session', async () => {
       expect(await deleteAccountAction({ password: TEST_PASSWORD })).toMatchObject({
+        ok: false,
+        code: 'UNAUTHORIZED',
+      })
+    })
+
+    it('answers UNAUTHORIZED before looking at the input when signed out', async () => {
+      expect(await deleteAccountAction({ password: '' })).toMatchObject({
         ok: false,
         code: 'UNAUTHORIZED',
       })

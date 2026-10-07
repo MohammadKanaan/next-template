@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { RateLimitedError } from '@/lib/data/errors'
 import { consumeRateLimit, getClientIp } from '@/lib/data/rateLimit'
 import { getRedis } from '@/lib/server/redis'
@@ -19,10 +19,22 @@ const consume = async (key: string, times: number) => {
 }
 
 describe('consumeRateLimit', () => {
-  beforeEach(resetRedis)
+  beforeEach(async () => {
+    await resetRedis()
+    vi.stubEnv('NODE_ENV', 'production')
+  })
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
   afterAll(async () => {
     await resetRedis()
     await getRedis().quit()
+  })
+
+  it('counts nothing outside production, like Better Auth’s own limiter', async () => {
+    vi.stubEnv('NODE_ENV', 'development')
+    await expect(consume('k', rule.max + 1)).resolves.toBeUndefined()
+    expect(await getRedis().get('ratelimit:k')).toBeNull()
   })
 
   it('allows max attempts and throws on the next one', async () => {

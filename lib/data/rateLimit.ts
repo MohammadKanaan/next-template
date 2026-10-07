@@ -10,19 +10,18 @@ export type RateLimitRule = { max: number; windowMs: number }
 
 const KEY_PREFIX = 'ratelimit:'
 
-/** Mirrors Better Auth's own default: its HTTP rate limiter is only on in production. */
-export const isRateLimitEnabled = () => {
-  return process.env.NODE_ENV === 'production'
-}
-
 /**
  * Fixed-window limiter shared by every instance through Redis. Counts one attempt for `key`;
  * throws `RateLimitedError` once more than `rule.max` attempts land in the current window. The
  * window starts at the first attempt (`PEXPIRE … NX` only sets the expiry on a fresh key), and
  * Redis drops the key when it ends. If Redis is unreachable the attempt is allowed and the failure
- * is logged: an outage must not lock everyone out of signing in.
+ * is logged: an outage must not lock everyone out of signing in. Outside production it counts
+ * nothing, mirroring Better Auth's own HTTP limiter.
  */
 export const consumeRateLimit = async (key: string, rule: RateLimitRule): Promise<void> => {
+  if (process.env.NODE_ENV !== 'production') {
+    return
+  }
   let count: number
   try {
     const results = await getRedis()
