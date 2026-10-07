@@ -82,6 +82,41 @@ describe('uploads DAL', () => {
       const rows = await db.upload.findMany({ where: { id: { in: [a.uploadId, b.uploadId] } } })
       expect(new Set(rows.map((row) => row.key)).size).toBe(2)
     })
+
+    it('reclaims the oldest pending uploads beyond the cap', async () => {
+      const user = await createUser({})
+      await signInAs(user)
+      const created: string[] = []
+      for (let i = 0; i < 4; i += 1) {
+        const ticket = await createAvatarUpload(input)
+        created.push((await db.upload.findUniqueOrThrow({ where: { id: ticket.uploadId } })).key)
+      }
+
+      expect(await db.upload.count({ where: { userId: user.id } })).toBe(3)
+      expect(deleteObject).toHaveBeenCalledTimes(1)
+      expect(deleteObject).toHaveBeenCalledWith(created[0])
+      const remaining = await db.upload.findMany({
+        where: { userId: user.id },
+        orderBy: { createdAt: 'asc' },
+      })
+      expect(remaining.map((row) => row.key)).toEqual(created.slice(1))
+    })
+
+    it("leaves another user's pending uploads alone", async () => {
+      const a = await createUser({})
+      const b = await createUser({})
+      await signInAs(a)
+      await createAvatarUpload(input)
+      await createAvatarUpload(input)
+      await createAvatarUpload(input)
+      await signInAs(b)
+      await createAvatarUpload(input)
+      await signInAs(a)
+      await createAvatarUpload(input)
+
+      expect(await db.upload.count({ where: { userId: b.id } })).toBe(1)
+      expect(await db.upload.count({ where: { userId: a.id } })).toBe(3)
+    })
   })
 
   describe('attachAvatar', () => {

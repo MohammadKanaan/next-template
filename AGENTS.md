@@ -516,7 +516,9 @@ records the result.
   `user.image`, delete the previous avatar's row and queue `delete-object` for its object →
   `invalidateTags(userTag)`).
 - Orphans: the hourly `cleanup` job deletes `pending` uploads older than 24 hours with their
-  objects. `createAvatarUploadAction` is rate limited per user so pending rows stay bounded.
+  objects, looping through batches (at most 20 per run). `createAvatarUpload` keeps at most
+  `MAX_PENDING_AVATAR_UPLOADS` (3) pending avatar uploads per user by reclaiming the oldest, and
+  `createAvatarUploadAction` is rate limited per user, so pending rows stay bounded.
 - Client: `lib/client/uploads.ts` (`uploadFile`) is the one facade that talks to a non-app URL.
   `AvatarUploader` on `/settings` runs ticket action → `uploadFile` → attach action.
 - Avatars render through `UserAvatar` (shadcn `Avatar`) with a plain `<img>`, so no `next/image`

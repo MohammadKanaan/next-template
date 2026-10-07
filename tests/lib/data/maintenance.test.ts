@@ -76,16 +76,41 @@ describe('maintenance DAL', () => {
       expect(keys).toEqual(['fresh-pending', 'old-attached'])
     })
 
-    it('handles at most one batch per run, oldest first, and the next run continues', async () => {
+    it('keeps deleting while batches come back full', async () => {
       const user = await createUser({})
-      await upload('c-newest', user.id, 'pending', 26 * hour)
-      await upload('a-oldest', user.id, 'pending', 30 * hour)
-      await upload('b-middle', user.id, 'pending', 28 * hour)
+      for (let i = 0; i < 5; i += 1) {
+        await upload(`stale-${i}`, user.id, 'pending', 30 * hour)
+      }
 
-      expect(await deleteStalePendingUploads(2)).toEqual({ uploads: 2 })
-      expect((await db.upload.findMany()).map((row) => row.key)).toEqual(['c-newest'])
-      expect(await deleteStalePendingUploads(2)).toEqual({ uploads: 1 })
+      expect(await deleteStalePendingUploads(2)).toEqual({ uploads: 5 })
       expect(await db.upload.count()).toBe(0)
+    })
+
+    it('stops after the maximum number of batches, oldest first', async () => {
+      const user = await createUser({})
+      for (let i = 0; i < 22; i += 1) {
+        await upload(`k${String(i).padStart(2, '0')}`, user.id, 'pending', (60 - i) * hour)
+      }
+
+      expect(await deleteStalePendingUploads(1)).toEqual({ uploads: 20 })
+
+      expect(vi.mocked(deleteObject).mock.calls.map(([key]) => key)).toEqual(
+        Array.from({ length: 20 }, (_, i) => `k${String(i).padStart(2, '0')}`),
+      )
+      expect((await db.upload.findMany({ orderBy: { key: 'asc' } })).map((row) => row.key)).toEqual(
+        ['k20', 'k21'],
+      )
+    })
+
+    it('does not retry the same failing rows for every batch', async () => {
+      const user = await createUser({})
+      await upload('a-broken', user.id, 'pending', 30 * hour)
+      await upload('b-broken', user.id, 'pending', 29 * hour)
+      vi.mocked(deleteObject).mockRejectedValue(new Error('storage down'))
+
+      expect(await deleteStalePendingUploads(2)).toEqual({ uploads: 0 })
+
+      expect(deleteObject).toHaveBeenCalledTimes(2)
     })
 
     it('keeps the row when the object cannot be deleted, and carries on', async () => {

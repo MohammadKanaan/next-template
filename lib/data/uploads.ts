@@ -21,10 +21,30 @@ import { currentUserSelect } from './users'
 
 const log = logger.child({ module: 'uploads' })
 
+/**
+ * Pending avatar uploads one user may hold. Tickets are cheap and every object may be 2 MB, so the
+ * per-user backlog is bounded here (the oldest are reclaimed), not only by the hourly cleanup.
+ */
+const MAX_PENDING_AVATAR_UPLOADS = 3
+
 /** Signed in → returns a presigned POST for a new avatar object and the pending upload's id. */
 export const createAvatarUpload = async (input: CreateAvatarUploadInput): Promise<UploadTicket> => {
   const viewer = await requireUser()
   const { contentType, size } = parseInput(createAvatarUploadInput, input)
+
+  const pending = await db.upload.findMany({
+    where: { userId: viewer.id, purpose: 'avatar', status: 'pending' },
+    select: { id: true, key: true },
+    orderBy: { createdAt: 'asc' },
+  })
+  // Keep room for the new ticket. Object first, so a storage failure leaves the row for the
+  // cleanup job.
+  const surplus = pending.length - (MAX_PENDING_AVATAR_UPLOADS - 1)
+  for (const stale of pending.slice(0, Math.max(0, surplus))) {
+    await deleteObject(stale.key)
+    await db.upload.delete({ where: { id: stale.id } })
+  }
+
   const key = `avatars/${viewer.id}/${randomUUID()}`
   const upload = await db.upload.create({
     data: { key, userId: viewer.id, purpose: 'avatar', contentType, size },
