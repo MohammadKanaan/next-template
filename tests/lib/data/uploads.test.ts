@@ -10,7 +10,11 @@ import {
 } from '@/lib/data/errors'
 import { attachAvatar, createAvatarUpload } from '@/lib/data/uploads'
 import { getViewer } from '@/lib/data/users'
-import { AVATAR_MAX_SIZE, AVATAR_UPLOAD_TICKET_SECONDS } from '@/lib/dto/uploads'
+import {
+  AVATAR_MAX_SIZE,
+  AVATAR_UPLOAD_TICKET_SECONDS,
+  UPLOAD_OBJECT_GRACE_SECONDS,
+} from '@/lib/dto/uploads'
 import { enqueue } from '@/lib/server/queue'
 import { createUploadTicket, deleteObject, headObject } from '@/lib/server/storage'
 import { createUser, resetDatabase, signInAs, signOut } from '../../helpers/server'
@@ -98,7 +102,25 @@ describe('uploads DAL', () => {
       expect(deleteObject).not.toHaveBeenCalled()
     })
 
-    it('reclaims expired tickets before counting', async () => {
+    it('neither counts nor reclaims rows whose ticket expired inside the grace period', async () => {
+      const user = await createUser({})
+      await signInAs(user)
+      for (let i = 0; i < 3; i += 1) {
+        await createAvatarUpload(input)
+      }
+      // The ticket is dead but a slow upload that started just before expiry may still land.
+      await db.upload.updateMany({
+        where: { userId: user.id },
+        data: { createdAt: new Date(Date.now() - (AVATAR_UPLOAD_TICKET_SECONDS + 1) * 1000) },
+      })
+
+      await createAvatarUpload(input)
+
+      expect(deleteObject).not.toHaveBeenCalled()
+      expect(await db.upload.count({ where: { userId: user.id } })).toBe(4)
+    })
+
+    it('reclaims rows once the ticket and the grace period have passed', async () => {
       const user = await createUser({})
       await signInAs(user)
       const keys: string[] = []
@@ -106,9 +128,10 @@ describe('uploads DAL', () => {
         const ticket = await createAvatarUpload(input)
         keys.push((await db.upload.findUniqueOrThrow({ where: { id: ticket.uploadId } })).key)
       }
+      const age = (AVATAR_UPLOAD_TICKET_SECONDS + UPLOAD_OBJECT_GRACE_SECONDS + 1) * 1000
       await db.upload.updateMany({
         where: { userId: user.id },
-        data: { createdAt: new Date(Date.now() - (AVATAR_UPLOAD_TICKET_SECONDS + 1) * 1000) },
+        data: { createdAt: new Date(Date.now() - age) },
       })
 
       const ticket = await createAvatarUpload(input)
@@ -214,7 +237,13 @@ describe('uploads DAL', () => {
 
       await attachAvatar(second.id)
 
-      expect(deleteJobs()).toEqual([['delete-object', { key: first.key }]])
+      expect(deleteJobs()).toEqual([
+        [
+          'delete-object',
+          { key: first.key },
+          { startAfter: AVATAR_UPLOAD_TICKET_SECONDS + UPLOAD_OBJECT_GRACE_SECONDS },
+        ],
+      ])
       const rows = await db.upload.findMany({ where: { userId: user.id } })
       expect(rows.map((row) => row.id)).toEqual([second.id])
     })

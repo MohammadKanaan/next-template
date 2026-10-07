@@ -5,6 +5,7 @@ import { auth, getSessionUser, requireAdmin, requireUser } from '@/lib/data/auth
 import { db } from '@/lib/data/db'
 import { ForbiddenError, UnauthorizedError } from '@/lib/data/errors'
 import { getViewer } from '@/lib/data/users'
+import { AVATAR_UPLOAD_TICKET_SECONDS, UPLOAD_OBJECT_GRACE_SECONDS } from '@/lib/dto/uploads'
 import { enqueue } from '@/lib/server/queue'
 import { getRedis } from '@/lib/server/redis'
 import { cookieJar } from '../../helpers/cookies'
@@ -282,12 +283,15 @@ describe('DAL auth', () => {
       expect(await db.user.count({ where: { id: user.id } })).toBe(0)
       expect(await db.post.findMany({ select: { title: true } })).toEqual([{ title: 'Theirs' }])
       expect(await db.session.count({ where: { userId: user.id } })).toBe(0)
-      const deleted = vi
-        .mocked(enqueue)
-        .mock.calls.filter(([name]) => name === 'delete-object')
-        .map(([, payload]) => (payload as { key: string }).key)
-        .sort()
+      const jobs = vi.mocked(enqueue).mock.calls.filter(([name]) => name === 'delete-object')
+      const deleted = jobs.map(([, payload]) => (payload as { key: string }).key).sort()
       expect(deleted).toEqual(['avatars/a/1', 'avatars/a/2'])
+      // Delayed past every ticket's lifetime, so an upload still in flight cannot be orphaned.
+      for (const [, , options] of jobs) {
+        expect(options).toEqual({
+          startAfter: AVATAR_UPLOAD_TICKET_SECONDS + UPLOAD_OBJECT_GRACE_SECONDS,
+        })
+      }
     })
 
     it('drops the cached post lists and viewer', async () => {

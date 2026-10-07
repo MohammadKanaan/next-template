@@ -279,8 +279,8 @@ sync.
 system DAL `lib/data/maintenance.ts`, importable only from `jobs/`.
 
 **Uploads.** The server issues a presigned POST and records an `Upload` row; the browser sends the
-file straight to storage; attaching re-checks the object, updates `user.image`, and queues deletion
-of the replaced avatar. Abandoned uploads are cleaned up hourly.
+file straight to storage; attaching re-checks the object, updates `user.image`, and queues a delayed
+deletion of the replaced avatar (after its ticket can no longer be used). Abandoned uploads are cleaned up hourly.
 
 **Route Handlers and facade.** `GET /api/v1/posts` is called by a client component (`/posts/csr`)
 through `lib/client/posts.ts`, which parses the response with the shared schema. The write endpoints

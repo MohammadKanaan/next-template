@@ -204,7 +204,8 @@ docs/DECISIONS.md        # Framework and library choices, with reasons
     same response and no email, so it cannot enumerate accounts; the action itself only rejects the
     user's own address.
   - **Delete account:** `user.deleteUser` is enabled. `beforeDelete` queues `delete-object` for each
-    of the user's upload keys (the rows cascade, the objects would be orphaned); `afterDelete`
+    of the user's upload keys (the rows cascade, the objects would be orphaned), delayed with
+    `startAfter` past the ticket lifetime plus grace so an in-flight upload cannot outlive its job; `afterDelete`
     invalidates `POSTS_TAG` and the user's tag. Posts, sessions, accounts and uploads cascade.
   - **Sessions:** `lib/data/sessions.ts` (`listSessions`, `revokeSession`, `revokeOtherSessions`)
     works on the plain `sessions` rows, so deleting a row ends that session. `SessionUser` carries
@@ -483,8 +484,8 @@ Background work runs on pg-boss (the same PostgreSQL, `pgboss` schema) in a sepa
 
 - **Definitions** (`jobs/definitions.ts`): one entry per job with its name, Zod payload schema,
   queue `options` (retries, backoff, expiry) and an optional `cron`. Payload types come from
-  `z.infer` (`JobPayload<'send-email'>`). Today: `send-email`, `delete-object`, `cleanup` (hourly). `delete-object` is also queued when an
-  account is deleted. `send-email` sets `deleteAfterSeconds: 3600`: its payloads carry live links
+  `z.infer` (`JobPayload<'send-email'>`). Today: `send-email`, `delete-object`, `cleanup` (hourly). `delete-object` is also queued, delayed, when an
+  account is deleted or an avatar replaced. `send-email` sets `deleteAfterSeconds: 3600`: its payloads carry live links
   that expire after an hour, so finished jobs must not keep them for pg-boss's 7-day default.
 - **Enqueue** (`lib/server/queue.ts`): `enqueue(name, payload)` validates the payload with the job's
   schema and sends it through a lazily started send-only pg-boss instance (`migrate: false`,
@@ -535,14 +536,17 @@ records the result.
   row → ticket) and `attachAvatar` (signed in → exists → owner, i.e. 401/404/403 → `headObject`
   re-checks size and type, deleting an object that broke the rules (the row stays `pending` for the
   cleanup, because the ticket may still be valid) → mark `attached`, set
-  `user.image`, delete the previous avatar's row and queue `delete-object` for its object →
+  `user.image`, delete the previous avatar's row and queue a delayed `delete-object` for its object (see Orphans) →
   `invalidateTags(userTag)`).
 - Orphans: the hourly `cleanup` job deletes `pending` uploads older than 24 hours with their
   objects, looping through batches (at most 20 per run). Tickets last `AVATAR_UPLOAD_TICKET_SECONDS`
-  (300, `lib/dto/uploads.ts`), and a row is never dropped while its ticket can still be used (an
-  object uploaded to a key with no row would be invisible to the cleanup). `createAvatarUpload`
-  reclaims only pending uploads whose ticket has expired; when the user still holds
-  `MAX_PENDING_AVATAR_UPLOADS` (3) live ones it throws `RateLimitedError`. `createAvatarUploadAction`
+  (300, `lib/dto/uploads.ts`). An object is only deleted after its ticket plus
+  `UPLOAD_OBJECT_GRACE_SECONDS` (600, same file) have passed, because S3 checks expiry when the
+  upload starts and an object re-uploaded to a key with no row would be invisible to every cleanup:
+  the `delete-object` jobs for replaced avatars and deleted accounts are queued with `startAfter`,
+  and `createAvatarUpload` reclaims (object, then row) only pending uploads older than that same
+  cut-off. Rows past the ticket but inside the grace period are neither counted nor touched. When the
+  user holds `MAX_PENDING_AVATAR_UPLOADS` (3) live tickets it throws `RateLimitedError`. `createAvatarUploadAction`
   is rate limited per user too, so pending rows stay bounded.
 - Client: `lib/client/uploads.ts` (`uploadFile`) is the one facade that talks to a non-app URL.
   `AvatarUploader` on `/settings` runs ticket action → `uploadFile` → attach action.

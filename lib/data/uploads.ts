@@ -8,6 +8,7 @@ import {
   type CreateAvatarUploadInput,
   uploadIdSchema,
   type UploadTicket,
+  UPLOAD_OBJECT_GRACE_SECONDS,
 } from '@/lib/dto/uploads'
 import type { CurrentUser } from '@/lib/dto/users'
 import { invalidateTags } from '@/lib/server/cache'
@@ -31,16 +32,30 @@ const log = logger.child({ module: 'uploads' })
 /**
  * Pending avatar uploads one user may hold with a ticket that can still be used. Tickets are cheap
  * and every object may be 2 MB, so the per-user backlog is bounded here, not only by the hourly
- * cleanup. A row is never dropped while its ticket is valid: the browser could still upload to the
- * key, and an object without a row is invisible to the cleanup, avatar replacement and account
- * deletion. Past the cap, the user waits for a ticket to expire or finishes one.
+ * cleanup. Past the cap, the user waits for a ticket to expire or finishes one.
  */
 const MAX_PENDING_AVATAR_UPLOADS = 3
 
 /**
+ * Queues the deletion of an avatar object only once its ticket can no longer be used (the ticket's
+ * lifetime plus `UPLOAD_OBJECT_GRACE_SECONDS`): until then the browser could still upload to the key,
+ * and an object re-uploaded after its row and delete job are gone would never be deleted. pg-boss
+ * reads a numeric `startAfter` as seconds.
+ */
+const deleteObjectAfterTicket = (key: string) => {
+  return enqueue(
+    'delete-object',
+    { key },
+    { startAfter: AVATAR_UPLOAD_TICKET_SECONDS + UPLOAD_OBJECT_GRACE_SECONDS },
+  )
+}
+
+/**
  * Signed in → returns a presigned POST for a new avatar object and the pending upload's id. Pending
- * uploads whose ticket has expired are reclaimed first (object, then row); when the viewer still
- * holds `MAX_PENDING_AVATAR_UPLOADS` live ones, the request is refused with `RateLimitedError`.
+ * uploads whose ticket expired more than `UPLOAD_OBJECT_GRACE_SECONDS` ago are reclaimed first
+ * (object, then row). Rows in between (ticket expired, upload possibly still arriving) are neither
+ * counted nor touched; the hourly cleanup or a later ticket gets them. When the viewer still holds
+ * `MAX_PENDING_AVATAR_UPLOADS` live ones, the request is refused with `RateLimitedError`.
  */
 export const createAvatarUpload = async (input: CreateAvatarUploadInput): Promise<UploadTicket> => {
   const viewer = await requireUser()
@@ -51,14 +66,17 @@ export const createAvatarUpload = async (input: CreateAvatarUploadInput): Promis
     select: { id: true, key: true, createdAt: true },
     orderBy: { createdAt: 'asc' },
   })
-  const expiredBefore = Date.now() - AVATAR_UPLOAD_TICKET_SECONDS * 1000
-  const expired = pending.filter((upload) => upload.createdAt.getTime() < expiredBefore)
+  const now = Date.now()
+  const liveSince = now - AVATAR_UPLOAD_TICKET_SECONDS * 1000
+  const reclaimBefore = now - (AVATAR_UPLOAD_TICKET_SECONDS + UPLOAD_OBJECT_GRACE_SECONDS) * 1000
+  const live = pending.filter((upload) => upload.createdAt.getTime() >= liveSince)
+  const expired = pending.filter((upload) => upload.createdAt.getTime() < reclaimBefore)
   // Object first, so a storage failure leaves the row for the cleanup job.
   for (const stale of expired) {
     await deleteObject(stale.key)
     await db.upload.delete({ where: { id: stale.id } })
   }
-  if (pending.length - expired.length >= MAX_PENDING_AVATAR_UPLOADS) {
+  if (live.length >= MAX_PENDING_AVATAR_UPLOADS) {
     throw new RateLimitedError('Finish or wait for your pending uploads before starting another')
   }
 
@@ -100,7 +118,8 @@ const requireOwnUpload = async (uploadId: string) => {
 /**
  * Makes a finished upload the viewer's avatar. The stored object is checked against the limits
  * (the presigned policy should already have enforced them); the replaced avatar's object is
- * removed by a job, because the bucket call is slow and may fail independently.
+ * removed by a delayed job (see `deleteObjectAfterTicket`), because the bucket call is slow and may
+ * fail independently.
  */
 export const attachAvatar = async (uploadId: string): Promise<CurrentUser> => {
   const { viewer, upload } = await requireOwnUpload(uploadId)
@@ -148,7 +167,7 @@ export const attachAvatar = async (uploadId: string): Promise<CurrentUser> => {
   await invalidateTags(userTag(viewer.id))
   for (const { key } of replaced) {
     // The row is already gone; a failure to queue leaves an orphaned object, never a broken avatar.
-    enqueue('delete-object', { key }).catch((error) =>
+    deleteObjectAfterTicket(key).catch((error) =>
       log.error({ err: error, key }, 'old avatar not queued for deletion'),
     )
   }

@@ -4,6 +4,12 @@ export const AVATAR_CONTENT_TYPES = ['image/png', 'image/jpeg', 'image/webp'] as
 export const AVATAR_MAX_SIZE = 2 * 1024 * 1024
 /** Seconds an avatar upload ticket (presigned POST) stays valid. */
 export const AVATAR_UPLOAD_TICKET_SECONDS = 300
+/**
+ * How long after a ticket expires an object is still treated as "may still be arriving": S3 checks
+ * a presigned POST's expiry when the request starts, so a slow upload begun just before expiry can
+ * land afterwards. Nothing deletes an avatar object (or its row) before the ticket plus this grace.
+ */
+export const UPLOAD_OBJECT_GRACE_SECONDS = 600
 
 export const createAvatarUploadInput = z.object({
   contentType: z.enum(AVATAR_CONTENT_TYPES, { error: 'Use a PNG, JPEG, or WebP image' }),

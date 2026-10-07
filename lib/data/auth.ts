@@ -7,6 +7,7 @@ import { headers } from 'next/headers'
 import { cache } from 'react'
 import { loginPath } from '@/lib/constants-routes'
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, signUpInput } from '@/lib/dto/auth'
+import { AVATAR_UPLOAD_TICKET_SECONDS, UPLOAD_OBJECT_GRACE_SECONDS } from '@/lib/dto/uploads'
 import type { JobPayload } from '@/jobs/definitions'
 import { roleSchema, type Role } from '@/lib/dto/users'
 import { deriveUsername } from '@/lib/username'
@@ -154,14 +155,22 @@ export const auth = betterAuth({
     deleteUser: {
       enabled: true,
       // Upload rows go with the user (cascade) but their objects would stay in the bucket, so the
-      // keys are read and queued for deletion before the rows disappear.
+      // keys are read and queued for deletion before the rows disappear. The jobs are delayed past
+      // every ticket's lifetime plus the grace period: an object uploaded through a still-valid
+      // ticket after the rows are gone would otherwise be orphaned.
       beforeDelete: async (user) => {
         const uploads = await db.upload.findMany({
           where: { userId: user.id },
           select: { key: true },
         })
         const results = await Promise.allSettled(
-          uploads.map(({ key }) => enqueue('delete-object', { key })),
+          uploads.map(({ key }) =>
+            enqueue(
+              'delete-object',
+              { key },
+              { startAfter: AVATAR_UPLOAD_TICKET_SECONDS + UPLOAD_OBJECT_GRACE_SECONDS },
+            ),
+          ),
         )
         for (const result of results) {
           if (result.status === 'rejected') {
