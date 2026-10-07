@@ -270,6 +270,8 @@ docs/DECISIONS.md        # Framework and library choices, with reasons
   (`lib/data/rateLimit.ts`, Redis-backed so the limits hold across instances), because Better
   Auth's own limiter only runs in its HTTP router. It fails open: if Redis is down the attempt is
   allowed and the error is logged.
+  Content creation (`createPost`, `createComment`: 20 per minute per user) is limited inside the DAL
+  instead, because the Server Action and the REST handler both reach it.
 - Better Auth's `databaseHooks.user.update.after` invalidates the cached viewer (`user:<id>`), so
   changes made inside Better Auth (e.g. email verification) show up immediately.
 - Sessions refresh only through Server Actions or the auth route (Server Components cannot set
@@ -346,7 +348,8 @@ The posts example carries the domain patterns an app needs (all in `lib/data/pos
   (`getPost('abc')` throws `NotFoundError`), so pages pass the route param straight in.
 - Every function enforces auth itself: `requireUser()` / `requireAdmin()` plus inline record-level
   rules (e.g. a post may be changed by its author or an admin). For writes the order is signed in
-  (401) → exists (404) → allowed (403).
+  (401) → exists (404) → allowed (403). `createPost` and `createComment` also call `consumeRateLimit`
+  right after `requireUser()`, so every path to them shares the limit.
 - Failures are typed errors (see **Errors**), not return codes.
 - **Raw SQL** (`db.$queryRaw`) is for what Prisma cannot express (today: `generate_series` in
   `getPostsPerDay`). Use the tagged template only, so every value is a bound parameter; never

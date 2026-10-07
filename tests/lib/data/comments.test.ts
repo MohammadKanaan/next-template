@@ -5,6 +5,7 @@ import { db } from '@/lib/data/db'
 import {
   ForbiddenError,
   NotFoundError,
+  RateLimitedError,
   UnauthorizedError,
   ValidationError,
 } from '@/lib/data/errors'
@@ -32,7 +33,10 @@ describe('comments DAL', () => {
     await getRedis().quit()
     await db.$disconnect()
   })
-  afterEach(() => vi.restoreAllMocks())
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllEnvs()
+  })
 
   describe('createComment', () => {
     it('checks session, then input, then the post, then whether comments are open', async () => {
@@ -87,6 +91,26 @@ describe('comments DAL', () => {
       await getPost(post.id)
       await setPostStatus(post.id, 'archived')
       await expect(createComment(post.id, { body: 'late' })).rejects.toBeInstanceOf(ForbiddenError)
+    })
+
+    it('rate limits comment creation per user in production', async () => {
+      const author = await createUser({})
+      const [first, second] = [await createUser({}), await createUser({})]
+      const post = await seedPost(author.id)
+      await signInAs(first)
+      vi.stubEnv('NODE_ENV', 'production')
+      for (let n = 0; n < 20; n++) {
+        await createComment(post.id, { body: `Comment ${n}` })
+      }
+      await expect(createComment(post.id, { body: 'One too many' })).rejects.toBeInstanceOf(
+        RateLimitedError,
+      )
+      expect(await db.comment.count({ where: { userId: first.id } })).toBe(20)
+
+      await signInAs(second)
+      await expect(createComment(post.id, { body: 'Mine' })).resolves.toMatchObject({
+        body: 'Mine',
+      })
     })
   })
 

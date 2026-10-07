@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { GET, POST } from '@/app/api/v1/posts/route'
 import { db } from '@/lib/data/db'
 import { createUser, resetDatabase, signInAs } from '../../../helpers/server'
@@ -82,6 +82,7 @@ const jsonRequest = (body: unknown) => {
 
 describe('POST /api/v1/posts', () => {
   beforeEach(resetDatabase)
+  afterEach(() => vi.unstubAllEnvs())
 
   it('answers 401 without a session and creates nothing', async () => {
     const response = await POST(jsonRequest({ title: 'T', body: 'B' }))
@@ -118,6 +119,18 @@ describe('POST /api/v1/posts', () => {
       permissions: { update: true, delete: true },
     })
     expect(await db.post.count()).toBe(1)
+  })
+
+  it('answers 429 once the viewer has created too many posts in production', async () => {
+    await signInAs(await createUser({}))
+    vi.stubEnv('NODE_ENV', 'production')
+    for (let n = 0; n < 20; n++) {
+      expect((await POST(jsonRequest({ title: `Post ${n}`, body: 'Body' }))).status).toBe(201)
+    }
+    const response = await POST(jsonRequest({ title: 'One too many', body: 'Body' }))
+    expect(response.status).toBe(429)
+    expect(await response.json()).toMatchObject({ code: 'RATE_LIMITED' })
+    expect(await db.post.count()).toBe(20)
   })
 
   it('answers 422 with field errors for invalid input', async () => {

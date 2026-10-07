@@ -14,6 +14,7 @@ import { commentsTag, POSTS_TAG, postTag } from './cacheTags'
 import { db } from './db'
 import { ForbiddenError, NotFoundError, parseInput } from './errors'
 import { canViewPost, getPost } from './posts'
+import { consumeRateLimit } from './rateLimit'
 import { userProfileSelect } from './users'
 
 const COMMENTS_CACHE_TTL = 300
@@ -87,6 +88,7 @@ export const createComment = async (
   input: CreateCommentInput,
 ): Promise<Comment> => {
   const viewer = await requireUser()
+  await consumeRateLimit(`create-comment:user:${viewer.id}`, { max: 20, windowMs: 60_000 })
   const id = parseInput(idSchema, postId)
   const { body } = parseInput(createCommentInput, input)
   // Read from the database, not the cache: a post that was just archived must not take comments.

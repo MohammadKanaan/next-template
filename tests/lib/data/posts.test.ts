@@ -4,6 +4,7 @@ import { db } from '@/lib/data/db'
 import {
   ForbiddenError,
   NotFoundError,
+  RateLimitedError,
   UnauthorizedError,
   ValidationError,
 } from '@/lib/data/errors'
@@ -47,7 +48,10 @@ describe('posts DAL', () => {
     await getRedis().quit()
     await db.$disconnect()
   })
-  afterEach(() => vi.restoreAllMocks())
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllEnvs()
+  })
 
   it('lists newest first as a Page of summaries with an excerpt and author', async () => {
     const author = await createUser({ name: 'Leanne Graham' })
@@ -154,6 +158,24 @@ describe('posts DAL', () => {
 
   it('throws NotFoundError for a missing post', async () => {
     await expect(getPost(999)).rejects.toBeInstanceOf(NotFoundError)
+  })
+
+  it('rate limits post creation per user in production', async () => {
+    const [first, second] = [await createUser({}), await createUser({})]
+    await signInAs(first)
+    vi.stubEnv('NODE_ENV', 'production')
+    for (let n = 0; n < 20; n++) {
+      await createPost({ title: `Post ${n}`, body: 'Body' })
+    }
+    await expect(createPost({ title: 'One too many', body: 'Body' })).rejects.toBeInstanceOf(
+      RateLimitedError,
+    )
+    expect(await db.post.count({ where: { userId: first.id } })).toBe(20)
+
+    await signInAs(second)
+    await expect(createPost({ title: 'Mine', body: 'Body' })).resolves.toMatchObject({
+      title: 'Mine',
+    })
   })
 
   describe('input validation', () => {

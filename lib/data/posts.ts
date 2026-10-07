@@ -27,6 +27,7 @@ import { POSTS_TAG, postTag } from './cacheTags'
 import { db } from './db'
 import { escapeLike } from './escapeLike'
 import { ForbiddenError, NotFoundError, parseInput, ValidationError } from './errors'
+import { consumeRateLimit } from './rateLimit'
 import { userProfileSelect } from './users'
 
 /** Tag names, alphabetical so the order is stable. */
@@ -294,6 +295,7 @@ const replacePostTags = async (tx: Prisma.TransactionClient, postId: number, nam
 /** A new post is a draft: the author publishes it with `setPostStatus`. */
 export const createPost = async (input: CreatePostParams): Promise<PostDetail> => {
   const viewer = await requireUser()
+  await consumeRateLimit(`create-post:user:${viewer.id}`, { max: 20, windowMs: 60_000 })
   const { tags, ...data } = parseInput(createPostInput, input)
   // One transaction: the post and its tag links appear together or not at all.
   const row = await db.$transaction(async (tx) => {
