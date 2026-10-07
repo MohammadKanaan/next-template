@@ -685,6 +685,10 @@ records the result.
 - `DATABASE_URL`, `BETTER_AUTH_SECRET`, and `BETTER_AUTH_URL` live in `.env` (dev) and `.env.test`
   (tests). Both are untracked; update the `*.example` files when adding a variable.
 - `LOG_LEVEL` (optional) is read directly by `lib/server/logger.ts`, not through `serverEnv()`.
+- **Security headers** live in `next.config.ts` (`SECURITY_HEADERS`, served on every path) and
+  `poweredByHeader` is off. `frame-ancestors 'none'` is the only CSP directive (a script policy would
+  need nonces for Next's inline runtime). Changing the file calls for `bun run build` (see
+  **Verifying Changes**).
 - Server-only config (`REDIS_URL`, `RESEND_API_KEY` (optional), `EMAIL_FROM`, `S3_ENDPOINT`,
   `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_PUBLIC_URL`,
   `S3_PUBLIC_ENDPOINT` (optional: the endpoint as the browser reaches it, for presigned uploads;
