@@ -556,7 +556,9 @@ records the result.
   and `createAvatarUpload` reclaims (object, then row) only pending uploads older than that same
   cut-off. Rows past the ticket but inside the grace period are neither counted nor touched. When the
   user holds `MAX_PENDING_AVATAR_UPLOADS` (3) live tickets it throws `RateLimitedError`. `createAvatarUploadAction`
-  is rate limited per user too, so pending rows stay bounded.
+  is rate limited per user too, so pending rows stay bounded. Because those `delete-object` jobs are
+  delayed by the ticket lifetime plus grace, a replaced avatar, and the avatars of a deleted
+  account, stay readable at their public URL for about 15 minutes.
 - Client: `lib/client/uploads.ts` (`uploadFile`) is the one facade that talks to a non-app URL.
   `AvatarUploader` on `/settings` runs ticket action → `uploadFile` → attach action.
 - Avatars render through `UserAvatar` (shadcn `Avatar`) with a plain `<img>`, so no `next/image`

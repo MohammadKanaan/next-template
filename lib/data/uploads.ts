@@ -74,7 +74,8 @@ export const createAvatarUpload = async (input: CreateAvatarUploadInput): Promis
   // Object first, so a storage failure leaves the row for the cleanup job.
   for (const stale of expired) {
     await deleteObject(stale.key)
-    await db.upload.delete({ where: { id: stale.id } })
+    // Only a still-pending row: a concurrent `attachAvatar` may have just claimed it.
+    await db.upload.deleteMany({ where: { id: stale.id, status: 'pending' } })
   }
   if (live.length >= MAX_PENDING_AVATAR_UPLOADS) {
     throw new RateLimitedError('Finish or wait for your pending uploads before starting another')
@@ -133,8 +134,9 @@ export const attachAvatar = async (uploadId: string): Promise<CurrentUser> => {
   }
   if (head.size < 1 || head.size > AVATAR_MAX_SIZE || !isAvatarContentType(head.contentType)) {
     // Never keep an object that broke the rules. The row stays pending: the ticket may still be
-    // valid for another upload to this key, which the hourly cleanup removes after 24 hours, and
-    // the row keeps counting toward the pending cap until the ticket expires.
+    // valid for another upload to this key. The hourly cleanup removes it after 24 hours, and
+    // `createAvatarUpload` reclaims it sooner, once it is older than the ticket plus grace; until
+    // the ticket expires it keeps counting toward the pending cap.
     await deleteObject(upload.key)
     throw new ValidationError({ uploadId: ['The image must be a PNG, JPEG, or WebP up to 2 MB'] })
   }

@@ -281,6 +281,8 @@ system DAL `lib/data/maintenance.ts`, importable only from `jobs/`.
 **Uploads.** The server issues a presigned POST and records an `Upload` row; the browser sends the
 file straight to storage; attaching re-checks the object, updates `user.image`, and queues a delayed
 deletion of the replaced avatar (after its ticket can no longer be used). Abandoned uploads are cleaned up hourly.
+Because those deletions are delayed by the ticket lifetime plus a grace period, a replaced avatar,
+and the avatars of a deleted account, stay readable at their public URL for about 15 minutes.
 
 **Route Handlers and facade.** `GET /api/v1/posts` is called by a client component (`/posts/csr`)
 through `lib/client/posts.ts`, which parses the response with the shared schema. The write endpoints
@@ -324,9 +326,14 @@ users with search and pagination and lets an admin change another user's role; t
 change their own. Its DAL functions call `requireAdmin()` themselves.
 
 Better Auth's HTTP routes `/api/auth/sign-up/email`, `/api/auth/update-user`,
-`/api/auth/delete-user` and `/api/auth/delete-user/callback` are disabled (`disabledPaths`): they would bypass our validation or the
-password check. Sign-up goes through `signUpAction`, profile edits through `updateProfile`, and
-account deletion through `deleteAccountAction`. Auth and account actions are rate limited in
+`/api/auth/delete-user`, `/api/auth/delete-user/callback`, `/api/auth/sign-in/email`,
+`/api/auth/request-password-reset`, `/api/auth/send-verification-email`,
+`/api/auth/change-password`, `/api/auth/change-email` and `/api/auth/verify-password` are disabled
+(`disabledPaths`): they would bypass our validation, the password check or the per-account rate
+limits (Better Auth's own limiter is per process and trusts a spoofable client address). Sign-up
+goes through `signUpAction`, profile edits through `updateProfile`, account deletion through
+`deleteAccountAction`, and sign-in, password reset, verification email, password change and email
+change through their own actions. Auth and account actions are rate limited in
 production (Redis-backed, so shared across instances; if Redis is down the attempt is allowed).
 
 `/settings` is the account page: profile photo, profile (name, username, website), email change,
