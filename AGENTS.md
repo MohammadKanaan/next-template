@@ -284,7 +284,9 @@ docs/DECISIONS.md        # Framework and library choices, with reasons
   append the client address: Next only fills that header when the client sent none, so a directly
   exposed server lets clients pick their own bucket.
   Content creation (`createPost`, `createComment`: 20 per minute per user) is limited inside the DAL
-  instead, because the Server Action and the REST handler both reach it.
+  instead, because the Server Action and the REST handler both reach it. So are changes to existing
+  content: `requirePostChange` (update, status change, delete) and `deleteComment` allow 60 per
+  minute per user, since each write can add tags and drops the cached lists.
 - Better Auth's `databaseHooks.user.update.after` invalidates the cached viewer (`user:<id>`), so
   changes made inside Better Auth (e.g. email verification) show up immediately.
 - Sessions refresh only through Server Actions or the auth route (Server Components cannot set
@@ -458,14 +460,16 @@ How the DAL caches:
 - **Invalidate inside the DAL**, right after the write succeeds, so a caller cannot forget
   (`createPost` / `updatePost` / `deletePost`, `attachAvatar`; Better Auth user updates via its
   database hook). Actions still call `revalidatePath` / `refresh()` for the router cache.
-- **Free-text search and date ranges are never cached.** `listPosts` skips `remember()` when `q`,
-  `from` or `to` is set (high-cardinality, unbounded keys), and also when a viewer-chosen status
-  (anything but `published`) shaped the result. Unfiltered, author and tag lists of published posts
-  keep the cache (`sort` and the validated `tag` are part of their key). Search input is escaped
-  for LIKE wildcards in the DAL.
+- **Free-text search, date ranges, author lists and unknown tags are never cached.** `listPosts`
+  skips `remember()` when `q`, `from`, `to` or `authorId` is set (high-cardinality, unbounded keys;
+  the one author list in the UI is the viewer's own, which is viewer dependent anyway), when a
+  `tag` is not among the published posts' tags (`listTags()`, itself cached and capped, so a caller
+  cannot mint keys by inventing tags), and when a viewer-chosen status (anything but `published`)
+  shaped the result. Unfiltered lists and lists of a known tag keep the cache (`sort` and the
+  validated `tag` are part of their key). Search input is escaped for LIKE wildcards in the DAL.
 - Cache keys are built from unambiguous parts (`JSON.stringify([...])`, as `listPosts` does), never
   by joining user-controlled strings, and every input that reaches a key is bounded in its DTO
-  (`page`, `authorId`), so a caller cannot collide with another entry or mint unlimited keys.
+  (`page`, `perPage`, `tag`), so a caller cannot collide with another entry or mint unlimited keys.
 - Redis must be >= 7 (the rate limiter uses `PEXPIRE ... NX`). Run it with `maxmemory` and
   `maxmemory-policy volatile-lru`, as `docker-compose.yml` does: tag versions have no TTL and must
   not be evicted.
@@ -480,7 +484,8 @@ Background work runs on pg-boss (the same PostgreSQL, `pgboss` schema) in a sepa
 - **Definitions** (`jobs/definitions.ts`): one entry per job with its name, Zod payload schema,
   queue `options` (retries, backoff, expiry) and an optional `cron`. Payload types come from
   `z.infer` (`JobPayload<'send-email'>`). Today: `send-email`, `delete-object`, `cleanup` (hourly). `delete-object` is also queued when an
-  account is deleted.
+  account is deleted. `send-email` sets `deleteAfterSeconds: 3600`: its payloads carry live links
+  that expire after an hour, so finished jobs must not keep them for pg-boss's 7-day default.
 - **Enqueue** (`lib/server/queue.ts`): `enqueue(name, payload)` validates the payload with the job's
   schema and sends it through a lazily started send-only pg-boss instance (`migrate: false`,
   `supervise: false`, `schedule: false`). The web process never runs maintenance. Enqueue from the

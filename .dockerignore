@@ -6,6 +6,8 @@ generated
 .github
 docs
 tests
+# Manual test pages (git-ignored); they must not ship as routes in an image built from a working copy.
+app/test
 .superpowers
 .agents
 .claude

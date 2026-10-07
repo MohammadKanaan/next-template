@@ -121,6 +121,7 @@ export const createComment = async (
  */
 export const deleteComment = async (id: number | string): Promise<void> => {
   const viewer = await requireUser()
+  await consumeRateLimit(`delete-comment:user:${viewer.id}`, { max: 60, windowMs: 60_000 })
   const commentId = parseInput(idSchema, id)
   const comment = await db.comment.findUnique({
     where: { id: commentId },

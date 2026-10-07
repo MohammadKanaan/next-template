@@ -38,7 +38,15 @@ export type JobDefinition = {
 export const jobs = {
   'send-email': {
     schema: sendEmailPayload,
-    options: { retryLimit: 5, retryDelay: 30, retryBackoff: true, expireInSeconds: 60 },
+    options: {
+      retryLimit: 5,
+      retryDelay: 30,
+      retryBackoff: true,
+      expireInSeconds: 60,
+      // The payload carries live reset and verification links that expire after an hour, so
+      // completed jobs must not keep them for pg-boss's 7-day default.
+      deleteAfterSeconds: 3600,
+    },
   },
   'delete-object': {
     schema: z.object({ key: z.string().min(1) }),

@@ -45,6 +45,11 @@ describe('job definitions', () => {
     expect(sendEmailPayload.safeParse({ ...verifyEmail, props: {} }).success).toBe(false)
   })
 
+  it('keeps completed send-email jobs for an hour, not the pg-boss default of a week', () => {
+    // The payloads carry live reset and verification links.
+    expect(jobs['send-email'].options.deleteAfterSeconds).toBe(3600)
+  })
+
   it('requires a key for the delete-object job', () => {
     expect(jobs['delete-object'].schema.safeParse({ key: 'avatars/u/1' }).success).toBe(true)
     expect(jobs['delete-object'].schema.safeParse({ key: '' }).success).toBe(false)

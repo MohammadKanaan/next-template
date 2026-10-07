@@ -174,6 +174,28 @@ describe('comments DAL', () => {
   })
 
   describe('deleteComment', () => {
+    it('rate limits deletions per user in production', async () => {
+      const author = await createUser({})
+      const post = await seedPost(author.id)
+      await signInAs(author)
+      await db.comment.createMany({
+        data: Array.from({ length: 61 }, (_, n) => ({
+          body: `Comment ${n}`,
+          postId: post.id,
+          userId: author.id,
+        })),
+      })
+      const ids = (await db.comment.findMany({ orderBy: { id: 'asc' }, select: { id: true } })).map(
+        (comment) => comment.id,
+      )
+      vi.stubEnv('NODE_ENV', 'production')
+      for (const id of ids.slice(0, 60)) {
+        await deleteComment(id)
+      }
+      await expect(deleteComment(ids[60])).rejects.toBeInstanceOf(RateLimitedError)
+      expect(await db.comment.count()).toBe(1)
+    })
+
     it('checks session, then existence, then permission', async () => {
       const author = await createUser({})
       const commenter = await createUser({})

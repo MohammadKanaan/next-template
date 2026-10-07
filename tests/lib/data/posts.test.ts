@@ -160,6 +160,20 @@ describe('posts DAL', () => {
     await expect(getPost(999)).rejects.toBeInstanceOf(NotFoundError)
   })
 
+  it('rate limits changes to existing posts per user in production', async () => {
+    const author = await createUser({})
+    const post = await seedPost(author.id, 'Title 0')
+    await signInAs(author)
+    vi.stubEnv('NODE_ENV', 'production')
+    for (let n = 1; n <= 60; n++) {
+      await updatePost(post.id, { title: `Title ${n}` })
+    }
+    await expect(updatePost(post.id, { title: 'One too many' })).rejects.toBeInstanceOf(
+      RateLimitedError,
+    )
+    expect((await db.post.findUniqueOrThrow({ where: { id: post.id } })).title).toBe('Title 60')
+  })
+
   it('rate limits post creation per user in production', async () => {
     const [first, second] = [await createUser({}), await createUser({})]
     await signInAs(first)
@@ -484,18 +498,18 @@ describe('posts DAL', () => {
       expect(page.items.map((post) => post.status)).toEqual(['published', 'draft'])
     })
 
-    it('never caches a list that depends on the viewer, and keeps the public one apart', async () => {
+    it('never caches an author list, and a visitor still sees only the published posts', async () => {
       const owner = await createUser({})
       await seedPost(owner.id, 'Draft', 'B', 'draft')
       await seedPost(owner.id, 'Published')
       await signInAs(owner)
-      await listPosts({ page: 1, perPage: 10, authorId: owner.id })
+      expect((await listPosts({ page: 1, perPage: 10, authorId: owner.id })).totalItems).toBe(2)
       expect(await getRedis().keys('cache:v:*')).toEqual([])
 
       signOut()
-      await listPosts({ page: 1, perPage: 10, authorId: owner.id })
-      expect(await getRedis().keys('cache:v:*')).toHaveLength(1)
-      // The cached public list is not served to the author.
+      expect((await listPosts({ page: 1, perPage: 10, authorId: owner.id })).totalItems).toBe(1)
+      expect(await getRedis().keys('cache:v:*')).toEqual([])
+      // Nothing cached for the visitor reaches the author.
       await signInAs(owner)
       expect((await listPosts({ page: 1, perPage: 10, authorId: owner.id })).totalItems).toBe(2)
     })
@@ -676,10 +690,11 @@ describe('posts DAL', () => {
         const post = await seedPost(author.id, 'Tagged')
         await seedPost(author.id, 'Plain')
         await tagPost(post.id, 'news')
+        // The list itself and the tag list that vouches for the tag.
         expect(await titles({ tag: 'news' })).toEqual(['Tagged'])
-        expect(await cachedKeys()).toHaveLength(1)
-        expect(await titles()).toEqual(['Tagged', 'Plain'])
         expect(await cachedKeys()).toHaveLength(2)
+        expect(await titles()).toEqual(['Tagged', 'Plain'])
+        expect(await cachedKeys()).toHaveLength(3)
         expect(await titles({ tag: 'news' })).toEqual(['Tagged'])
       })
 
@@ -703,6 +718,25 @@ describe('posts DAL', () => {
         expect(await cachedKeys()).toEqual([])
       })
 
+      it('never caches a list for an unknown tag, so invented tags cannot mint keys', async () => {
+        const author = await createUser({})
+        const post = await seedPost(author.id, 'Tagged')
+        await tagPost(post.id, 'news')
+        expect(await titles({ tag: 'invented' })).toEqual([])
+        const keys = await cachedKeys()
+        // Only the tag list that the lookup itself caches; no entry for the invented tag.
+        expect(keys).toHaveLength(1)
+        expect(keys[0]).toContain('posts:tags')
+      })
+
+      it('never caches an author list, whoever asks', async () => {
+        const author = await createUser({})
+        await seedPost(author.id, 'Mine')
+        expect(await titles({ authorId: author.id })).toEqual(['Mine'])
+        expect(await titles({ authorId: crypto.randomUUID() })).toEqual([])
+        expect(await cachedKeys()).toEqual([])
+      })
+
       it('never caches a status that the viewer chose', async () => {
         const owner = await createUser({})
         const admin = await createUser({ role: 'admin' })
@@ -720,10 +754,10 @@ describe('posts DAL', () => {
         await seedPost(owner.id, 'Draft', 'B', 'draft')
         await seedPost(owner.id, 'Live')
         signOut()
-        await titles({ authorId: owner.id })
+        await titles()
         await signInAs(owner)
         // The owner asking for published explicitly gets the same, safe-to-share result.
-        expect(await titles({ authorId: owner.id, status: 'published' })).toEqual(['Live'])
+        expect(await titles({ status: 'published' })).toEqual(['Live'])
         expect(await cachedKeys()).toHaveLength(1)
       })
 

@@ -194,10 +194,16 @@ export const listPosts = async (params: ListPostsParams): Promise<Page<PostSumma
     ])
     return toPage(rows.map(toPostSummary), totalItems, { page, perPage })
   }
-  // Only a published-only list without free text or dates is the same for every viewer and has a
-  // bounded key. Search terms and date ranges are high-cardinality, and any other status means the
-  // viewer's identity chose the result, so those go straight to the database.
-  if (query.q || query.from || query.to || status !== 'published') {
+  // Only a published-only list without free text or dates is the same for every viewer, and it is
+  // cached only when its key is bounded. Search terms, date ranges and arbitrary author ids are
+  // high-cardinality (the one author list in the UI is the viewer's own, which is not cached
+  // anyway), a tag that no published post uses (not in `listTags`, itself cached and capped) is
+  // free for a caller to invent, and any other status means the viewer's identity chose the
+  // result, so those go straight to the database.
+  if (query.q || query.from || query.to || authorId || status !== 'published') {
+    return load()
+  }
+  if (tag && !(await listTags()).some((known) => known.name === tag)) {
     return load()
   }
   return remember(
@@ -324,6 +330,8 @@ const mapMissingRecord = (error: unknown): never => {
  * for an existing post, draft or not.
  */
 const requirePostChange = async (viewer: SessionUser, id: number) => {
+  // Every change drops the cached lists and may add tags, so one account cannot hammer it.
+  await consumeRateLimit(`write-post:user:${viewer.id}`, { max: 60, windowMs: 60_000 })
   const post = await db.post.findUnique({
     where: { id },
     select: { userId: true, status: true, publishedAt: true },
