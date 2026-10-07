@@ -63,8 +63,15 @@ export const serverEnv = (): ServerEnv => {
   return cached
 }
 
-/** The `BETTER_AUTH_SECRET` value `.env.example` used to ship; public, so never acceptable. */
-const SECRET_PLACEHOLDER = 'replace-with-a-32+-character-random-string'
+/**
+ * `BETTER_AUTH_SECRET` values that are public and so never acceptable at runtime: the one
+ * `.env.example` used to ship, and the build-only value the `Dockerfile` and `ci.yml` pass to
+ * `next build` (long enough to pass the length check, but meant to be thrown away).
+ */
+const SECRET_PLACEHOLDERS = [
+  'replace-with-a-32+-character-random-string',
+  'build-only-placeholder-never-used-at-runtime',
+]
 
 /**
  * Throws one error listing every problem with the two auth variables that a production deployment
@@ -79,9 +86,9 @@ export const assertAuthEnv = (env: Record<string, string | undefined> = process.
   const secret = env.BETTER_AUTH_SECRET
   if (!secret) {
     problems.push('BETTER_AUTH_SECRET is required')
-  } else if (secret === SECRET_PLACEHOLDER) {
+  } else if (SECRET_PLACEHOLDERS.includes(secret)) {
     problems.push(
-      'BETTER_AUTH_SECRET is the placeholder from .env.example; generate one with: openssl rand -base64 32',
+      'BETTER_AUTH_SECRET is a placeholder value; generate one with: openssl rand -base64 32',
     )
   } else if (secret.length < 32) {
     problems.push('BETTER_AUTH_SECRET must be at least 32 characters')

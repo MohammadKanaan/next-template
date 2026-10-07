@@ -181,8 +181,9 @@ docs/DECISIONS.md        # Framework and library choices, with reasons
   through the `send-email` job (see **Email**). Verification is **soft**
   (`requireEmailVerification: false`): unverified users can sign in and see `VerifyEmailBanner`
   with a Resend button; opening the verification link only marks the address verified, it never
-  signs the browser in. A change-email link opened without the account's session (Better Auth would
-  otherwise create one for the opener) is sent to `/login?next=<the link>` by a `hooks.before`
+  signs the browser in. Either change-email link (the confirmation to the current address and the
+  verification of the new one both carry `updateTo`) opened without the account's session (Better
+  Auth would otherwise create one for the opener) is sent to `/login?next=<the link>` by a `hooks.before`
   middleware and completes after sign-in; the login and signup views navigate to a `/api/` target
   with `window.location.assign`. Password reset revokes every session (`revokeSessionsOnPasswordReset`).
   Actions: `requestPasswordResetAction` (always `ok`, so it cannot enumerate accounts),
@@ -198,9 +199,10 @@ docs/DECISIONS.md        # Framework and library choices, with reasons
   - **Change email:** `user.changeEmail` is enabled. A verified user gets a `confirm-email-change`
     email at the **current** address (`sendChangeEmailConfirmation`); following it makes Better Auth
     send the usual verification email to the **new** address (`sendVerificationEmail`), and opening
-    that switches the address; that link completes only in a browser that holds the account's
-    session (otherwise it is sent to `/login?next=<the link>` first). An unverified user skips the
-    first step. A taken address gets the
+    that switches the address. Both links, the confirmation as well (its token carries `updateTo`
+    too), complete only in a browser that holds the account's session; otherwise the
+    `hooks.before` middleware sends the opener to `/login?next=<the link>` first. An unverified user
+    skips the first step. A taken address gets the
     same response and no email, so it cannot enumerate accounts; the action itself only rejects the
     user's own address.
   - **Delete account:** `user.deleteUser` is enabled. `beforeDelete` queues `delete-object` for each
@@ -475,7 +477,9 @@ How the DAL caches:
   validated `tag` are part of their key). Search input is escaped for LIKE wildcards in the DAL.
 - Cache keys are built from unambiguous parts (`JSON.stringify([...])`, as `listPosts` does), never
   by joining user-controlled strings, and every input that reaches a key is bounded in its DTO
-  (`page`, `perPage`, `tag`), so a caller cannot collide with another entry or mint unlimited keys.
+  (`page`, `perPage`, `tag`), so a caller cannot collide with another entry or mint unlimited keys. The key space is bounded but
+  large (`page` × `perPage` × `sort` × known tags); `remember()` entries have a TTL and Redis runs
+  `volatile-lru`, so a flood evicts cache entries and rate-limit counters, never tag versions.
 - Redis must be >= 7 (the rate limiter uses `PEXPIRE ... NX`). Run it with `maxmemory` and
   `maxmemory-policy volatile-lru`, as `docker-compose.yml` does: tag versions have no TTL and must
   not be evicted.
@@ -722,7 +726,8 @@ records the result.
 - `DATABASE_URL`, `BETTER_AUTH_SECRET`, and `BETTER_AUTH_URL` live in `.env` (dev) and `.env.test`
   (tests). Both are untracked; update the `*.example` files when adding a variable.
   `assertAuthEnv()` (`lib/server/env.ts`, called by `instrumentation.ts` in production) rejects a
-  missing or placeholder secret (under 32 characters, or the old `.env.example` value) and a missing
+  missing or placeholder secret (under 32 characters, the old `.env.example` value, or the build-only placeholder from the
+  `Dockerfile` and CI) and a missing
   or relative `BETTER_AUTH_URL`; `.env.example` ships an empty secret you must generate.
 - `LOG_LEVEL` (optional) is read directly by `lib/server/logger.ts`, not through `serverEnv()`.
 - **Security headers** live in `next.config.ts` (`SECURITY_HEADERS`, served on every path) and

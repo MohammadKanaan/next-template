@@ -116,12 +116,14 @@ describe('assertAuthEnv', () => {
     expect(() =>
       assertAuthEnv({ BETTER_AUTH_SECRET: secret.slice(0, 31), BETTER_AUTH_URL: url }),
     ).toThrow(/BETTER_AUTH_SECRET must be at least 32 characters/)
-    expect(() =>
-      assertAuthEnv({
-        BETTER_AUTH_SECRET: 'replace-with-a-32+-character-random-string',
-        BETTER_AUTH_URL: url,
-      }),
-    ).toThrow(/BETTER_AUTH_SECRET is the placeholder from \.env\.example/)
+    for (const placeholder of [
+      'replace-with-a-32+-character-random-string',
+      'build-only-placeholder-never-used-at-runtime',
+    ]) {
+      expect(() =>
+        assertAuthEnv({ BETTER_AUTH_SECRET: placeholder, BETTER_AUTH_URL: url }),
+      ).toThrow(/BETTER_AUTH_SECRET is a placeholder value; generate one with/)
+    }
   })
 
   it('rejects a missing or non-absolute BETTER_AUTH_URL', () => {

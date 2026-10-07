@@ -84,6 +84,7 @@ describe('consumeRateLimit', () => {
 
 describe('getClientIp', () => {
   beforeEach(() => {
+    vi.stubEnv('NODE_ENV', 'production')
     vi.stubEnv('TRUSTED_PROXY_HOPS', '')
     resetServerEnv()
   })
@@ -99,6 +100,14 @@ describe('getClientIp', () => {
     vi.stubEnv('TRUSTED_PROXY_HOPS', '2')
     resetServerEnv()
     expect(await getClientIp()).toBe('b')
+  })
+
+  it('ignores TRUSTED_PROXY_HOPS outside production', async () => {
+    vi.stubEnv('NODE_ENV', 'development')
+    vi.stubEnv('TRUSTED_PROXY_HOPS', '2')
+    resetServerEnv()
+    headerValues.current = new Headers({ 'x-forwarded-for': 'a, b, c' })
+    expect(await getClientIp()).toBe('c')
   })
 
   it('falls back to x-real-ip, then unknown, when the chain is shorter than the hop count', async () => {

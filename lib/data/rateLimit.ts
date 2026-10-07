@@ -45,7 +45,8 @@ export const consumeRateLimit = async (key: string, rule: RateLimitRule): Promis
 }
 
 /**
- * The client address: the `x-forwarded-for` entry `TRUSTED_PROXY_HOPS` (default 1) from the end,
+ * The client address: the `x-forwarded-for` entry `TRUSTED_PROXY_HOPS` (default 1; always 1
+ * outside production) from the end,
  * else `x-real-ip`, else `'unknown'`. Next exposes no socket address and only fills
  * `x-forwarded-for` when the client sent none, so the app must sit behind at least one proxy that
  * appends the client address; a directly exposed server cannot trust the header at all. Each
@@ -56,7 +57,9 @@ export const consumeRateLimit = async (key: string, rule: RateLimitRule): Promis
  */
 export const getClientIp = async () => {
   const requestHeaders = await headers()
-  const hops = serverEnv().TRUSTED_PROXY_HOPS ?? 1
+  // The limiter counts nothing outside production, and a half-configured development environment
+  // (no server variables yet) must not break sign-in, so `serverEnv()` is not read there.
+  const hops = process.env.NODE_ENV === 'production' ? (serverEnv().TRUSTED_PROXY_HOPS ?? 1) : 1
   const entries = (requestHeaders.get('x-forwarded-for') ?? '')
     .split(',')
     .map((entry) => entry.trim())
