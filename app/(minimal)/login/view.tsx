@@ -21,7 +21,14 @@ export const LoginView = ({ nextPath, googleEnabled, signInFailed }: LoginViewPr
   const handleSubmit = async (values: SignInInput) => {
     const result = await signInAction(values)
     if (result.ok) {
-      router.replace(nextPath)
+      // A Route Handler (such as an email link under `/api/`) is not an app page: the client
+      // router cannot render it, so the browser must navigate to it.
+      const isRouteHandler = nextPath.startsWith('/api/')
+      if (isRouteHandler) {
+        window.location.assign(nextPath)
+      } else {
+        router.replace(nextPath)
+      }
     }
     return result
   }

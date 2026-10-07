@@ -19,7 +19,14 @@ export const SignUpView = ({ nextPath, googleEnabled }: SignUpViewProps) => {
   const handleSubmit = async (values: SignUpInput) => {
     const result = await signUpAction(values)
     if (result.ok) {
-      router.replace(nextPath)
+      // A Route Handler (such as an email link under `/api/`) is not an app page: the client
+      // router cannot render it, so the browser must navigate to it.
+      const isRouteHandler = nextPath.startsWith('/api/')
+      if (isRouteHandler) {
+        window.location.assign(nextPath)
+      } else {
+        router.replace(nextPath)
+      }
     }
     return result
   }

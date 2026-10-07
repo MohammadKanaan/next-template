@@ -8,7 +8,7 @@ import { getViewer } from '@/lib/data/users'
 import { enqueue } from '@/lib/server/queue'
 import { getRedis } from '@/lib/server/redis'
 import { cookieJar } from '../../helpers/cookies'
-import { createUser, resetDatabase, signInAs, TEST_PASSWORD } from '../../helpers/server'
+import { createUser, resetDatabase, signInAs, signOut, TEST_PASSWORD } from '../../helpers/server'
 
 const { cookieStore, requestHeaders } = await vi.hoisted(
   async () => import('../../helpers/cookies'),
@@ -292,6 +292,92 @@ describe('DAL auth', () => {
         auth.api.deleteUser({ body: { password: 'not-the-password' }, headers: requestHeaders() }),
       ).rejects.toMatchObject({ body: { code: 'INVALID_PASSWORD' } })
       expect(await db.user.count({ where: { id: user.id } })).toBe(1)
+    })
+  })
+
+  describe('change-email verification link', () => {
+    // An unverified account skips the confirmation step, so the first mail is the verification of
+    // the new address, the one that used to create a session for whoever opened it.
+    const requestChangeEmail = async (newEmail: string) => {
+      const user = await createUser({ email: 'old@example.com' })
+      await signInAs(user)
+      vi.mocked(enqueue).mockClear()
+      await auth.api.changeEmail({
+        body: { newEmail, callbackURL: '/settings' },
+        headers: requestHeaders(),
+      })
+      const verification = vi
+        .mocked(enqueue)
+        .mock.calls.map(([, payload]) => payload as JobPayload<'send-email'>)
+        .find((payload) => payload.template === 'verify-email')
+      const url = new URL(verification!.props.url)
+      return { user, token: String(url.searchParams.get('token')) }
+    }
+
+    const emailOf = async (id: string) => (await db.user.findUniqueOrThrow({ where: { id } })).email
+
+    it("does not sign a cookieless opener in; the link completes only with the account's session", async () => {
+      const { user, token } = await requestChangeEmail('new@example.com')
+      const sessions = await db.session.count({ where: { userId: user.id } })
+
+      signOut()
+      const opened = await auth.api
+        .verifyEmail({ query: { token, callbackURL: '/settings' }, headers: requestHeaders() })
+        .catch((error: unknown) => error)
+      expect(opened).toMatchObject({ statusCode: 302 })
+      const location = String((opened as { headers: Headers }).headers.get('location'))
+      expect(location.startsWith('/login?next=')).toBe(true)
+      expect(new URL(location, 'http://localhost:3000').searchParams.get('next')).toBe(
+        `/api/auth/verify-email?token=${token}&callbackURL=%2Fsettings`,
+      )
+      expect(cookieJar.size).toBe(0)
+      expect(await db.session.count({ where: { userId: user.id } })).toBe(sessions)
+      expect(await emailOf(user.id)).toBe('old@example.com')
+
+      await signInAs(user)
+      await auth.api
+        .verifyEmail({ query: { token, callbackURL: '/settings' }, headers: requestHeaders() })
+        .catch(() => {})
+      expect(await db.user.findUniqueOrThrow({ where: { id: user.id } })).toMatchObject({
+        email: 'new@example.com',
+        emailVerified: true,
+      })
+    })
+
+    it('redirects the same way through the HTTP router, and lets the session holder through', async () => {
+      const { user, token } = await requestChangeEmail('new@example.com')
+      const open = (cookie?: string) =>
+        auth.handler(
+          new Request(`http://localhost:3000/api/auth/verify-email?token=${token}`, {
+            headers: cookie ? { cookie } : {},
+          }),
+        )
+
+      const anonymous = await open()
+      expect(anonymous.status).toBe(302)
+      expect(anonymous.headers.get('location')).toMatch(/^\/login\?next=/)
+      expect(anonymous.headers.get('set-cookie')).toBeNull()
+      expect(await emailOf(user.id)).toBe('old@example.com')
+
+      const owner = await open(requestHeaders().get('cookie')!)
+      expect(owner.status).toBe(200)
+      expect(await emailOf(user.id)).toBe('new@example.com')
+    })
+
+    it('leaves the plain verification link alone', async () => {
+      const user = await createUser({ email: 'plain@example.com' })
+      signOut()
+      vi.mocked(enqueue).mockClear()
+      await auth.api.sendVerificationEmail({ body: { email: user.email } })
+      const { props } = vi.mocked(enqueue).mock.calls[0][1] as JobPayload<'send-email'>
+      await auth.api.verifyEmail({
+        query: { token: String(new URL(props.url!).searchParams.get('token')) },
+        headers: requestHeaders(),
+      })
+      expect(await db.user.findUniqueOrThrow({ where: { id: user.id } })).toMatchObject({
+        emailVerified: true,
+      })
+      expect(cookieJar.size).toBe(0)
     })
   })
 

@@ -1,9 +1,11 @@
 import 'server-only'
 import { betterAuth } from 'better-auth'
+import { createAuthMiddleware, getSessionFromCtx } from 'better-auth/api'
 import { prismaAdapter } from 'better-auth/adapters/prisma'
 import { nextCookies } from 'better-auth/next-js'
 import { headers } from 'next/headers'
 import { cache } from 'react'
+import { loginPath } from '@/lib/constants-routes'
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, signUpInput } from '@/lib/dto/auth'
 import type { JobPayload } from '@/jobs/definitions'
 import { roleSchema, type Role } from '@/lib/dto/users'
@@ -49,6 +51,27 @@ const googleProvider = () => {
   }
 }
 
+/** Where `app/api/auth/[...all]` mounts Better Auth (its default `basePath`). */
+const AUTH_BASE_PATH = '/api/auth'
+
+/**
+ * The payload of a JWT, read without verifying the signature. Only used to decide whether the
+ * `/verify-email` hook below applies; Better Auth verifies the token itself right after. Anything
+ * unreadable yields `null`.
+ */
+const decodeJwtPayload = (token: string): unknown => {
+  try {
+    return JSON.parse(Buffer.from(token.split('.')[1] ?? '', 'base64url').toString('utf8'))
+  } catch {
+    return null
+  }
+}
+
+const carriesEmailChange = (payload: unknown) =>
+  typeof payload === 'object' && payload !== null && 'updateTo' in payload
+    ? typeof payload.updateTo === 'string'
+    : false
+
 export const auth = betterAuth({
   database: prismaAdapter(db, { provider: 'postgresql' }),
   emailAndPassword: {
@@ -64,7 +87,9 @@ export const auth = betterAuth({
   },
   emailVerification: {
     sendOnSignUp: true,
-    // The link only verifies the address, it never signs in: the token is replayable for an hour.
+    // The plain verification link only verifies the address, it never signs in. The change-email
+    // link additionally requires the account's own session (see the `hooks.before` middleware
+    // below), because an email verification token is a replayable JWT valid for an hour.
     autoSignInAfterVerification: false,
     sendVerificationEmail: async ({ user, url }) => {
       queueEmail({ template: 'verify-email', to: user.email, props: { name: user.name, url } })
@@ -81,6 +106,27 @@ export const auth = betterAuth({
   // too, though it is inert while no deletion token is ever issued. `auth.api.*` calls made
   // directly from server code are unaffected; only the `/api/auth/*` router honours this list.
   disabledPaths: ['/sign-up/email', '/update-user', '/delete-user', '/delete-user/callback'],
+  hooks: {
+    // `/verify-email` with a change-email token (`updateTo`) creates a session for whoever opens
+    // the link when the browser has none, whatever `autoSignInAfterVerification` says. That would
+    // hand an account to a mistyped address or a forwarded link, so such a link without a session is
+    // sent to the login page and completes after sign-in. Better Auth itself rejects a session whose
+    // email differs from the token's. Runs for the HTTP router and direct `auth.api.*` calls alike.
+    before: createAuthMiddleware(async (ctx) => {
+      const token: unknown = ctx.query?.token
+      if (ctx.path !== '/verify-email' || typeof token !== 'string') {
+        return
+      }
+      if (!carriesEmailChange(decodeJwtPayload(token)) || (await getSessionFromCtx(ctx))) {
+        return
+      }
+      const query = new URLSearchParams({ token })
+      if (typeof ctx.query?.callbackURL === 'string') {
+        query.set('callbackURL', ctx.query.callbackURL)
+      }
+      throw ctx.redirect(loginPath(`${AUTH_BASE_PATH}/verify-email?${query}`))
+    }),
+  },
   user: {
     changeEmail: {
       enabled: true,

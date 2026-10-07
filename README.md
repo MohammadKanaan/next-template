@@ -321,7 +321,7 @@ production (Redis-backed, so shared across instances; if Redis is down the attem
 `/settings` is the account page: profile photo, profile (name, username, website), email change,
 password change, active sessions (revoke one or all others) and account deletion. Changing the email
 asks the current address to confirm, then verifies the new one; both mails go through the
-`send-email` job. Deleting an account removes its posts and sessions and queues its uploaded files
+`send-email` job, and the final link only completes in a browser signed in to that account. Deleting an account removes its posts and sessions and queues its uploaded files
 for deletion.
 
 Sign-up sends a verification email and the login form links to a password reset, both through the

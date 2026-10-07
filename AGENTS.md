@@ -181,7 +181,10 @@ docs/DECISIONS.md        # Framework and library choices, with reasons
   through the `send-email` job (see **Email**). Verification is **soft**
   (`requireEmailVerification: false`): unverified users can sign in and see `VerifyEmailBanner`
   with a Resend button; opening the verification link only marks the address verified, it never
-  signs the browser in. Password reset revokes every session (`revokeSessionsOnPasswordReset`).
+  signs the browser in. A change-email link opened without the account's session (Better Auth would
+  otherwise create one for the opener) is sent to `/login?next=<the link>` by a `hooks.before`
+  middleware and completes after sign-in; the login and signup views navigate to a `/api/` target
+  with `window.location.assign`. Password reset revokes every session (`revokeSessionsOnPasswordReset`).
   Actions: `requestPasswordResetAction` (always `ok`, so it cannot enumerate accounts),
   `resetPasswordAction`, `resendVerificationAction`; pages `/forgot-password` and
   `/reset-password` in `(minimal)`. Better Auth enqueues emails without awaiting, so response time
@@ -195,7 +198,9 @@ docs/DECISIONS.md        # Framework and library choices, with reasons
   - **Change email:** `user.changeEmail` is enabled. A verified user gets a `confirm-email-change`
     email at the **current** address (`sendChangeEmailConfirmation`); following it makes Better Auth
     send the usual verification email to the **new** address (`sendVerificationEmail`), and opening
-    that switches the address. An unverified user skips the first step. A taken address gets the
+    that switches the address; that link completes only in a browser that holds the account's
+    session (otherwise it is sent to `/login?next=<the link>` first). An unverified user skips the
+    first step. A taken address gets the
     same response and no email, so it cannot enumerate accounts; the action itself only rejects the
     user's own address.
   - **Delete account:** `user.deleteUser` is enabled. `beforeDelete` queues `delete-object` for each
