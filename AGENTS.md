@@ -528,13 +528,17 @@ records the result.
   `pending` | `attached`) tracks every object.
 - `lib/data/uploads.ts`: `createAvatarUpload` (signed in → key `avatars/<userId>/<uuid>` → `pending`
   row → ticket) and `attachAvatar` (signed in → exists → owner, i.e. 401/404/403 → `headObject`
-  re-checks size and type, deleting an object that broke the rules → mark `attached`, set
+  re-checks size and type, deleting an object that broke the rules (the row stays `pending` for the
+  cleanup, because the ticket may still be valid) → mark `attached`, set
   `user.image`, delete the previous avatar's row and queue `delete-object` for its object →
   `invalidateTags(userTag)`).
 - Orphans: the hourly `cleanup` job deletes `pending` uploads older than 24 hours with their
-  objects, looping through batches (at most 20 per run). `createAvatarUpload` keeps at most
-  `MAX_PENDING_AVATAR_UPLOADS` (3) pending avatar uploads per user by reclaiming the oldest, and
-  `createAvatarUploadAction` is rate limited per user, so pending rows stay bounded.
+  objects, looping through batches (at most 20 per run). Tickets last `AVATAR_UPLOAD_TICKET_SECONDS`
+  (300, `lib/dto/uploads.ts`), and a row is never dropped while its ticket can still be used (an
+  object uploaded to a key with no row would be invisible to the cleanup). `createAvatarUpload`
+  reclaims only pending uploads whose ticket has expired; when the user still holds
+  `MAX_PENDING_AVATAR_UPLOADS` (3) live ones it throws `RateLimitedError`. `createAvatarUploadAction`
+  is rate limited per user too, so pending rows stay bounded.
 - Client: `lib/client/uploads.ts` (`uploadFile`) is the one facade that talks to a non-app URL.
   `AvatarUploader` on `/settings` runs ticket action → `uploadFile` → attach action.
 - Avatars render through `UserAvatar` (shadcn `Avatar`) with a plain `<img>`, so no `next/image`

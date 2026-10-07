@@ -96,7 +96,12 @@ describe('upload actions', () => {
 
   it('rate limits ticket requests per user in production only', async () => {
     const [first, second] = [await createUser({}), await createUser({})]
-    const request = () => createAvatarUploadAction({ contentType: 'image/png', size: 1024 })
+    // The pending-upload cap would refuse a fourth live ticket, so clear the rows each time: this
+    // test is about the action's per-minute limit, not that cap.
+    const request = async () => {
+      await db.upload.deleteMany()
+      return createAvatarUploadAction({ contentType: 'image/png', size: 1024 })
+    }
     await signInAs(first)
     for (let n = 0; n < 12; n++) {
       expect(await request()).toMatchObject({ ok: true })

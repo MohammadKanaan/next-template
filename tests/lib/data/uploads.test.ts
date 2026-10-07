@@ -4,12 +4,13 @@ import { db } from '@/lib/data/db'
 import {
   ForbiddenError,
   NotFoundError,
+  RateLimitedError,
   UnauthorizedError,
   ValidationError,
 } from '@/lib/data/errors'
 import { attachAvatar, createAvatarUpload } from '@/lib/data/uploads'
 import { getViewer } from '@/lib/data/users'
-import { AVATAR_MAX_SIZE } from '@/lib/dto/uploads'
+import { AVATAR_MAX_SIZE, AVATAR_UPLOAD_TICKET_SECONDS } from '@/lib/dto/uploads'
 import { enqueue } from '@/lib/server/queue'
 import { createUploadTicket, deleteObject, headObject } from '@/lib/server/storage'
 import { createUser, resetDatabase, signInAs, signOut } from '../../helpers/server'
@@ -72,6 +73,7 @@ describe('uploads DAL', () => {
         key: row.key,
         contentType: 'image/png',
         maxSize: AVATAR_MAX_SIZE,
+        expiresIn: AVATAR_UPLOAD_TICKET_SECONDS,
       })
     })
 
@@ -83,23 +85,43 @@ describe('uploads DAL', () => {
       expect(new Set(rows.map((row) => row.key)).size).toBe(2)
     })
 
-    it('reclaims the oldest pending uploads beyond the cap', async () => {
+    it('refuses a fourth ticket while three are still live', async () => {
       const user = await createUser({})
       await signInAs(user)
-      const created: string[] = []
-      for (let i = 0; i < 4; i += 1) {
-        const ticket = await createAvatarUpload(input)
-        created.push((await db.upload.findUniqueOrThrow({ where: { id: ticket.uploadId } })).key)
+      for (let i = 0; i < 3; i += 1) {
+        await createAvatarUpload(input)
       }
 
+      await expect(createAvatarUpload(input)).rejects.toBeInstanceOf(RateLimitedError)
+
       expect(await db.upload.count({ where: { userId: user.id } })).toBe(3)
-      expect(deleteObject).toHaveBeenCalledTimes(1)
-      expect(deleteObject).toHaveBeenCalledWith(created[0])
-      const remaining = await db.upload.findMany({
+      expect(deleteObject).not.toHaveBeenCalled()
+    })
+
+    it('reclaims expired tickets before counting', async () => {
+      const user = await createUser({})
+      await signInAs(user)
+      const keys: string[] = []
+      for (let i = 0; i < 3; i += 1) {
+        const ticket = await createAvatarUpload(input)
+        keys.push((await db.upload.findUniqueOrThrow({ where: { id: ticket.uploadId } })).key)
+      }
+      await db.upload.updateMany({
         where: { userId: user.id },
-        orderBy: { createdAt: 'asc' },
+        data: { createdAt: new Date(Date.now() - (AVATAR_UPLOAD_TICKET_SECONDS + 1) * 1000) },
       })
-      expect(remaining.map((row) => row.key)).toEqual(created.slice(1))
+
+      const ticket = await createAvatarUpload(input)
+
+      expect(deleteObject).toHaveBeenCalledTimes(3)
+      expect(
+        vi
+          .mocked(deleteObject)
+          .mock.calls.map(([key]) => key)
+          .sort(),
+      ).toEqual(keys.sort())
+      const rows = await db.upload.findMany({ where: { userId: user.id } })
+      expect(rows.map((row) => row.id)).toEqual([ticket.uploadId])
     })
 
     it("leaves another user's pending uploads alone", async () => {
@@ -109,13 +131,13 @@ describe('uploads DAL', () => {
       await createAvatarUpload(input)
       await createAvatarUpload(input)
       await createAvatarUpload(input)
+      // A's cap is full, but B's first ticket is not affected by it.
       await signInAs(b)
-      await createAvatarUpload(input)
-      await signInAs(a)
       await createAvatarUpload(input)
 
       expect(await db.upload.count({ where: { userId: b.id } })).toBe(1)
       expect(await db.upload.count({ where: { userId: a.id } })).toBe(3)
+      expect(deleteObject).not.toHaveBeenCalled()
     })
   })
 
@@ -227,7 +249,7 @@ describe('uploads DAL', () => {
       ['an empty object', { size: 0, contentType: 'image/png' }],
       ['a wrong content type', { size: 1024, contentType: 'text/html' }],
       ['a missing content type', { size: 1024, contentType: null }],
-    ])('rejects %s, deleting the object and the row', async (_name, head) => {
+    ])('rejects %s, deleting the object and leaving the row pending', async (_name, head) => {
       const user = await createUser({})
       await signInAs(user)
       const upload = await pendingUpload(user.id)
@@ -238,7 +260,9 @@ describe('uploads DAL', () => {
       expect(error).toBeInstanceOf(ValidationError)
       expect(error.fieldErrors).toHaveProperty('uploadId')
       expect(deleteObject).toHaveBeenCalledWith(upload.key)
-      expect(await db.upload.count({ where: { id: upload.id } })).toBe(0)
+      expect(await db.upload.findUniqueOrThrow({ where: { id: upload.id } })).toMatchObject({
+        status: 'pending',
+      })
       expect((await db.user.findUniqueOrThrow({ where: { id: user.id } })).image).toBeNull()
     })
 

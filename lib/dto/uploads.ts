@@ -2,6 +2,8 @@ import { z } from 'zod'
 
 export const AVATAR_CONTENT_TYPES = ['image/png', 'image/jpeg', 'image/webp'] as const
 export const AVATAR_MAX_SIZE = 2 * 1024 * 1024
+/** Seconds an avatar upload ticket (presigned POST) stays valid. */
+export const AVATAR_UPLOAD_TICKET_SECONDS = 300
 
 export const createAvatarUploadInput = z.object({
   contentType: z.enum(AVATAR_CONTENT_TYPES, { error: 'Use a PNG, JPEG, or WebP image' }),

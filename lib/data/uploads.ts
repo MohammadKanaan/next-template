@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import {
   AVATAR_CONTENT_TYPES,
   AVATAR_MAX_SIZE,
+  AVATAR_UPLOAD_TICKET_SECONDS,
   createAvatarUploadInput,
   type CreateAvatarUploadInput,
   uploadIdSchema,
@@ -16,33 +17,49 @@ import { createUploadTicket, deleteObject, headObject, publicUrl } from '@/lib/s
 import { requireUser } from './auth'
 import { userTag } from './cacheTags'
 import { db } from './db'
-import { ForbiddenError, NotFoundError, parseInput, ValidationError } from './errors'
+import {
+  ForbiddenError,
+  NotFoundError,
+  parseInput,
+  RateLimitedError,
+  ValidationError,
+} from './errors'
 import { currentUserSelect } from './users'
 
 const log = logger.child({ module: 'uploads' })
 
 /**
- * Pending avatar uploads one user may hold. Tickets are cheap and every object may be 2 MB, so the
- * per-user backlog is bounded here (the oldest are reclaimed), not only by the hourly cleanup.
+ * Pending avatar uploads one user may hold with a ticket that can still be used. Tickets are cheap
+ * and every object may be 2 MB, so the per-user backlog is bounded here, not only by the hourly
+ * cleanup. A row is never dropped while its ticket is valid: the browser could still upload to the
+ * key, and an object without a row is invisible to the cleanup, avatar replacement and account
+ * deletion. Past the cap, the user waits for a ticket to expire or finishes one.
  */
 const MAX_PENDING_AVATAR_UPLOADS = 3
 
-/** Signed in → returns a presigned POST for a new avatar object and the pending upload's id. */
+/**
+ * Signed in → returns a presigned POST for a new avatar object and the pending upload's id. Pending
+ * uploads whose ticket has expired are reclaimed first (object, then row); when the viewer still
+ * holds `MAX_PENDING_AVATAR_UPLOADS` live ones, the request is refused with `RateLimitedError`.
+ */
 export const createAvatarUpload = async (input: CreateAvatarUploadInput): Promise<UploadTicket> => {
   const viewer = await requireUser()
   const { contentType, size } = parseInput(createAvatarUploadInput, input)
 
   const pending = await db.upload.findMany({
     where: { userId: viewer.id, purpose: 'avatar', status: 'pending' },
-    select: { id: true, key: true },
+    select: { id: true, key: true, createdAt: true },
     orderBy: { createdAt: 'asc' },
   })
-  // Keep room for the new ticket. Object first, so a storage failure leaves the row for the
-  // cleanup job.
-  const surplus = pending.length - (MAX_PENDING_AVATAR_UPLOADS - 1)
-  for (const stale of pending.slice(0, Math.max(0, surplus))) {
+  const expiredBefore = Date.now() - AVATAR_UPLOAD_TICKET_SECONDS * 1000
+  const expired = pending.filter((upload) => upload.createdAt.getTime() < expiredBefore)
+  // Object first, so a storage failure leaves the row for the cleanup job.
+  for (const stale of expired) {
     await deleteObject(stale.key)
     await db.upload.delete({ where: { id: stale.id } })
+  }
+  if (pending.length - expired.length >= MAX_PENDING_AVATAR_UPLOADS) {
+    throw new RateLimitedError('Finish or wait for your pending uploads before starting another')
   }
 
   const key = `avatars/${viewer.id}/${randomUUID()}`
@@ -54,6 +71,7 @@ export const createAvatarUpload = async (input: CreateAvatarUploadInput): Promis
     key,
     contentType,
     maxSize: AVATAR_MAX_SIZE,
+    expiresIn: AVATAR_UPLOAD_TICKET_SECONDS,
   })
   return { uploadId: upload.id, ...ticket }
 }
@@ -95,9 +113,10 @@ export const attachAvatar = async (uploadId: string): Promise<CurrentUser> => {
     throw new ValidationError({ uploadId: ['The file was not uploaded'] })
   }
   if (head.size < 1 || head.size > AVATAR_MAX_SIZE || !isAvatarContentType(head.contentType)) {
-    // Never keep an object that broke the rules.
+    // Never keep an object that broke the rules. The row stays pending: the ticket may still be
+    // valid for another upload to this key, which the hourly cleanup removes after 24 hours, and
+    // the row keeps counting toward the pending cap until the ticket expires.
     await deleteObject(upload.key)
-    await db.upload.delete({ where: { id: upload.id } })
     throw new ValidationError({ uploadId: ['The image must be a PNG, JPEG, or WebP up to 2 MB'] })
   }
 
