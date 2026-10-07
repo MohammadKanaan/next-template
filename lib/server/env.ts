@@ -21,6 +21,13 @@ const serverEnvSchema = z
     // `S3_ENDPOINT`; set it when the server talks to storage over an internal host (e.g. a container
     // name) the browser cannot resolve.
     S3_PUBLIC_ENDPOINT: z.preprocess(emptyToUndefined, z.url().optional()),
+    // Optional: how many proxies in front of the app append the client address to
+    // `x-forwarded-for`; the entry that many from the end is the client (see `getClientIp`).
+    // Default 1, applied by the reader so `ServerEnv` keeps it optional.
+    TRUSTED_PROXY_HOPS: z.preprocess(
+      emptyToUndefined,
+      z.coerce.number().int().min(1).max(10).optional(),
+    ),
     // Optional pair: Google sign-in is on only when both are set. `lib/data/auth.ts` reads them from
     // `process.env` itself (the auth config is built at import time); they are listed here so a
     // half-configured provider fails at boot in production.

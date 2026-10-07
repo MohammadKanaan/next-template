@@ -76,6 +76,15 @@ const SEED_USERS: {
   },
 ]
 
+// The seeded accounts have a public password and one of them is an admin, so a production
+// container must not be seeded by accident.
+if (process.env.NODE_ENV === 'production' && process.env.ALLOW_SEED !== '1') {
+  console.error(
+    'Refusing to seed in production (the seed creates admin@example.com / password123). Set ALLOW_SEED=1 to override.',
+  )
+  process.exit(1)
+}
+
 // The script owns its client (and disconnects it); `lib/data/db.ts` is server-only.
 const db = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL, options: '-c timezone=UTC' }),

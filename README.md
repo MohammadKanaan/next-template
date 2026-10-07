@@ -106,22 +106,24 @@ database (it destroys that data).
 ```bash
 cp .env.example .env              # required: generate BETTER_AUTH_SECRET (openssl rand -base64 32); optional: RESEND_API_KEY, EMAIL_FROM
 docker compose --profile app up --build
-docker compose --profile app run --rm migrate bun run db:seed   # once, in a second terminal
+docker compose --profile app run --rm -e ALLOW_SEED=1 migrate bun run db:seed   # once, in a second terminal
 ```
 
 Then open http://localhost:3000 (same seeded accounts as above) and check
-`curl localhost:3000/api/health`.
+`curl localhost:3000/api/health`. `ALLOW_SEED=1` is needed because the containers run with
+`NODE_ENV=production`, where the seed refuses to run by default (it creates `admin@example.com` with
+the public password `password123`).
 
 `docker compose up -d` without the profile still starts only PostgreSQL, Redis and MinIO, which is what
 `bun run dev` expects. The `app` profile adds three services built from one `Dockerfile`
 (`node:24-slim` plus bun 1.3.10, because the scripts run on Node and bun only installs and launches
 them):
 
-| Service   | Command                                       | Notes                                                                    |
-| --------- | --------------------------------------------- | ------------------------------------------------------------------------ |
-| `migrate` | `bun run db:deploy`, then `worker/migrate.ts` | One-shot: Prisma migrations, then the `pgboss` schema. Builds the image. |
-| `web`     | `bun run start`                               | Port 3000; healthcheck on `/api/health`; waits for `migrate`.            |
-| `worker`  | `bun run worker`                              | Background jobs; waits for `migrate`.                                    |
+| Service   | Command                                       | Notes                                                                     |
+| --------- | --------------------------------------------- | ------------------------------------------------------------------------- |
+| `migrate` | `bun run db:deploy`, then `worker/migrate.ts` | One-shot: Prisma migrations, then the `pgboss` schema. Builds the image.  |
+| `web`     | `bun run start`                               | Port 3000 on loopback; healthcheck on `/api/health`; waits for `migrate`. |
+| `worker`  | `bun run worker`                              | Background jobs; waits for `migrate`.                                     |
 
 The containers get every variable the app validates at boot. Hosts are the compose service names
 (`db`, `redis`, `minio`); `S3_PUBLIC_ENDPOINT=http://localhost:9000` is what the browser uses for
@@ -142,6 +144,15 @@ because the auth module refuses to load without a secret in production mode; CI 
 `NEXT_PUBLIC_*` values are baked into the bundle at build time (build args); everything else is read
 at runtime. The seed replaces the seeded rows, so it is an explicit command and not part of
 `migrate`; like `bun run db:seed` it does not flush Redis.
+
+**Deploying behind a proxy.** Every per-IP rate limit (`getClientIp` in `lib/data/rateLimit.ts`) reads
+the client address from `x-forwarded-for`. Next exposes no socket address and only fills that header
+when the client did not send one, so the app must sit behind at least one proxy that appends the
+client address; a directly exposed server lets every client pick its own limit bucket. Set
+`TRUSTED_PROXY_HOPS` (default `1`) to the number of such proxies in front of the app (a CDN plus a
+load balancer is `2`): the entry that many from the end of `x-forwarded-for` is the client. The compose
+`web` service has no proxy, so its port is bound to `127.0.0.1`; put a proxy in front of it before
+exposing it.
 
 > **Not verified on the machine this was written on:** Docker was not running there, so the image
 > build and the full stack run were never executed. `docker compose config` and

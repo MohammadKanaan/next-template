@@ -2,6 +2,7 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { RateLimitedError } from '@/lib/data/errors'
 import { consumeRateLimit, getClientIp } from '@/lib/data/rateLimit'
+import { resetServerEnv } from '@/lib/server/env'
 import { getRedis } from '@/lib/server/redis'
 import { resetRedis } from '../../helpers/server'
 
@@ -82,6 +83,33 @@ describe('consumeRateLimit', () => {
 })
 
 describe('getClientIp', () => {
+  beforeEach(() => {
+    vi.stubEnv('TRUSTED_PROXY_HOPS', '')
+    resetServerEnv()
+  })
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    resetServerEnv()
+  })
+
+  it('takes the entry TRUSTED_PROXY_HOPS from the end, one hop by default', async () => {
+    headerValues.current = new Headers({ 'x-forwarded-for': 'a, b, c' })
+    expect(await getClientIp()).toBe('c')
+
+    vi.stubEnv('TRUSTED_PROXY_HOPS', '2')
+    resetServerEnv()
+    expect(await getClientIp()).toBe('b')
+  })
+
+  it('falls back to x-real-ip, then unknown, when the chain is shorter than the hop count', async () => {
+    vi.stubEnv('TRUSTED_PROXY_HOPS', '2')
+    resetServerEnv()
+    headerValues.current = new Headers({ 'x-forwarded-for': 'a', 'x-real-ip': '3.3.3.3' })
+    expect(await getClientIp()).toBe('3.3.3.3')
+    headerValues.current = new Headers({ 'x-forwarded-for': 'a' })
+    expect(await getClientIp()).toBe('unknown')
+  })
+
   it('prefers the last x-forwarded-for entry, then x-real-ip, then unknown', async () => {
     headerValues.current = new Headers({
       'x-forwarded-for': '1.1.1.1, 2.2.2.2',

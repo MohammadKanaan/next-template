@@ -30,24 +30,24 @@ forgets a check cannot bypass it.
 
 ## Build & Run Commands
 
-| Command                                    | Purpose                                                          |
-| ------------------------------------------ | ---------------------------------------------------------------- |
-| `bun run dev`                              | Start the Next dev server                                        |
-| `bun run build`                            | Production build                                                 |
-| `bun run test`                             | Run all Vitest tests                                             |
-| `bun run test tests/lib/dto/posts.test.ts` | Run a single test file                                           |
-| `bun run test -t "formats validation"`     | Run tests matching a name pattern                                |
-| `bun run lint`                             | ESLint                                                           |
-| `bun run typecheck`                        | Generate the Prisma client and route types, then `tsc`           |
-| `bun run format:check`                     | Prettier check                                                   |
-| `bun run db:generate`                      | Regenerate the Prisma client into `generated/`                   |
-| `bun run db:migrate`                       | Create + apply a migration to the dev DB, then regenerate        |
-| `bun run db:deploy`                        | Apply pending migrations only (CI / production)                  |
-| `bun run db:seed`                          | Seed the dev DB (4 users, 16 posts; password `password123`)      |
-| `bun run db:reset`                         | Drop, re-migrate, and re-seed the dev DB (destroys its data)     |
-| `bun run db:test:prepare`                  | Reset the test DB, apply migrations, install the `pgboss` schema |
-| `bun run worker`                           | Start the background worker (pg-boss jobs and cron)              |
-| `bun run dev:worker`                       | The worker with `tsx watch`, restarting on file changes          |
+| Command                                    | Purpose                                                                                                          |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| `bun run dev`                              | Start the Next dev server                                                                                        |
+| `bun run build`                            | Production build                                                                                                 |
+| `bun run test`                             | Run all Vitest tests                                                                                             |
+| `bun run test tests/lib/dto/posts.test.ts` | Run a single test file                                                                                           |
+| `bun run test -t "formats validation"`     | Run tests matching a name pattern                                                                                |
+| `bun run lint`                             | ESLint                                                                                                           |
+| `bun run typecheck`                        | Generate the Prisma client and route types, then `tsc`                                                           |
+| `bun run format:check`                     | Prettier check                                                                                                   |
+| `bun run db:generate`                      | Regenerate the Prisma client into `generated/`                                                                   |
+| `bun run db:migrate`                       | Create + apply a migration to the dev DB, then regenerate                                                        |
+| `bun run db:deploy`                        | Apply pending migrations only (CI / production)                                                                  |
+| `bun run db:seed`                          | Seed the dev DB (4 users, 16 posts; password `password123`); refuses `NODE_ENV=production` unless `ALLOW_SEED=1` |
+| `bun run db:reset`                         | Drop, re-migrate, and re-seed the dev DB (destroys its data)                                                     |
+| `bun run db:test:prepare`                  | Reset the test DB, apply migrations, install the `pgboss` schema                                                 |
+| `bun run worker`                           | Start the background worker (pg-boss jobs and cron)                                                              |
+| `bun run dev:worker`                       | The worker with `tsx watch`, restarting on file changes                                                          |
 
 - **Package manager:** bun (pinned via `packageManager`). Do not use npm or yarn. Scripts run on
   Node, not the Bun runtime.
@@ -279,7 +279,10 @@ docs/DECISIONS.md        # Framework and library choices, with reasons
   are rate limited in production with `consumeRateLimit`
   (`lib/data/rateLimit.ts`, Redis-backed so the limits hold across instances), because Better
   Auth's own limiter only runs in its HTTP router. It fails open: if Redis is down the attempt is
-  allowed and the error is logged.
+  allowed and the error is logged. The per-IP limits read the client from `x-forwarded-for` through
+  `getClientIp`, which assumes the app sits behind `TRUSTED_PROXY_HOPS` (default 1) proxies that
+  append the client address: Next only fills that header when the client sent none, so a directly
+  exposed server lets clients pick their own bucket.
   Content creation (`createPost`, `createComment`: 20 per minute per user) is limited inside the DAL
   instead, because the Server Action and the REST handler both reach it.
 - Better Auth's `databaseHooks.user.update.after` invalidates the cached viewer (`user:<id>`), so
@@ -711,7 +714,8 @@ records the result.
 - Server-only config (`REDIS_URL`, `RESEND_API_KEY` (optional), `EMAIL_FROM`, `S3_ENDPOINT`,
   `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_PUBLIC_URL`,
   `S3_PUBLIC_ENDPOINT` (optional: the endpoint as the browser reaches it, for presigned uploads;
-  defaults to `S3_ENDPOINT`), `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` (optional pair)) is read through `serverEnv()` in `lib/server/env.ts`: Zod-validated,
+  defaults to `S3_ENDPOINT`), `TRUSTED_PROXY_HOPS` (optional, default 1: how many proxies append to
+  `x-forwarded-for`, read by `getClientIp`), `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` (optional pair)) is read through `serverEnv()` in `lib/server/env.ts`: Zod-validated,
   parsed on first use (so `next build` works without it), one error listing every bad variable. An
   empty optional variable counts as unset. In production `instrumentation.ts` and the worker's
   start call it at boot, so a bad config fails loudly instead of degrading the rate limiter or

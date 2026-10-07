@@ -114,7 +114,7 @@ services:
     command: ['bun', 'run', 'start']
     environment: *app-env
     ports:
-      - '3000:3000'
+      - '127.0.0.1:3000:3000'
     depends_on:
       migrate:
         condition: service_completed_successfully

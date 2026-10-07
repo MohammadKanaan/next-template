@@ -1,5 +1,6 @@
 import 'server-only'
 import { headers } from 'next/headers'
+import { serverEnv } from '@/lib/server/env'
 import { logger } from '@/lib/server/logger'
 import { getRedis } from '@/lib/server/redis'
 import { RateLimitedError } from './errors'
@@ -44,13 +45,22 @@ export const consumeRateLimit = async (key: string, rule: RateLimitRule): Promis
 }
 
 /**
- * Last `x-forwarded-for` entry, else `x-real-ip`, else `'unknown'`. Next exposes no socket address,
- * so this trusts the reverse proxy in front of the app: deploy behind exactly one proxy that
- * appends the client address. The last entry is the one that proxy added; every entry before it
- * comes from the client, so trusting the first would let anyone mint a new "IP" per request.
+ * The client address: the `x-forwarded-for` entry `TRUSTED_PROXY_HOPS` (default 1) from the end,
+ * else `x-real-ip`, else `'unknown'`. Next exposes no socket address and only fills
+ * `x-forwarded-for` when the client sent none, so the app must sit behind at least one proxy that
+ * appends the client address; a directly exposed server cannot trust the header at all. Each
+ * trusted proxy appends one entry, so the entry that many from the end is the one the outermost
+ * trusted proxy saw. Every entry before it comes from the client: trusting the first would let
+ * anyone mint a new "IP" per request, and counting too few hops would put every user in the bucket
+ * of the proxy's own address.
  */
 export const getClientIp = async () => {
   const requestHeaders = await headers()
-  const forwarded = requestHeaders.get('x-forwarded-for')?.split(',').at(-1)?.trim()
+  const hops = serverEnv().TRUSTED_PROXY_HOPS ?? 1
+  const entries = (requestHeaders.get('x-forwarded-for') ?? '')
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+  const forwarded = entries.length >= hops ? entries[entries.length - hops] : undefined
   return forwarded || requestHeaders.get('x-real-ip')?.trim() || 'unknown'
 }

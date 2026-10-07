@@ -63,6 +63,22 @@ describe('serverEnv', () => {
     expect(() => serverEnv()).toThrow(/REDIS_URL[\s\S]*S3_ENDPOINT[\s\S]*S3_BUCKET/)
   })
 
+  it('accepts TRUSTED_PROXY_HOPS from 1 to 10, treats empty as unset, and rejects the rest', () => {
+    stubEnv(valid)
+    expect(serverEnv().TRUSTED_PROXY_HOPS).toBeUndefined()
+    resetServerEnv()
+    stubEnv({ ...valid, TRUSTED_PROXY_HOPS: '' })
+    expect(serverEnv().TRUSTED_PROXY_HOPS).toBeUndefined()
+    resetServerEnv()
+    stubEnv({ ...valid, TRUSTED_PROXY_HOPS: '2' })
+    expect(serverEnv().TRUSTED_PROXY_HOPS).toBe(2)
+    for (const bad of ['0', '11', '1.5', 'many']) {
+      resetServerEnv()
+      stubEnv({ ...valid, TRUSTED_PROXY_HOPS: bad })
+      expect(() => serverEnv()).toThrow(/TRUSTED_PROXY_HOPS/)
+    }
+  })
+
   it('treats the Google pair as optional, and empty values as unset', () => {
     stubEnv(valid)
     expect(serverEnv().GOOGLE_CLIENT_ID).toBeUndefined()
