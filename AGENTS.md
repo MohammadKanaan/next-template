@@ -180,7 +180,8 @@ docs/DECISIONS.md        # Framework and library choices, with reasons
 - Email flows: sign-up sends a verification email, "Forgot password?" sends a reset email, both
   through the `send-email` job (see **Email**). Verification is **soft**
   (`requireEmailVerification: false`): unverified users can sign in and see `VerifyEmailBanner`
-  with a Resend button. Password reset revokes every session (`revokeSessionsOnPasswordReset`).
+  with a Resend button; opening the verification link only marks the address verified, it never
+  signs the browser in. Password reset revokes every session (`revokeSessionsOnPasswordReset`).
   Actions: `requestPasswordResetAction` (always `ok`, so it cannot enumerate accounts),
   `resetPasswordAction`, `resendVerificationAction`; pages `/forgot-password` and
   `/reset-password` in `(minimal)`. Better Auth enqueues emails without awaiting, so response time

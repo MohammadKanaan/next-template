@@ -64,7 +64,8 @@ export const auth = betterAuth({
   },
   emailVerification: {
     sendOnSignUp: true,
-    autoSignInAfterVerification: true,
+    // The link only verifies the address, it never signs in: the token is replayable for an hour.
+    autoSignInAfterVerification: false,
     sendVerificationEmail: async ({ user, url }) => {
       queueEmail({ template: 'verify-email', to: user.email, props: { name: user.name, url } })
     },

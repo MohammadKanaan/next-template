@@ -294,4 +294,10 @@ describe('DAL auth', () => {
       expect(await db.user.count({ where: { id: user.id } })).toBe(1)
     })
   })
+
+  describe('configuration', () => {
+    it('does not sign the browser in when a verification link is opened', () => {
+      expect(auth.options.emailVerification?.autoSignInAfterVerification).toBe(false)
+    })
+  })
 })
