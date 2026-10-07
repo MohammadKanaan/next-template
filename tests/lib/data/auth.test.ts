@@ -116,7 +116,7 @@ describe('DAL auth', () => {
       expect(response.status).toBe(404)
     })
 
-    it('still serves change-password and change-email (same rules as the actions)', async () => {
+    it('does not expose change-password, change-email or verify-password; the actions limit them per user', async () => {
       const user = await createUser({})
       await signInAs(user)
       const cookie = requestHeaders().get('cookie')!
@@ -125,9 +125,17 @@ describe('DAL auth', () => {
         { currentPassword: TEST_PASSWORD, newPassword: 'another-long-one' },
         cookie,
       )
-      expect(password.status).toBe(200)
       const email = await post('/change-email', { newEmail: 'moved@example.com' }, cookie)
-      expect(email.status).toBe(200)
+      const verify = await post('/verify-password', { password: TEST_PASSWORD }, cookie)
+      expect(password.status).toBe(404)
+      expect(email.status).toBe(404)
+      expect(verify.status).toBe(404)
+      // The actions reach Better Auth through `auth.api`, which `disabledPaths` does not affect.
+      const direct = await auth.api.changePassword({
+        body: { currentPassword: TEST_PASSWORD, newPassword: 'another-long-one' },
+        headers: requestHeaders(),
+      })
+      expect(direct.user.id).toBe(user.id)
     })
 
     it('does not expose sign-in, so the per-account limit in signInAction cannot be skipped', async () => {

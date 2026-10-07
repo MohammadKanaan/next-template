@@ -260,7 +260,8 @@ docs/DECISIONS.md        # Framework and library choices, with reasons
   lock anyone out of `/login`; the `/login` and `/signup` pages call `getViewer()` and redirect
   signed-in users themselves. The real check is always in the DAL.
 - Better Auth's HTTP router has `disabledPaths: ['/sign-up/email', '/update-user', '/delete-user',
-'/delete-user/callback', '/sign-in/email', '/request-password-reset', '/send-verification-email']`
+'/delete-user/callback', '/sign-in/email', '/request-password-reset', '/send-verification-email',
+'/change-password', '/change-email', '/verify-password']`
   (returns 404; the callback is inert while no deletion token is issued): sign-up goes only through `signUpAction` (validated with `signUpInput`, rate
   limited), profile edits only through `updateProfile` (the same username and name rules), and
   account deletion only through `deleteAccountAction`, because over HTTP a fresh session can delete
@@ -268,11 +269,15 @@ docs/DECISIONS.md        # Framework and library choices, with reasons
   verification-email requests go only through `signInAction`, `requestPasswordResetAction` and
   `resendVerificationAction`, because those enforce per-account limits (`sign-in:email`,
   `password-reset:email`, `resend-verification:user`) that the router would skip (it only has Better
-  Auth's per-process, per-IP limiter). Direct `auth.api.*` calls from server code
-  are unaffected. Remove an entry only together with the code that validates the same rules. Every
-  other path stays enabled on purpose: the email links need `/verify-email` and
-  `/reset-password/:token`, and `/reset-password`, `/change-password` and `/change-email` enforce the
-  same rules as their actions.
+  Auth's per-process limiter, whose client address trusts a spoofable `x-forwarded-for`). The same
+  goes for the session-bound account changes: `/change-password`, `/change-email` and
+  `/verify-password` (a password oracle for a stolen session) are reached only through
+  `changePasswordAction` and `changeEmailAction`, which limit them per user (nothing calls
+  `/verify-password` over HTTP). Direct `auth.api.*` calls from server code are unaffected. Remove
+  an entry only together with the code that validates the same rules and enforces the same limits.
+  The paths that stay enabled are the ones the email links and OAuth need (`/verify-email`,
+  `/reset-password/:token`, `/reset-password`, `/sign-in/social`, `/callback/*`) plus session reads
+  and sign-out.
 - Auth and upload actions that an attacker could spam (`signInAction`, `signUpAction`,
   `requestPasswordResetAction`, `resetPasswordAction`, `resendVerificationAction`,
   `signInWithGoogleAction`, `createAvatarUploadAction`, and per user `updateProfileAction`, `changePasswordAction`,

@@ -106,7 +106,9 @@ export const auth = betterAuth({
   // the password (over HTTP a fresh session alone could delete); its `/delete-user/callback` goes
   // too, though it is inert while no deletion token is ever issued. Sign-in, password-reset
   // requests and verification-email requests are closed because their actions enforce per-account
-  // limits that the router would skip. `auth.api.*` calls made directly from server code are
+  // limits that the router would skip; so are the session-bound account changes (change password,
+  // change email, verify password), which go only through their actions and are limited per user
+  // there, while Better Auth's own limiter is per process and keyed on a spoofable client address. `auth.api.*` calls made directly from server code are
   // unaffected; only the `/api/auth/*` router honours this list.
   disabledPaths: [
     '/sign-up/email',
@@ -116,6 +118,9 @@ export const auth = betterAuth({
     '/sign-in/email',
     '/request-password-reset',
     '/send-verification-email',
+    '/change-password',
+    '/change-email',
+    '/verify-password',
   ],
   hooks: {
     // `/verify-email` with a change-email token (`updateTo`) creates a session for whoever opens
