@@ -129,10 +129,30 @@ describe('DAL auth', () => {
       expect(email.status).toBe(200)
     })
 
-    it('still serves sign-in', async () => {
+    it('does not expose sign-in, so the per-account limit in signInAction cannot be skipped', async () => {
       const user = await createUser({})
       const response = await post('/sign-in/email', { email: user.email, password: TEST_PASSWORD })
-      expect(response.status).toBe(200)
+      expect(response.status).toBe(404)
+      expect(response.headers.get('set-cookie')).toBeNull()
+      // The action reaches Better Auth through `auth.api`, which `disabledPaths` does not affect.
+      const direct = await auth.api.signInEmail({
+        body: { email: user.email, password: TEST_PASSWORD },
+      })
+      expect(direct.user.id).toBe(user.id)
+    })
+
+    it('does not expose password-reset or verification-email requests', async () => {
+      const user = await createUser({})
+      vi.mocked(enqueue).mockClear()
+      const reset = await post('/request-password-reset', { email: user.email })
+      const verification = await post('/send-verification-email', { email: user.email })
+      expect(reset.status).toBe(404)
+      expect(verification.status).toBe(404)
+      expect(enqueue).not.toHaveBeenCalled()
+      // Direct calls (what the actions use) still work.
+      await auth.api.requestPasswordReset({ body: { email: user.email } })
+      await auth.api.sendVerificationEmail({ body: { email: user.email } })
+      expect(enqueue).toHaveBeenCalledTimes(2)
     })
   })
 

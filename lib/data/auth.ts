@@ -103,9 +103,19 @@ export const auth = betterAuth({
   // (validated with `signUpInput`), profile edits only through `updateProfile` (same username and
   // name rules), and deleting an account only through `deleteAccountAction`, which always demands
   // the password (over HTTP a fresh session alone could delete); its `/delete-user/callback` goes
-  // too, though it is inert while no deletion token is ever issued. `auth.api.*` calls made
-  // directly from server code are unaffected; only the `/api/auth/*` router honours this list.
-  disabledPaths: ['/sign-up/email', '/update-user', '/delete-user', '/delete-user/callback'],
+  // too, though it is inert while no deletion token is ever issued. Sign-in, password-reset
+  // requests and verification-email requests are closed because their actions enforce per-account
+  // limits that the router would skip. `auth.api.*` calls made directly from server code are
+  // unaffected; only the `/api/auth/*` router honours this list.
+  disabledPaths: [
+    '/sign-up/email',
+    '/update-user',
+    '/delete-user',
+    '/delete-user/callback',
+    '/sign-in/email',
+    '/request-password-reset',
+    '/send-verification-email',
+  ],
   hooks: {
     // `/verify-email` with a change-email token (`updateTo`) creates a session for whoever opens
     // the link when the browser has none, whatever `autoSignInAfterVerification` says. That would
