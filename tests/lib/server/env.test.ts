@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { resetServerEnv, serverEnv } from '@/lib/server/env'
+import { assertAuthEnv, resetServerEnv, serverEnv } from '@/lib/server/env'
 
 const valid = {
   REDIS_URL: 'redis://localhost:6379/15',
@@ -80,5 +80,46 @@ describe('serverEnv', () => {
     resetServerEnv()
     stubEnv({ ...valid, GOOGLE_CLIENT_SECRET: 'secret', GOOGLE_CLIENT_ID: '' })
     expect(() => serverEnv()).toThrow(/Set both GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET/)
+  })
+})
+
+describe('assertAuthEnv', () => {
+  const secret = 'k9Zr2Qv7mWx4Bn8Lp3Tc6Yd1Fh5Gj0AsEu7NiOq2'
+  const url = 'https://example.com'
+
+  it('passes for a long random secret and an absolute URL', () => {
+    expect(secret).toHaveLength(40)
+    expect(() => assertAuthEnv({ BETTER_AUTH_SECRET: secret, BETTER_AUTH_URL: url })).not.toThrow()
+  })
+
+  it('rejects a missing, short or placeholder secret', () => {
+    expect(() => assertAuthEnv({ BETTER_AUTH_URL: url })).toThrow(/BETTER_AUTH_SECRET is required/)
+    expect(() => assertAuthEnv({ BETTER_AUTH_SECRET: '', BETTER_AUTH_URL: url })).toThrow(
+      /BETTER_AUTH_SECRET is required/,
+    )
+    expect(() =>
+      assertAuthEnv({ BETTER_AUTH_SECRET: secret.slice(0, 31), BETTER_AUTH_URL: url }),
+    ).toThrow(/BETTER_AUTH_SECRET must be at least 32 characters/)
+    expect(() =>
+      assertAuthEnv({
+        BETTER_AUTH_SECRET: 'replace-with-a-32+-character-random-string',
+        BETTER_AUTH_URL: url,
+      }),
+    ).toThrow(/BETTER_AUTH_SECRET is the placeholder from \.env\.example/)
+  })
+
+  it('rejects a missing or non-absolute BETTER_AUTH_URL', () => {
+    expect(() => assertAuthEnv({ BETTER_AUTH_SECRET: secret })).toThrow(
+      /BETTER_AUTH_URL must be an absolute URL/,
+    )
+    expect(() =>
+      assertAuthEnv({ BETTER_AUTH_SECRET: secret, BETTER_AUTH_URL: 'localhost:3000' }),
+    ).toThrow(/BETTER_AUTH_URL must be an absolute URL/)
+  })
+
+  it('lists both problems in one message', () => {
+    expect(() => assertAuthEnv({})).toThrow(
+      /BETTER_AUTH_SECRET is required[\s\S]*BETTER_AUTH_URL must be an absolute URL/,
+    )
   })
 })

@@ -7,7 +7,7 @@
 # A variable from the shell or from `.env` overrides the `${NAME:-default}` fallbacks below.
 # BETTER_AUTH_SECRET has no fallback: it is required, and compose refuses to start the app profile
 # without it (a shared default would let anyone forge verification links). Compose interpolates the
-# whole file, so even `docker compose up -d` needs it set (`.env` from `.env.example` has one).
+# whole file, so even `docker compose up -d` needs it set (generate it: openssl rand -base64 32).
 x-app-env: &app-env
   NODE_ENV: production
   DATABASE_URL: postgresql://postgres:postgres@db:5432/next_template_dev

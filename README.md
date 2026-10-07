@@ -104,7 +104,7 @@ database (it destroys that data).
 ## Run everything with Docker
 
 ```bash
-cp .env.example .env              # required: BETTER_AUTH_SECRET (openssl rand -base64 32); optional: RESEND_API_KEY, EMAIL_FROM
+cp .env.example .env              # required: generate BETTER_AUTH_SECRET (openssl rand -base64 32); optional: RESEND_API_KEY, EMAIL_FROM
 docker compose --profile app up --build
 docker compose --profile app run --rm migrate bun run db:seed   # once, in a second terminal
 ```
@@ -128,7 +128,9 @@ The containers get every variable the app validates at boot. Hosts are the compo
 avatar uploads. Compose reads `.env` from the project directory for `BETTER_AUTH_SECRET`,
 `BETTER_AUTH_URL`, `RESEND_API_KEY`, `EMAIL_FROM`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and
 the `NEXT_PUBLIC_*` build args. `BETTER_AUTH_SECRET` is required: compose refuses to start the `app`
-profile without it (it interpolates the whole file, so even `docker compose up -d` needs it set).
+profile without it (it interpolates the whole file, so even `docker compose up -d` needs it set). Production boot
+(`instrumentation.ts`) also refuses a missing, short or placeholder secret and a missing
+`BETTER_AUTH_URL`.
 The infrastructure ports (PostgreSQL, Redis, MinIO) are bound to `127.0.0.1`, so they are not
 reachable from the network. Every other container variable is fixed in
 `docker-compose.yml`, so the `localhost` URLs in your `.env` never leak into the containers. The containers run with

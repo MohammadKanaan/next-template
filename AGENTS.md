@@ -690,6 +690,9 @@ records the result.
   URLs or app names.
 - `DATABASE_URL`, `BETTER_AUTH_SECRET`, and `BETTER_AUTH_URL` live in `.env` (dev) and `.env.test`
   (tests). Both are untracked; update the `*.example` files when adding a variable.
+  `assertAuthEnv()` (`lib/server/env.ts`, called by `instrumentation.ts` in production) rejects a
+  missing or placeholder secret (under 32 characters, or the old `.env.example` value) and a missing
+  or relative `BETTER_AUTH_URL`; `.env.example` ships an empty secret you must generate.
 - `LOG_LEVEL` (optional) is read directly by `lib/server/logger.ts`, not through `serverEnv()`.
 - **Security headers** live in `next.config.ts` (`SECURITY_HEADERS`, served on every path) and
   `poweredByHeader` is off. `frame-ancestors 'none'` is the only CSP directive (a script policy would
