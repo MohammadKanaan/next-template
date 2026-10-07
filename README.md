@@ -104,7 +104,7 @@ database (it destroys that data).
 ## Run everything with Docker
 
 ```bash
-cp .env.example .env              # optional: set BETTER_AUTH_SECRET, RESEND_API_KEY, EMAIL_FROM
+cp .env.example .env              # required: BETTER_AUTH_SECRET (openssl rand -base64 32); optional: RESEND_API_KEY, EMAIL_FROM
 docker compose --profile app up --build
 docker compose --profile app run --rm migrate bun run db:seed   # once, in a second terminal
 ```
@@ -127,10 +127,11 @@ The containers get every variable the app validates at boot. Hosts are the compo
 (`db`, `redis`, `minio`); `S3_PUBLIC_ENDPOINT=http://localhost:9000` is what the browser uses for
 avatar uploads. Compose reads `.env` from the project directory for `BETTER_AUTH_SECRET`,
 `BETTER_AUTH_URL`, `RESEND_API_KEY`, `EMAIL_FROM`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and
-the `NEXT_PUBLIC_*` build args, and falls back
-to a local-only secret when they are unset. Every other container variable is fixed in
-`docker-compose.yml`, so the `localhost` URLs in your `.env` never leak into the containers. Set a
-real `BETTER_AUTH_SECRET` for anything beyond a local try-out. The containers run with
+the `NEXT_PUBLIC_*` build args. `BETTER_AUTH_SECRET` is required: compose refuses to start the `app`
+profile without it (it interpolates the whole file, so even `docker compose up -d` needs it set).
+The infrastructure ports (PostgreSQL, Redis, MinIO) are bound to `127.0.0.1`, so they are not
+reachable from the network. Every other container variable is fixed in
+`docker-compose.yml`, so the `localhost` URLs in your `.env` never leak into the containers. The containers run with
 `NODE_ENV=production`, so without `RESEND_API_KEY` the email jobs fail and are retried (nothing is
 logged); sign-in with the seeded accounts does not need email. The image's `bun run build` step gets
 a build-only placeholder `BETTER_AUTH_SECRET` inline (not as `ENV`, so it is not in the image),
