@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { ROUTE_POST_DETAILS } from '@/lib/constants-routes'
 import { createComment, deleteComment, listComments } from '@/lib/data/comments'
 import { db } from '@/lib/data/db'
 import {
@@ -11,6 +12,8 @@ import {
 } from '@/lib/data/errors'
 import { getPost, listPosts, setPostStatus } from '@/lib/data/posts'
 import { updateProfile } from '@/lib/data/users'
+import { NOTIFICATION_TITLE_MAX_LENGTH } from '@/lib/dto/notifications'
+import { POST_TITLE_MAX_LENGTH } from '@/lib/dto/posts'
 import { getRedis } from '@/lib/server/redis'
 import { createUser, resetDatabase, signInAs, signOut } from '../../helpers/server'
 
@@ -73,6 +76,60 @@ describe('comments DAL', () => {
       })
       expect(comment.createdAt).toBeInstanceOf(Date)
       expect(await db.comment.count()).toBe(1)
+    })
+
+    it('notifies the post author, but not for a comment on their own post', async () => {
+      const author = await createUser({})
+      const commenter = await createUser({ name: 'Casey' })
+      const post = await db.post.create({
+        data: { userId: author.id, title: 'My post', body: 'Body', status: 'published' },
+      })
+
+      await signInAs(commenter)
+      await createComment(post.id, { body: 'Nice one' })
+      const [notification] = await db.notification.findMany({ where: { userId: author.id } })
+      expect(notification).toMatchObject({
+        type: 'comment',
+        title: 'Casey commented on "My post"',
+        body: 'Nice one',
+        url: ROUTE_POST_DETAILS(author.id, post.id),
+        readAt: null,
+      })
+
+      await signInAs(author)
+      await createComment(post.id, { body: 'Thanks' })
+      expect(await db.notification.count()).toBe(1)
+    })
+
+    it('truncates a long comment in the notification body', async () => {
+      const author = await createUser({})
+      const commenter = await createUser({})
+      const post = await db.post.create({
+        data: { userId: author.id, title: 'P', body: 'B', status: 'published' },
+      })
+      await signInAs(commenter)
+      await createComment(post.id, { body: 'x'.repeat(600) })
+      const [notification] = await db.notification.findMany({ where: { userId: author.id } })
+      expect(notification.body).toHaveLength(140)
+      expect(notification.body.endsWith('…')).toBe(true)
+    })
+
+    it('keeps the notification title within its limit for the longest post title', async () => {
+      const author = await createUser({})
+      const commenter = await createUser({ name: 'C'.repeat(100) })
+      const post = await db.post.create({
+        data: {
+          userId: author.id,
+          title: 'T'.repeat(POST_TITLE_MAX_LENGTH),
+          body: 'B',
+          status: 'published',
+        },
+      })
+      await signInAs(commenter)
+      await createComment(post.id, { body: 'Hi' })
+      const [notification] = await db.notification.findMany({ where: { userId: author.id } })
+      expect(notification.title).toHaveLength(NOTIFICATION_TITLE_MAX_LENGTH)
+      expect(notification.title.endsWith('…')).toBe(true)
     })
 
     it('bounds the body', async () => {

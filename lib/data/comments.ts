@@ -1,5 +1,6 @@
 import 'server-only'
 import { Prisma } from '@/generated/prisma/client'
+import { ROUTE_POST_DETAILS } from '@/lib/constants-routes'
 import { idSchema } from '@/lib/dto/common'
 import {
   commentsBaseSchema,
@@ -8,11 +9,13 @@ import {
   type Comment,
   type CommentBase,
 } from '@/lib/dto/comments'
+import { NOTIFICATION_TITLE_MAX_LENGTH } from '@/lib/dto/notifications'
 import { invalidateTags, remember } from '@/lib/server/cache'
 import { getSessionUser, requireUser, type SessionUser } from './auth'
 import { commentsTag, POSTS_TAG, postTag } from './cacheTags'
 import { db } from './db'
 import { ForbiddenError, NotFoundError, parseInput } from './errors'
+import { createNotification } from './notifications'
 import { canViewPost, getPost } from './posts'
 import { consumeRateLimit } from './rateLimit'
 import { userProfileSelect } from './users'
@@ -20,6 +23,13 @@ import { userProfileSelect } from './users'
 const COMMENTS_CACHE_TTL = 300
 /** A post's comments are listed oldest first, up to this many. */
 const COMMENTS_LIMIT = 200
+/** How much of the comment the notification shows. */
+const NOTIFICATION_EXCERPT_LENGTH = 140
+
+/** Cuts `text` to at most `max` characters, ending in an ellipsis when it was shortened. */
+const truncate = (text: string, max: number) => {
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text
+}
 
 const commentSelect = {
   id: true,
@@ -81,7 +91,8 @@ export const listComments = async (postId: number | string): Promise<Comment[]> 
 
 /**
  * Signed in (401) → valid input (422) → the post exists and the viewer may see it (404) → it is
- * published (403: comments are closed on drafts and archived posts).
+ * published (403: comments are closed on drafts and archived posts). Notifies the post's author
+ * of someone else's comment.
  */
 export const createComment = async (
   postId: number | string,
@@ -92,7 +103,10 @@ export const createComment = async (
   const id = parseInput(idSchema, postId)
   const { body } = parseInput(createCommentInput, input)
   // Read from the database, not the cache: a post that was just archived must not take comments.
-  const post = await db.post.findUnique({ where: { id }, select: { userId: true, status: true } })
+  const post = await db.post.findUnique({
+    where: { id },
+    select: { userId: true, status: true, title: true },
+  })
   if (!post || !canViewPost(viewer, post.status, post.userId)) {
     throw new NotFoundError('Post not found')
   }
@@ -109,6 +123,20 @@ export const createComment = async (
       throw error
     })
   await invalidateComments(id)
+  // The author hears about other people's comments; their own need no notification. A post title
+  // plus a name can outgrow the notification title limit, so the title is cut rather than rejected.
+  if (post.userId !== viewer.id) {
+    await createNotification({
+      userId: post.userId,
+      type: 'comment',
+      title: truncate(
+        `${row.user.name} commented on "${post.title}"`,
+        NOTIFICATION_TITLE_MAX_LENGTH,
+      ),
+      body: truncate(body, NOTIFICATION_EXCERPT_LENGTH),
+      url: ROUTE_POST_DETAILS(post.userId, id),
+    })
+  }
   return {
     ...toCommentBase(row),
     permissions: { delete: canDeleteComment(viewer, viewer.id, post.userId) },
