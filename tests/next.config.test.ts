@@ -15,8 +15,14 @@ describe('next.config', () => {
     expect(nextConfig.poweredByHeader).toBe(false)
   })
 
-  it('serves the security headers on every path', async () => {
-    expect(await nextConfig.headers!()).toEqual([{ source: '/(.*)', headers: SECURITY_HEADERS }])
+  it('serves the security headers on every path, and keeps the service worker uncached', async () => {
+    expect(await nextConfig.headers!()).toEqual([
+      { source: '/(.*)', headers: SECURITY_HEADERS },
+      {
+        source: '/sw.js',
+        headers: [{ key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' }],
+      },
+    ])
   })
 
   it.each(Object.entries(EXPECTED_HEADERS))('sends %s once with its exact value', (key, value) => {

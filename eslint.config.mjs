@@ -123,6 +123,8 @@ const eslintConfig = defineConfig([
     '.claude/**',
     '.cursor/**',
     '.devin/**',
+    // Plain browser scripts (the service worker), outside the TypeScript project.
+    'public/**',
   ]),
 ])
 

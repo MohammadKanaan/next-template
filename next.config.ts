@@ -23,7 +23,14 @@ const nextConfig: NextConfig = {
   sassOptions: {
     additionalData: scssBreakpoints,
   },
-  headers: async () => [{ source: '/(.*)', headers: SECURITY_HEADERS }],
+  headers: async () => [
+    { source: '/(.*)', headers: SECURITY_HEADERS },
+    {
+      // The service worker must never be served stale, or an old push handler lingers for days.
+      source: '/sw.js',
+      headers: [{ key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' }],
+    },
+  ],
 }
 
 export default nextConfig

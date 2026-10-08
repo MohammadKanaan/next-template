@@ -10,6 +10,7 @@ import {
   revokeOtherSessionsAction,
   revokeSessionAction,
 } from '@/actions/auth'
+import { subscribePushAction, unsubscribePushAction } from '@/actions/push'
 import { attachAvatarAction, createAvatarUploadAction } from '@/actions/uploads'
 import { updateProfileAction } from '@/actions/users'
 import { DeleteAccountDialog } from '@/components/Settings/DeleteAccountDialog'
@@ -17,10 +18,12 @@ import { AvatarUploader } from '@/components/Settings/AvatarUploader'
 import { EmailForm } from '@/components/Settings/EmailForm'
 import { PasswordForm } from '@/components/Settings/PasswordForm'
 import { ProfileForm } from '@/components/Settings/ProfileForm'
+import { PushSettings } from '@/components/Settings/PushSettings'
 import { SessionList } from '@/components/Settings/SessionList'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/SCN/card'
 import { ROUTE_FORGOT_PASSWORD, ROUTE_HOME } from '@/lib/constants-routes'
 import type { ChangeEmailInput, ChangePasswordInput, DeleteAccountInput } from '@/lib/dto/auth'
+import type { PushConfig } from '@/lib/dto/push'
 import type { CurrentUser, SessionSummary, UpdateProfileInput } from '@/lib/dto/users'
 import styles from './styles.module.scss'
 
@@ -28,9 +31,11 @@ type SettingsViewProps = {
   user: CurrentUser
   sessions: SessionSummary[]
   hasPassword: boolean
+  /** The VAPID public key, or null when Web Push is not configured. */
+  pushConfig: PushConfig | null
 }
 
-export const SettingsView = ({ user, sessions, hasPassword }: SettingsViewProps) => {
+export const SettingsView = ({ user, sessions, hasPassword, pushConfig }: SettingsViewProps) => {
   const router = useRouter()
 
   const handleProfile = async (values: UpdateProfileInput) => {
@@ -161,6 +166,25 @@ export const SettingsView = ({ user, sessions, hasPassword }: SettingsViewProps)
           />
         </CardContent>
       </Card>
+
+      {pushConfig && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Browser notifications</CardTitle>
+            <CardDescription>
+              Per browser. The bell in the navigation works everywhere; this adds a system
+              notification when no tab is open.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <PushSettings
+              publicKey={pushConfig.publicKey}
+              onSubscribe={subscribePushAction}
+              onUnsubscribe={unsubscribePushAction}
+            />
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
