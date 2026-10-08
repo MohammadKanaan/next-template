@@ -444,6 +444,7 @@ Where to look to see each pattern done once, properly.
 | Generic attachments on a record           | `UPLOAD_RULES` in `lib/dto/uploads.ts`; `createUpload`, `attachPostUpload`, `detachPostUpload` in `lib/data/uploads.ts`; `components/Form/FileUploader`, `components/Posts/Attachments`; `docs/guides/uploads.md`                             |
 | Background job and email                  | `jobs/definitions.ts`, `jobs/sendEmail.ts`; `lib/server/queue.ts`; `worker/index.ts`; `lib/server/mailer.ts`; `emails/`                                                                                                                       |
 | Audit log (internal writer, admin reader) | `recordAudit` / `listAuditLog` in `lib/data/audit.ts`; `lib/dto/audit.ts`; calls in the post, comment and `setUserRole` writes; page `app/(site)/admin/audit`                                                                                 |
+| Money and concurrency (recipe)            | `moneyInputSchema`, `formatMoney` in `lib/money.ts`; `attachPostUpload` (`FOR UPDATE`), `attachAvatar` (row lock by `UPDATE`), `setPostStatus` (conditional write) and `updatePost` (`version`); `docs/guides/money-and-concurrency.md`       |
 | Admin-only page                           | `app/(site)/admin/page.tsx` + `view.tsx`; `listUsers` / `setUserRole` with `requireAdmin()` in `lib/data/users.ts`                                                                                                                            |
 | OAuth (Google)                            | `lib/data/auth.ts` (`socialProviders`, `isGoogleAuthEnabled`); `signInWithGoogleAction` in `actions/auth.ts`; `lib/username.ts`; `components/Auth/GoogleButton`                                                                               |
 
@@ -524,6 +525,7 @@ Area guides in [`docs/guides/`](docs/guides/) (referenced from `AGENTS.md`):
 - [`uploads.md`](docs/guides/uploads.md): presigned uploads and orphan cleanup.
 - [`realtime.md`](docs/guides/realtime.md): SSE, notifications, Web Push.
 - [`audit.md`](docs/guides/audit.md): the admin audit log.
+- [`money-and-concurrency.md`](docs/guides/money-and-concurrency.md): Decimal amounts, `FOR UPDATE`, conditional writes, serializable isolation.
 - [`infrastructure.md`](docs/guides/infrastructure.md): `lib/server`, logging, Docker and CI.
 - [`hooks.md`](docs/guides/hooks.md): hook rules, URL state, browser storage.
 - [`forms.md`](docs/guides/forms.md): React Hook Form + Zod forms.

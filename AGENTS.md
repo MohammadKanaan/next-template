@@ -41,6 +41,7 @@ Long area narratives live in `docs/guides/`. Read the one for the area you touch
 - `docs/guides/uploads.md`: presigned POST uploads, the `Upload` table, orphan cleanup.
 - `docs/guides/realtime.md`: SSE, notifications, Web Push.
 - `docs/guides/audit.md`: the admin audit log (`recordAudit`, `listAuditLog`, what goes in `metadata`).
+- `docs/guides/money-and-concurrency.md`: Decimal amounts as strings (`lib/money.ts`), `FOR UPDATE`, conditional writes, serializable isolation (a recipe, no model).
 - `docs/guides/infrastructure.md`: `lib/server`, logging, singletons, Docker and CI.
 - `docs/guides/hooks.md`: hook rules (no `useMemo` / `useCallback`; RHF files opt out with `'use no memo'`), `useUrlState`, browser storage.
 - `docs/guides/forms.md`: React Hook Form + Zod forms (each starts `'use client'` then `'use no memo'`).
