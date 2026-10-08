@@ -142,6 +142,21 @@ export const NavBar = ({ user, unreadCount }: NavBarProps) => {
           {env.appName}
         </Link>
 
+        <div className={styles.desktopNav}>
+          <NavLinks links={links} />
+          <div className={styles.accountArea}>
+            <ThemeToggle />
+            <AccountActions user={user} />
+          </div>
+        </div>
+
+        {/* One bell, visible at every breakpoint: it owns the realtime stream, so it mounts once. */}
+        {user && (
+          <div className={styles.bellSlot}>
+            <NotificationBell initialUnreadCount={unreadCount} />
+          </div>
+        )}
+
         <button
           type="button"
           className={styles.mobileMenuButton}
@@ -152,15 +167,6 @@ export const NavBar = ({ user, unreadCount }: NavBarProps) => {
         >
           {isMobileMenuOpen ? <X aria-hidden="true" /> : <Menu aria-hidden="true" />}
         </button>
-
-        <div className={styles.desktopNav}>
-          <NavLinks links={links} />
-          <div className={styles.accountArea}>
-            <ThemeToggle />
-            {user && <NotificationBell initialUnreadCount={unreadCount} />}
-            <AccountActions user={user} />
-          </div>
-        </div>
 
         <div
           className={clsx(styles.mobileNavOverlay, isMobileMenuOpen && styles.active)}
@@ -188,7 +194,6 @@ export const NavBar = ({ user, unreadCount }: NavBarProps) => {
           </div>
           <div className={styles.mobileAccountArea}>
             <ThemeToggle />
-            {user && <NotificationBell initialUnreadCount={unreadCount} />}
             {/* Account actions close the menu; theme choices keep it open. */}
             <div className={styles.accountArea} onClick={closeMobileMenu}>
               <AccountActions user={user} />

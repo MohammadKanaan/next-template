@@ -61,9 +61,9 @@ describe('NavBar', () => {
     expect(screen.queryAllByRole('link', { name: 'My posts', hidden: true })).toHaveLength(0)
   })
 
-  it('shows the bell to signed-in users only, in both menus', () => {
+  it('shows one bell to signed-in users only', () => {
     const { rerender } = render(<NavBar user={user} unreadCount={2} />)
-    expect(screen.getAllByRole('button', { name: 'Notifications 2', hidden: true })).toHaveLength(2)
+    expect(screen.getAllByRole('button', { name: 'Notifications 2', hidden: true })).toHaveLength(1)
     rerender(<NavBar user={null} unreadCount={0} />)
     expect(screen.queryAllByRole('button', { name: /Notifications/, hidden: true })).toHaveLength(0)
   })

@@ -36,6 +36,14 @@
   display: flex;
   align-items: center;
   gap: 2rem;
+  margin-left: auto;
+}
+
+/* The notification bell: one mount, right of the desktop links and left of the mobile menu button */
+.bellSlot {
+  display: flex;
+  align-items: center;
+  margin-left: 0.75rem;
 }
 
 /* Filled by the account area (sign in / user menu) */
@@ -203,6 +211,16 @@
 
   .mobileMenuButton {
     display: flex;
+    margin-left: auto;
+  }
+
+  .bellSlot {
+    margin-left: auto;
+    margin-right: 0.5rem;
+  }
+
+  .bellSlot + .mobileMenuButton {
+    margin-left: 0;
   }
 
   .mobileNavOverlay {
