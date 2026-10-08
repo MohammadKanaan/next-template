@@ -90,7 +90,7 @@ const uploadNameSchema = z
 
 /**
  * Asks for an upload ticket. The type and size are checked against the rule of the `purpose`;
- * an attachment also needs its file `name` (an avatar ignores it).
+ * an attachment also needs its file `name` and the `postId` it is for (an avatar ignores both).
  */
 export const createUploadInput = z
   .object({
@@ -98,6 +98,7 @@ export const createUploadInput = z
     contentType: z.string(),
     size: z.number().int().positive('The file is empty'),
     name: uploadNameSchema.optional(),
+    postId: z.number().int().positive().max(2147483647).optional(),
   })
   .superRefine((value, context) => {
     const rule = UPLOAD_RULES[value.purpose]
@@ -109,6 +110,13 @@ export const createUploadInput = z
     }
     if (value.purpose === 'attachment' && value.name === undefined) {
       context.addIssue({ code: 'custom', path: ['name'], message: 'The file needs a name' })
+    }
+    if (value.purpose === 'attachment' && value.postId === undefined) {
+      context.addIssue({
+        code: 'custom',
+        path: ['postId'],
+        message: 'Choose the post for the file',
+      })
     }
   })
 

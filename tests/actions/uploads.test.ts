@@ -141,12 +141,14 @@ describe('upload actions', () => {
   })
 
   describe('post attachments', () => {
-    const attachmentInput = {
-      purpose: 'attachment',
-      contentType: 'application/pdf',
-      size: 1024,
-      name: 'report.pdf',
-    } as const
+    const attachmentInput = (postId: number) =>
+      ({
+        purpose: 'attachment',
+        contentType: 'application/pdf',
+        size: 1024,
+        name: 'report.pdf',
+        postId,
+      }) as const
 
     const setup = async () => {
       const author = await createUser({})
@@ -157,9 +159,9 @@ describe('upload actions', () => {
       return { author, post }
     }
 
-    it('creates an attachment ticket, attaches it and revalidates the posts', async () => {
+    it('creates an attachment ticket, attaches it and revalidates the detail page only', async () => {
       const { post } = await setup()
-      const created = await createUploadAction(attachmentInput)
+      const created = await createUploadAction(attachmentInput(post.id))
       if (!created.ok) {
         throw new Error('expected a ticket')
       }
@@ -168,19 +170,29 @@ describe('upload actions', () => {
       const attached = await attachPostUploadAction(post.id, created.data.uploadId)
 
       expect(attached).toMatchObject({ ok: true, data: { name: 'report.pdf', size: 1024 } })
-      expect(revalidatePath).toHaveBeenCalledWith('/posts', 'layout')
+      expect(revalidatePath).toHaveBeenCalledWith('/posts/[userId]/[id]', 'page')
+    })
+
+    it('refuses a ticket for a post the viewer may not edit', async () => {
+      const { post } = await setup()
+      await signInAs(await createUser({}))
+      expect(await createUploadAction(attachmentInput(post.id))).toMatchObject({
+        ok: false,
+        code: 'FORBIDDEN',
+      })
+      expect(await db.upload.count()).toBe(0)
     })
 
     it('rejects an attachment without a name with a field error', async () => {
-      await setup()
-      const result = await createUploadAction({ ...attachmentInput, name: undefined })
+      const { post } = await setup()
+      const result = await createUploadAction({ ...attachmentInput(post.id), name: undefined })
       expect(result).toMatchObject({ ok: false, code: 'VALIDATION' })
       expect(result.ok === false && result.fieldErrors?.name).toHaveLength(1)
     })
 
     it('maps 401, 404 and 403 and does not revalidate on a failure', async () => {
       const { post } = await setup()
-      const created = await createUploadAction(attachmentInput)
+      const created = await createUploadAction(attachmentInput(post.id))
       if (!created.ok) {
         throw new Error('expected a ticket')
       }
@@ -208,7 +220,7 @@ describe('upload actions', () => {
 
     it('detaches an attachment and revalidates', async () => {
       const { post } = await setup()
-      const created = await createUploadAction(attachmentInput)
+      const created = await createUploadAction(attachmentInput(post.id))
       if (!created.ok) {
         throw new Error('expected a ticket')
       }
@@ -219,7 +231,7 @@ describe('upload actions', () => {
         ok: true,
         data: null,
       })
-      expect(revalidatePath).toHaveBeenCalledWith('/posts', 'layout')
+      expect(revalidatePath).toHaveBeenCalledWith('/posts/[userId]/[id]', 'page')
       expect(await db.upload.count()).toBe(0)
     })
   })

@@ -14,10 +14,13 @@ records the result. Two purposes use the same machinery: `avatar` (the user's ph
   `{ contentTypes, maxSize, maxPending, ticketSeconds }` (plus the two messages shown for a bad type
   or size). Avatar: PNG, JPEG, WebP, 2 MB, 3 pending. Attachment: PNG, JPEG, WebP, GIF, PDF, CSV (no
   SVG or HTML: the bucket is public), 10 MB, 5 pending. `createUploadInput { purpose, contentType,
-size, name? }` is refined against the rule of its `purpose` (an attachment needs a `name`, trimmed
-  and at most 255 characters); the DAL reads limits from the same table, and `AvatarUploader` and
+size, name?, postId? }` is refined against the rule of its `purpose` (an attachment needs a `name`,
+  trimmed and at most 255 characters, and the `postId` it is for; an avatar ignores both); the DAL reads limits from the same table, and `AvatarUploader` and
   `PostAttachments` take `accept` and the size from it. `POST_ATTACHMENTS_MAX` is 10.
-- `lib/data/uploads.ts`: `createUpload(input)` (signed in → input valid → key
+- `lib/data/uploads.ts`: `createUpload(input)` (signed in → input valid → for an attachment, the
+  post exists and is live (404) and the viewer may update it (403), through
+  `requirePostChange(viewer, postId, 'update')`, so no ticket is issued for a file that could not be
+  attached (a stranger cannot rotate 10 MB tickets on the public prefix) → key
   `<purpose>s/<userId>/<uuid>` → `pending` row → ticket; reclaim and the pending cap work per
   purpose) and `attachAvatar` (signed in → exists → owner, i.e. 401/404/403 → `headObject`
   re-checks size and type against the rule, deleting an object that broke the rules (the row stays
@@ -54,7 +57,11 @@ size, name? }` is refined against the rule of its `purpose` (an attachment needs
   transaction that locks the batch's posts: it re-checks they are still past the cut-off (a restore
   that raced with it wins), queues a `delete-object` job (no delay: the tickets are long dead) for
   every attachment key, deletes the upload rows, then the posts. A job that cannot be queued rolls the
-  batch back and fails the run, so nothing is deleted without its objects being queued. Deleting an
+  batch back and fails the run, so nothing is deleted without its objects being queued. The jobs
+  are queued inside the transaction on purpose (the usual rule is after the commit): after it, a
+  crash would leave objects no row points to, which no cleanup could find; inside it, the worst case
+  is a failed commit after the sends, which costs files of posts already past retention one run
+  early. When the batch commits, the cached detail and comments of the purged posts are dropped. Deleting an
   account queues the keys of the user's own uploads and of files others (an admin) attached to their
   posts, and removes the latter rows (the posts cascade, `SetNull` would leave them behind).
 - Client: `lib/client/uploads.ts` (`uploadFile`) is the one facade that talks to a non-app URL.
@@ -63,8 +70,13 @@ size, name? }` is refined against the rule of its `purpose` (an attachment needs
   props, files sent one after the other, per-file state (waiting, uploading, uploaded, or an inline
   error), no progress bar (`fetch` has no upload progress). `components/Posts/Attachments` (client)
   uses it on the post edit page for ticket action → `uploadFile` → `attachPostUploadAction`, lists the
-  current files with a Remove button (`detachPostUploadAction`) and reloads the page with
-  `router.refresh()`; attachments change at once and do not wait for "Save changes".
+  current files with a Remove button (`detachPostUploadAction`). Its list is its own state, updated
+  from what the actions return, and the page is not refreshed: the post form beside it follows the
+  server's values, so a refresh would replace what the author has typed. For the same reason the
+  two actions revalidate only the detail page (`ROUTE_POST_DETAILS_PATTERN`), not the whole
+  `/posts` layout. `FileUploader` takes `maxFiles`; the component passes the free slots, so files
+  beyond `POST_ATTACHMENTS_MAX` are refused in the browser before they are uploaded. Attachments
+  change at once and do not wait for "Save changes".
   `components/Posts/AttachmentList` (server) lists them as links on the detail page.
 - Avatars render through `UserAvatar` (shadcn `Avatar`) with a plain `<img>`, so no `next/image`
   `remotePatterns` are needed.

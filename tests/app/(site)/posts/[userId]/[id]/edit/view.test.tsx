@@ -2,14 +2,20 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { updatePostAction } from '@/actions/posts'
-import { detachPostUploadAction } from '@/actions/uploads'
+import {
+  attachPostUploadAction,
+  createUploadAction,
+  detachPostUploadAction,
+} from '@/actions/uploads'
 import { PostEditView } from '@/app/(site)/posts/[userId]/[id]/edit/view'
+import { uploadFile } from '@/lib/client/uploads'
 import type { PostDetail } from '@/lib/dto/posts'
 
 const { push, refresh } = vi.hoisted(() => ({ push: vi.fn(), refresh: vi.fn() }))
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push, refresh }) }))
 vi.mock('sonner', () => ({ toast: Object.assign(vi.fn(), { success: vi.fn() }) }))
 vi.mock('@/actions/posts', () => ({ updatePostAction: vi.fn() }))
+vi.mock('@/lib/client/uploads', () => ({ uploadFile: vi.fn(async () => {}) }))
 vi.mock('@/actions/uploads', () => ({
   createUploadAction: vi.fn(),
   attachPostUploadAction: vi.fn(),
@@ -76,7 +82,7 @@ describe('PostEditView', () => {
     expect(screen.queryByRole('button', { name: 'Reload' })).not.toBeInTheDocument()
   })
 
-  it('shows the attachments and removes one for this post, then reloads the page', async () => {
+  it('shows the attachments and removes one for this post without reloading the page', async () => {
     vi.mocked(detachPostUploadAction).mockResolvedValue({ ok: true, data: null })
     render(
       <PostEditView
@@ -98,6 +104,40 @@ describe('PostEditView', () => {
     expect(screen.getByRole('link', { name: 'report.pdf' })).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Remove report.pdf' }))
     expect(detachPostUploadAction).toHaveBeenCalledWith(7, 'att-1')
-    await vi.waitFor(() => expect(refresh).toHaveBeenCalledTimes(1))
+    await vi.waitFor(() =>
+      expect(screen.queryByRole('link', { name: 'report.pdf' })).not.toBeInTheDocument(),
+    )
+    expect(refresh).not.toHaveBeenCalled()
+  })
+
+  it('keeps what was typed in the form when a file is attached', async () => {
+    vi.mocked(createUploadAction).mockResolvedValue({
+      ok: true,
+      data: { uploadId: 'up-1', url: 'http://storage.test/bucket', fields: {} },
+    })
+    vi.mocked(attachPostUploadAction).mockResolvedValue({
+      ok: true,
+      data: {
+        id: 'att-2',
+        name: 'notes.pdf',
+        url: 'http://storage.test/bucket/attachments/u1/y',
+        contentType: 'application/pdf',
+        size: 10,
+        createdAt: new Date('2026-01-03T00:00:00.000Z'),
+      },
+    })
+    render(<PostEditView post={post} />)
+    await userEvent.type(screen.getByLabelText(/Title/), ' typed')
+
+    await userEvent.upload(
+      screen.getByLabelText('Add files'),
+      new File([new Uint8Array(10)], 'notes.pdf', { type: 'application/pdf' }),
+    )
+
+    expect(await screen.findByRole('link', { name: 'notes.pdf' })).toBeInTheDocument()
+    expect(createUploadAction).toHaveBeenCalledWith(expect.objectContaining({ postId: 7 }))
+    expect(uploadFile).toHaveBeenCalledTimes(1)
+    expect(refresh).not.toHaveBeenCalled()
+    expect(screen.getByLabelText(/Title/)).toHaveValue('Hello typed')
   })
 })

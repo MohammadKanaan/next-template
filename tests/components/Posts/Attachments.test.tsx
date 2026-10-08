@@ -26,17 +26,16 @@ const setup = (attachments: Attachment[] = []) => {
   const onCreateUpload = vi.fn().mockResolvedValue({ ok: true, data: ticket })
   const onAttach = vi.fn().mockResolvedValue({ ok: true, data: attachment(9) })
   const onDetach = vi.fn().mockResolvedValue({ ok: true, data: null })
-  const onChanged = vi.fn()
   render(
     <PostAttachments
+      postId={7}
       attachments={attachments}
       onCreateUpload={onCreateUpload}
       onAttach={onAttach}
       onDetach={onDetach}
-      onChanged={onChanged}
     />,
   )
-  return { onCreateUpload, onAttach, onDetach, onChanged }
+  return { onCreateUpload, onAttach, onDetach }
 }
 
 describe('PostAttachments', () => {
@@ -57,25 +56,42 @@ describe('PostAttachments', () => {
     expect(screen.getByText('No attachments yet.')).toBeInTheDocument()
   })
 
-  it('asks for a ticket with the purpose and name, uploads, attaches and reports the change', async () => {
-    const { onCreateUpload, onAttach, onChanged } = setup()
+  it('asks for a ticket for the post, uploads, attaches and adds the file to the list', async () => {
+    const { onCreateUpload, onAttach } = setup()
     const file = pdf('report.pdf', 2048)
     await userEvent.upload(screen.getByLabelText('Add files'), file)
 
-    await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1))
+    expect(await screen.findByRole('link', { name: 'file-9.pdf' })).toBeInTheDocument()
     expect(onCreateUpload).toHaveBeenCalledWith({
       purpose: 'attachment',
       contentType: 'application/pdf',
       size: 2048,
       name: 'report.pdf',
+      postId: 7,
     })
     expect(uploadFile).toHaveBeenCalledWith(ticket, file)
     expect(onAttach).toHaveBeenCalledWith('upload-1')
     expect(await screen.findByText('Uploaded')).toBeInTheDocument()
+    expect(screen.queryByText('No attachments yet.')).not.toBeInTheDocument()
+  })
+
+  it('refuses the files beyond the free slots before uploading them', async () => {
+    const { onCreateUpload, onAttach } = setup(
+      Array.from({ length: POST_ATTACHMENTS_MAX - 2 }, (_, n) => attachment(n)),
+    )
+    const files = ['a', 'b', 'c', 'd'].map((name) => pdf(`${name}.pdf`))
+    await userEvent.upload(screen.getByLabelText('Add files'), files)
+
+    await waitFor(() => expect(screen.getAllByText('Uploaded')).toHaveLength(2))
+    expect(onCreateUpload).toHaveBeenCalledTimes(2)
+    expect(uploadFile).toHaveBeenCalledTimes(2)
+    expect(onAttach).toHaveBeenCalledTimes(2)
+    expect(screen.getByText('c.pdf was not uploaded: no room left')).toBeInTheDocument()
+    expect(screen.getByText('d.pdf was not uploaded: no room left')).toBeInTheDocument()
   })
 
   it('shows the server message beside the file when the ticket is refused', async () => {
-    const { onCreateUpload, onAttach, onChanged } = setup()
+    const { onCreateUpload, onAttach } = setup()
     onCreateUpload.mockResolvedValue({
       ok: false,
       code: 'RATE_LIMITED',
@@ -86,11 +102,11 @@ describe('PostAttachments', () => {
     expect(await screen.findByText('Too many uploads')).toBeInTheDocument()
     expect(uploadFile).not.toHaveBeenCalled()
     expect(onAttach).not.toHaveBeenCalled()
-    expect(onChanged).not.toHaveBeenCalled()
+    expect(screen.getByText('No attachments yet.')).toBeInTheDocument()
   })
 
   it('shows the storage error and the attach error', async () => {
-    const { onAttach, onChanged } = setup()
+    const { onAttach } = setup()
     vi.mocked(uploadFile).mockRejectedValueOnce(new Error('The upload was rejected'))
     await userEvent.upload(screen.getByLabelText('Add files'), pdf('a.pdf'))
     expect(await screen.findByText('The upload was rejected')).toBeInTheDocument()
@@ -99,22 +115,25 @@ describe('PostAttachments', () => {
     onAttach.mockResolvedValue({ ok: false, code: 'VALIDATION', message: 'At most 10 attachments' })
     await userEvent.upload(screen.getByLabelText('Add files'), pdf('b.pdf'))
     expect(await screen.findByText('At most 10 attachments')).toBeInTheDocument()
-    expect(onChanged).not.toHaveBeenCalled()
+    expect(screen.getByText('No attachments yet.')).toBeInTheDocument()
   })
 
-  it('removes an attachment and reports the change', async () => {
-    const { onDetach, onChanged } = setup([attachment(1), attachment(2)])
+  it('removes an attachment from the list', async () => {
+    const { onDetach } = setup([attachment(1), attachment(2)])
     await userEvent.click(screen.getByRole('button', { name: 'Remove file-2.pdf' }))
-    await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1))
+    await waitFor(() =>
+      expect(screen.queryByRole('link', { name: 'file-2.pdf' })).not.toBeInTheDocument(),
+    )
     expect(onDetach).toHaveBeenCalledWith('id-2')
+    expect(screen.getByRole('link', { name: 'file-1.pdf' })).toBeInTheDocument()
   })
 
   it('shows a failed removal', async () => {
-    const { onDetach, onChanged } = setup([attachment(1)])
+    const { onDetach } = setup([attachment(1)])
     onDetach.mockResolvedValue({ ok: false, code: 'NOT_FOUND', message: 'Attachment not found' })
     await userEvent.click(screen.getByRole('button', { name: 'Remove file-1.pdf' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Attachment not found')
-    expect(onChanged).not.toHaveBeenCalled()
+    expect(screen.getByRole('link', { name: 'file-1.pdf' })).toBeInTheDocument()
   })
 
   it('turns the uploader off at the maximum', () => {

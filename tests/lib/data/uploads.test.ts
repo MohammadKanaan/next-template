@@ -168,12 +168,19 @@ describe('uploads DAL', () => {
   })
 
   describe('createUpload (rules per purpose)', () => {
-    const attachment = {
+    const base = {
       purpose: 'attachment',
       contentType: 'application/pdf',
       size: 5000,
       name: 'report.pdf',
     } as const
+    // The ticket is for a post the viewer may update: here one of their own, created by `ownPost`.
+    let attachment: typeof base & { postId: number }
+    const ownPost = async (userId: string) => {
+      const post = await db.post.create({ data: { userId, title: 'T', body: 'B' } })
+      attachment = { ...base, postId: post.id }
+      return post
+    }
 
     it('keeps the table in sync with the numbers the plan names', () => {
       expect(UPLOAD_RULES.avatar).toMatchObject({ maxSize: AVATAR_MAX_SIZE, maxPending: 3 })
@@ -183,6 +190,7 @@ describe('uploads DAL', () => {
 
     it('stores an attachment under attachments/<user>/ with its name and the attachment limits', async () => {
       const user = await createUser({})
+      await ownPost(user.id)
       await signInAs(user)
       const ticket = await createUpload(attachment)
 
@@ -216,12 +224,14 @@ describe('uploads DAL', () => {
     it.each([
       ['an avatar that is not an image it knows', { ...input, contentType: 'application/pdf' }],
       ['an avatar over 2 MB', { ...input, size: AVATAR_MAX_SIZE + 1 }],
-      ['an attachment of an unknown type', { ...attachment, contentType: 'text/html' }],
-      ['an svg attachment', { ...attachment, contentType: 'image/svg+xml' }],
-      ['an attachment over 10 MB', { ...attachment, size: ATTACHMENT_MAX_SIZE + 1 }],
-      ['an attachment without a name', { ...attachment, name: undefined }],
-      ['an empty file', { ...attachment, size: 0 }],
-      ['an unknown purpose', { ...attachment, purpose: 'banner' }],
+      ['an attachment of an unknown type', { ...base, postId: 1, contentType: 'text/html' }],
+      ['an svg attachment', { ...base, postId: 1, contentType: 'image/svg+xml' }],
+      ['an attachment over 10 MB', { ...base, postId: 1, size: ATTACHMENT_MAX_SIZE + 1 }],
+      ['an attachment without a name', { ...base, postId: 1, name: undefined }],
+      ['an attachment without a post', base],
+      ['an attachment for a malformed post id', { ...base, postId: 0 }],
+      ['an empty file', { ...base, postId: 1, size: 0 }],
+      ['an unknown purpose', { ...base, postId: 1, purpose: 'banner' }],
     ])('rejects %s', async (_name, bad) => {
       await signInAs(await createUser({}))
       await expect(createUpload(bad as never)).rejects.toBeInstanceOf(ValidationError)
@@ -229,7 +239,9 @@ describe('uploads DAL', () => {
     })
 
     it('accepts every attachment type the rule lists', async () => {
-      await signInAs(await createUser({}))
+      const user = await createUser({})
+      await ownPost(user.id)
+      await signInAs(user)
       for (const contentType of UPLOAD_RULES.attachment.contentTypes) {
         await db.upload.deleteMany()
         await expect(createUpload({ ...attachment, contentType })).resolves.toBeDefined()
@@ -239,6 +251,7 @@ describe('uploads DAL', () => {
 
     it('allows five pending attachments, a sixth is refused, and avatars count apart', async () => {
       const user = await createUser({})
+      await ownPost(user.id)
       await signInAs(user)
       for (let i = 0; i < 5; i += 1) {
         await createUpload(attachment)
@@ -252,8 +265,49 @@ describe('uploads DAL', () => {
       expect(await db.upload.count({ where: { userId: user.id } })).toBe(8)
     })
 
+    describe('the post an attachment ticket is for', () => {
+      it('requires a session before anything else', async () => {
+        await expect(createUpload({ ...base, postId: 1 })).rejects.toBeInstanceOf(UnauthorizedError)
+      })
+
+      it('answers 404 for a missing post and for a post in the trash', async () => {
+        const author = await createUser({})
+        const post = await ownPost(author.id)
+        await signInAs(author)
+        await expect(createUpload({ ...base, postId: post.id + 1000 })).rejects.toBeInstanceOf(
+          NotFoundError,
+        )
+        await db.post.update({ where: { id: post.id }, data: { deletedAt: new Date() } })
+        await expect(createUpload(attachment)).rejects.toBeInstanceOf(NotFoundError)
+        expect(await db.upload.count()).toBe(0)
+      })
+
+      it('answers 403 for someone who may not update the post, and issues nothing', async () => {
+        const author = await createUser({})
+        const post = await ownPost(author.id)
+        await signInAs(await createUser({}))
+        await expect(createUpload(attachment)).rejects.toBeInstanceOf(ForbiddenError)
+        expect(await db.upload.count()).toBe(0)
+        expect(createUploadTicket).not.toHaveBeenCalled()
+        expect(post.id).toBe(attachment.postId)
+      })
+
+      it("lets an admin ask for a ticket for someone else's post", async () => {
+        const author = await createUser({})
+        await ownPost(author.id)
+        await signInAs(await createUser({ role: 'admin' }))
+        await expect(createUpload(attachment)).resolves.toBeDefined()
+      })
+
+      it('leaves avatar tickets alone: they name no post', async () => {
+        await signInAs(await createUser({}))
+        await expect(createUpload({ ...input, postId: 999 })).resolves.toBeDefined()
+      })
+    })
+
     it('reclaims only stale rows of the same purpose', async () => {
       const user = await createUser({})
+      await ownPost(user.id)
       await signInAs(user)
       const avatarTicket = await createUpload(input)
       const attachmentTicket = await createUpload(attachment)

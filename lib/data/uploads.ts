@@ -45,7 +45,9 @@ const deleteObjectAfterTicket = (key: string, purpose: UploadPurpose) => {
 }
 
 /**
- * Signed in → input valid for its purpose → returns a presigned POST for a new object and the
+ * Signed in → input valid for its purpose → for an attachment, the post exists and is live (404) and
+ * the viewer may update it (403), the same rule as attaching, so a ticket is never issued for a file
+ * that could not be attached → returns a presigned POST for a new object and the
  * pending upload's id. Pending uploads of that purpose whose ticket expired more than
  * `UPLOAD_OBJECT_GRACE_SECONDS` ago are reclaimed first (object, then row). Rows in between (ticket
  * expired, upload possibly still arriving) are neither counted nor touched; the hourly cleanup or a
@@ -55,7 +57,11 @@ const deleteObjectAfterTicket = (key: string, purpose: UploadPurpose) => {
  */
 export const createUpload = async (input: CreateUploadInput): Promise<UploadTicket> => {
   const viewer = await requireUser()
-  const { purpose, contentType, size, name } = parseInput(createUploadInput, input)
+  const { purpose, contentType, size, name, postId } = parseInput(createUploadInput, input)
+  if (purpose === 'attachment' && postId !== undefined) {
+    // The input schema requires `postId` for an attachment. Avatars have no post.
+    await requirePostChange(viewer, postId, 'update')
+  }
   const rule = UPLOAD_RULES[purpose]
 
   const pending = await db.upload.findMany({

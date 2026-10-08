@@ -19,6 +19,9 @@ import styles from './styles.module.scss'
 const rule = UPLOAD_RULES.attachment
 
 export type PostAttachmentsProps = {
+  /** The post the files belong to; a ticket is only issued to someone who may edit it. */
+  postId: number
+  /** The files the post has when the page loads; the list follows the actions' results after that. */
   attachments: Attachment[]
   /** Asks for a presigned upload (a Server Action). */
   onCreateUpload: (input: CreateUploadInput) => Promise<ActionResult<UploadTicket>>
@@ -26,21 +29,26 @@ export type PostAttachmentsProps = {
   onAttach: (uploadId: string) => Promise<ActionResult<Attachment>>
   /** Removes an attachment from the post (a Server Action). */
   onDetach: (uploadId: string) => Promise<ActionResult<null>>
-  /** Called after an attachment was added or removed, so the page can reload its list. */
-  onChanged?: () => void
 }
 
-/** The edit page's attachments: the current files with a remove button, and an uploader. */
+/**
+ * The edit page's attachments: the current files with a remove button, and an uploader. The list
+ * is this component's own state, updated from what the actions return: refreshing the page instead
+ * would re-render the post form beside it, and a form that follows the server's values discards
+ * what the author has typed.
+ */
 export const PostAttachments = ({
-  attachments,
+  postId,
+  attachments: initial,
   onCreateUpload,
   onAttach,
   onDetach,
-  onChanged,
 }: PostAttachmentsProps) => {
+  const [attachments, setAttachments] = useState(initial)
   const [removing, setRemoving] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const full = attachments.length >= POST_ATTACHMENTS_MAX
+  const slotsLeft = Math.max(POST_ATTACHMENTS_MAX - attachments.length, 0)
+  const full = slotsLeft === 0
 
   const upload = async (file: File) => {
     const input = createUploadInput.safeParse({
@@ -48,6 +56,7 @@ export const PostAttachments = ({
       contentType: file.type,
       size: file.size,
       name: file.name,
+      postId,
     })
     if (!input.success) {
       throw new Error(input.error.issues[0].message)
@@ -61,7 +70,7 @@ export const PostAttachments = ({
     if (!attached.ok) {
       throw new Error(attached.message)
     }
-    onChanged?.()
+    setAttachments((current) => [...current, attached.data])
   }
 
   const remove = async (attachment: Attachment) => {
@@ -73,7 +82,7 @@ export const PostAttachments = ({
         setError(result.message)
         return
       }
-      onChanged?.()
+      setAttachments((current) => current.filter((item) => item.id !== attachment.id))
     } finally {
       setRemoving(null)
     }
@@ -116,6 +125,7 @@ export const PostAttachments = ({
         accept={rule.contentTypes}
         maxSize={rule.maxSize}
         multiple
+        maxFiles={slotsLeft}
         disabled={full}
         hint={
           full

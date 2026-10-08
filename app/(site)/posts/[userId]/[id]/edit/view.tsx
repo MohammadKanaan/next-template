@@ -84,11 +84,11 @@ export const PostEditView = ({ post }: PostEditViewProps) => {
         </CardHeader>
         <CardContent>
           <PostAttachments
+            postId={post.id}
             attachments={post.attachments}
             onCreateUpload={createUploadAction}
             onAttach={(uploadId) => attachPostUploadAction(post.id, uploadId)}
             onDetach={(uploadId) => detachPostUploadAction(post.id, uploadId)}
-            onChanged={() => router.refresh()}
           />
         </CardContent>
       </Card>

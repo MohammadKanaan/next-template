@@ -69,6 +69,7 @@ describe('createUploadInput', () => {
         contentType: 'text/csv',
         size: ATTACHMENT_MAX_SIZE,
         name: 'data.csv',
+        postId: 1,
       }),
     ).toEqual([])
   })
@@ -86,10 +87,17 @@ describe('createUploadInput', () => {
         contentType: 'image/png',
         size: AVATAR_MAX_SIZE + 1,
         name: 'a.png',
+        postId: 1,
       }),
     ).toEqual([])
     expect(
-      messages({ purpose: 'attachment', contentType: 'text/html', size: 1, name: 'a.html' }),
+      messages({
+        purpose: 'attachment',
+        contentType: 'text/html',
+        size: 1,
+        name: 'a.html',
+        postId: 1,
+      }),
     ).toHaveLength(1)
     expect(
       messages({
@@ -97,16 +105,23 @@ describe('createUploadInput', () => {
         contentType: 'application/pdf',
         size: ATTACHMENT_MAX_SIZE + 1,
         name: 'a.pdf',
+        postId: 1,
       }),
     ).toEqual(['size: The file must be 10 MB or smaller'])
   })
 
   it('needs a name for an attachment only, trimmed and bounded', () => {
-    expect(messages({ purpose: 'attachment', contentType: 'application/pdf', size: 1 })).toEqual([
-      'name: The file needs a name',
-    ])
     expect(
-      messages({ purpose: 'attachment', contentType: 'application/pdf', size: 1, name: '   ' }),
+      messages({ purpose: 'attachment', contentType: 'application/pdf', size: 1, postId: 1 }),
+    ).toEqual(['name: The file needs a name'])
+    expect(
+      messages({
+        purpose: 'attachment',
+        contentType: 'application/pdf',
+        size: 1,
+        name: '   ',
+        postId: 1,
+      }),
     ).toHaveLength(1)
     expect(
       messages({
@@ -114,6 +129,7 @@ describe('createUploadInput', () => {
         contentType: 'application/pdf',
         size: 1,
         name: 'x'.repeat(256),
+        postId: 1,
       }),
     ).toHaveLength(1)
     expect(
@@ -122,8 +138,19 @@ describe('createUploadInput', () => {
         contentType: 'application/pdf',
         size: 1,
         name: ' a.pdf ',
+        postId: 1,
       }).name,
     ).toBe('a.pdf')
+  })
+
+  it('needs the post an attachment is for, as a positive int4 id, and ignores it for an avatar', () => {
+    const attachment = { purpose: 'attachment', contentType: 'application/pdf', size: 1, name: 'a' }
+    expect(messages(attachment)).toEqual(['postId: Choose the post for the file'])
+    for (const postId of [0, -1, 1.5, 2147483648]) {
+      expect(messages({ ...attachment, postId }), String(postId)).toHaveLength(1)
+    }
+    expect(messages({ ...attachment, postId: 3 })).toEqual([])
+    expect(messages({ purpose: 'avatar', contentType: 'image/png', size: 1 })).toEqual([])
   })
 
   it('rejects an empty file, a fractional size and an unknown purpose', () => {

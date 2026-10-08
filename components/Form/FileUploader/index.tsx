@@ -20,6 +20,11 @@ export type FileUploaderProps = {
   /** The largest file accepted, in bytes. */
   maxSize: number
   multiple?: boolean
+  /**
+   * The most files one pick uploads. Further acceptable files are refused with a message and never
+   * sent, so a caller with a quota does not upload what the server would turn away.
+   */
+  maxFiles?: number
   disabled?: boolean
   /** Shown under the button (for example the allowed types and the size limit). */
   hint?: string
@@ -35,6 +40,7 @@ export const FileUploader = ({
   accept,
   maxSize,
   multiple = false,
+  maxFiles,
   disabled = false,
   hint,
   onUpload,
@@ -66,12 +72,18 @@ export const FileUploader = ({
     const entries = picked.map((file) => ({ file, id: (nextId.current += 1) }))
     setFiles(entries.map(({ file, id }) => ({ id, name: file.name, status: 'waiting' })))
     setBusy(true)
+    let accepted = 0
     for (const { file, id } of entries) {
       const rejected = problem(file)
       if (rejected) {
         update(id, { status: 'error', message: rejected })
         continue
       }
+      if (maxFiles !== undefined && accepted >= maxFiles) {
+        update(id, { status: 'error', message: `${file.name} was not uploaded: no room left` })
+        continue
+      }
+      accepted += 1
       update(id, { status: 'uploading' })
       try {
         await onUpload(file)

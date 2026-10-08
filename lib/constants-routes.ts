@@ -24,6 +24,9 @@ export const loginPath = (next: string) => `${ROUTE_LOGIN}?next=${encodeURICompo
 export const ROUTE_POST_DETAILS = (userId: RouteParameter, postId: RouteParameter) =>
   `${ROUTE_POSTS}/${encode(userId)}/${encode(postId)}`
 
+/** The detail page's route pattern, for `revalidatePath(…, 'page')`. */
+export const ROUTE_POST_DETAILS_PATTERN = `${ROUTE_POSTS}/[userId]/[id]`
+
 export const ROUTE_POST_EDIT = (userId: RouteParameter, postId: RouteParameter) =>
   `${ROUTE_POST_DETAILS(userId, postId)}/edit`
 

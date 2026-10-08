@@ -1,7 +1,7 @@
 'use server'
 
 import { refresh, revalidatePath } from 'next/cache'
-import { ROUTE_POSTS } from '@/lib/constants-routes'
+import { ROUTE_POST_DETAILS_PATTERN } from '@/lib/constants-routes'
 import { getSessionUser } from '@/lib/data/auth'
 import { toActionFailure } from '@/lib/data/errors'
 import { consumeRateLimit } from '@/lib/data/rateLimit'
@@ -42,7 +42,9 @@ export const attachPostUploadAction = async (
 ): Promise<ActionResult<Attachment>> => {
   try {
     const attachment = await attachPostUpload(postId, uploadId)
-    revalidatePath(ROUTE_POSTS, 'layout')
+    // Only the detail page: the edit page keeps the list in its own state, and refreshing it
+    // would replace what the author has typed in the form.
+    revalidatePath(ROUTE_POST_DETAILS_PATTERN, 'page')
     return { ok: true, data: attachment }
   } catch (error) {
     return toActionFailure(error)
@@ -55,7 +57,9 @@ export const detachPostUploadAction = async (
 ): Promise<ActionResult<null>> => {
   try {
     await detachPostUpload(postId, uploadId)
-    revalidatePath(ROUTE_POSTS, 'layout')
+    // Only the detail page: the edit page keeps the list in its own state, and refreshing it
+    // would replace what the author has typed in the form.
+    revalidatePath(ROUTE_POST_DETAILS_PATTERN, 'page')
     return { ok: true, data: null }
   } catch (error) {
     return toActionFailure(error)
