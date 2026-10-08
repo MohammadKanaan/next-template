@@ -1,5 +1,6 @@
 import 'server-only'
 import { logger } from '@/lib/server/logger'
+import type { PushTarget } from '@/lib/server/push'
 import { deleteObject } from '@/lib/server/storage'
 import { db } from './db'
 
@@ -60,4 +61,21 @@ export const deleteStalePendingUploads = async (batchSize = STALE_UPLOAD_BATCH) 
     }
   }
   return { uploads: deleted }
+}
+
+/** A user's push targets, in the shape `web-push` takes. */
+export const listPushSubscriptions = async (userId: string): Promise<PushTarget[]> => {
+  const rows = await db.pushSubscription.findMany({
+    where: { userId },
+    select: { endpoint: true, p256dh: true, auth: true },
+  })
+  return rows.map((row) => ({
+    endpoint: row.endpoint,
+    keys: { p256dh: row.p256dh, auth: row.auth },
+  }))
+}
+
+/** Drops a subscription the push service reported gone (404 / 410). */
+export const deletePushSubscriptionByEndpoint = async (endpoint: string): Promise<void> => {
+  await db.pushSubscription.deleteMany({ where: { endpoint } })
 }

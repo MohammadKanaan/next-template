@@ -55,4 +55,11 @@ describe('job definitions', () => {
     expect(jobs['delete-object'].schema.safeParse({ key: '' }).success).toBe(false)
     expect(jobs['delete-object'].schema.safeParse({}).success).toBe(false)
   })
+
+  it('validates the send-push payload', () => {
+    const schema = jobs['send-push'].schema
+    expect(schema.safeParse({ userId: 'u1', title: 'T', body: '', url: '/x' }).success).toBe(true)
+    expect(schema.safeParse({ userId: 'u1', title: '', body: '', url: '/x' }).success).toBe(false)
+    expect(schema.safeParse({ userId: 'u1', title: 'T', body: '' }).success).toBe(false)
+  })
 })

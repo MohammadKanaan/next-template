@@ -3,6 +3,7 @@ import { handleCleanup } from '@/jobs/cleanup'
 import { handleDeleteObject } from '@/jobs/deleteObject'
 import { jobs, type JobDefinition, type JobName } from '@/jobs/definitions'
 import { handleSendEmail } from '@/jobs/sendEmail'
+import { handleSendPush } from '@/jobs/sendPush'
 import { db } from '@/lib/data/db'
 import { serverEnv } from '@/lib/server/env'
 import { logger } from '@/lib/server/logger'
@@ -60,6 +61,7 @@ const start = async () => {
 
   await register('send-email', handleSendEmail)
   await register('delete-object', handleDeleteObject)
+  await register('send-push', handleSendPush)
   await register('cleanup', handleCleanup)
 
   log.info({ jobs: Object.keys(jobs) }, 'ready')
