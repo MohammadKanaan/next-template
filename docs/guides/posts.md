@@ -10,9 +10,9 @@ The posts example carries the domain patterns an app needs (all in `lib/data/pos
 - **Visibility:** only `published` posts are public. A draft or archived post is visible to its
   author and to admins; for anyone else `getPost` throws `NotFoundError`, the same answer as a
   missing post. `getPost` caches the viewer-independent part (`getPostBase`, private to
-  `lib/data/posts.ts`, so nothing outside it can read a draft) and applies `canViewPost` and
+  `lib/data/posts.ts`, so nothing outside it can read a draft) and applies `postPolicy.view` and
   `permissions` after the cache read; `listComments` goes through `getPost` for the same reason,
-  and `canViewPost` is exported only as a pure predicate for `createComment`'s database read. Reads
+  and `createComment` applies the same `postPolicy.view` to its own database read. Reads
   of an invisible post answer 404, but writes follow exists (404) → allowed (403), so a stranger who
   tries to change or delete a draft gets 403. `listPosts` shows `published` only,
   except to an author listing their own posts (`authorId` equals their id), who sees every status
