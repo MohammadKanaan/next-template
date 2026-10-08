@@ -28,6 +28,23 @@ forgets a check cannot bypass it.
   `node_modules/next/dist/docs/` and `node_modules/@prisma/` are the exceptions when you need the
   installed library's documentation.
 
+## Guides
+
+Long area narratives live in `docs/guides/`. Read the one for the area you touch before editing it.
+
+- `docs/guides/authentication.md`: Better Auth, email flows, account settings, Google, admin, dashboard, rate limits.
+- `docs/guides/posts.md`: the posts example (status workflow, visibility, comments, tags, invalidation).
+- `docs/guides/route-handlers.md`: Route Handlers, client facades, the REST API, health.
+- `docs/guides/caching.md`: the Redis data cache (`remember`, tags, what is never cached).
+- `docs/guides/jobs.md`: pg-boss jobs, handlers, the worker, the system DAL.
+- `docs/guides/email.md`: the mailer and React Email templates.
+- `docs/guides/uploads.md`: presigned POST uploads, the `Upload` table, orphan cleanup.
+- `docs/guides/realtime.md`: SSE, notifications, Web Push.
+- `docs/guides/infrastructure.md`: `lib/server`, logging, singletons, Docker and CI.
+- `docs/guides/hooks.md`: hook rules (no `useMemo` / `useCallback`; RHF files opt out with `'use no memo'`), `useUrlState`, browser storage.
+- `docs/guides/forms.md`: React Hook Form + Zod forms (each starts `'use client'` then `'use no memo'`).
+- `docs/guides/environment.md`: public and server-only config, security headers, `serverEnv()`.
+
 ## Build & Run Commands
 
 | Command                                    | Purpose                                                                                                          |
@@ -174,191 +191,6 @@ docs/DECISIONS.md        # Framework and library choices, with reasons
 - `Providers` uses `next-themes` with `attribute="class"`, system default, and transition suppression
   on theme changes. `ThemeToggle` offers light/dark/system; the stock Toaster follows the theme.
 
-## Authentication
-
-- **Better Auth**, email + password, with the official Prisma adapter and the `nextCookies` plugin
-  (always the last plugin). Sessions are database rows; the session cookie is set by Better Auth.
-  `role` (`user` / `admin`) is an additional user field, not settable from sign-up input.
-- Email flows: sign-up sends a verification email, "Forgot password?" sends a reset email, both
-  through the `send-email` job (see **Email**). Verification is **soft**
-  (`requireEmailVerification: false`): unverified users can sign in and see `VerifyEmailBanner`
-  with a Resend button; opening the verification link only marks the address verified, it never
-  signs the browser in. Either change-email link (the confirmation to the current address and the
-  verification of the new one both carry `updateTo`) opened without the account's session (Better
-  Auth would otherwise create one for the opener) is sent to `/login?next=<the link>` by a `hooks.before`
-  middleware and completes after sign-in; the login and signup views navigate to a `/api/` target
-  with `window.location.assign`. Password reset revokes every session (`revokeSessionsOnPasswordReset`).
-  Actions: `requestPasswordResetAction` (always `ok`, so it cannot enumerate accounts),
-  `resetPasswordAction`, `resendVerificationAction`; pages `/forgot-password` and
-  `/reset-password` in `(minimal)`. Better Auth enqueues emails without awaiting, so response time
-  does not reveal whether an account exists.
-- **Account settings** (`/settings`, a stack of cards): `updateProfileAction` (`actions/users.ts`:
-  name, username, website; a taken username is a field error from the DAL), and in
-  `actions/auth.ts` `changePasswordAction` (`auth.api.changePassword` with `revokeOtherSessions`,
-  so this browser stays signed in and every other session ends), `changeEmailAction`,
-  `revokeSessionAction`, `revokeOtherSessionsAction` and `deleteAccountAction`. Each parses its
-  input, requires a session, is rate limited per user and `refresh()`es.
-  - **Change email:** `user.changeEmail` is enabled. A verified user gets a `confirm-email-change`
-    email at the **current** address (`sendChangeEmailConfirmation`); following it makes Better Auth
-    send the usual verification email to the **new** address (`sendVerificationEmail`), and opening
-    that switches the address. Both links, the confirmation as well (its token carries `updateTo`
-    too), complete only in a browser that holds the account's session; otherwise the
-    `hooks.before` middleware sends the opener to `/login?next=<the link>` first. An unverified user
-    skips the first step. A taken address gets the
-    same response and no email, so it cannot enumerate accounts; the action itself only rejects the
-    user's own address.
-  - **Delete account:** `user.deleteUser` is enabled. `beforeDelete` queues `delete-object` for each
-    of the user's upload keys (the rows cascade, the objects would be orphaned), delayed with
-    `startAfter` past the ticket lifetime plus grace so an in-flight upload cannot outlive its job; `afterDelete`
-    invalidates `POSTS_TAG` and the user's tag. Posts, sessions, accounts and uploads cascade.
-  - **Sessions:** `lib/data/sessions.ts` (`listSessions`, `revokeSession`, `revokeOtherSessions`)
-    works on the plain `sessions` rows, so deleting a row ends that session. `SessionUser` carries
-    `sessionId` to mark the current one. `SessionSummary` never contains the token.
-  - **Profile edits** go through `updateProfile` in `lib/data/users.ts`, which invalidates the cached
-    viewer and `POSTS_TAG` (cached post lists embed the author's name and username).
-- **Google sign-in (optional):** `socialProviders.google` is built only when `GOOGLE_CLIENT_ID` and
-  `GOOGLE_CLIENT_SECRET` are both set. `lib/data/auth.ts` reads them from `process.env` directly
-  (the config is built at import and `serverEnv()` is lazy and needs every variable), the same
-  documented exception as `BETTER_AUTH_SECRET` / `BETTER_AUTH_URL`; `serverEnv()` lists the pair as
-  optional and rejects one without the other so production fails at boot. `isGoogleAuthEnabled()`
-  (public, no auth: it only says what the login page can offer) feeds the `googleEnabled` prop of
-  the login and signup views, which render `GoogleButton` only then. `signInWithGoogleAction(nextPath)`
-  sanitizes the path with `safeRedirectPath`, calls `auth.api.signInSocial` and `redirect()`s; the
-  callback `/api/auth/callback/google` runs through Better Auth's HTTP router and must not be added
-  to `disabledPaths`. `mapProfileToUser` supplies the required unique `username` through
-  `deriveUsername` (`lib/username.ts`: email local part reduced to `a-z0-9_`, trimmed, plus a random
-  six-character suffix; always passes the sign-up rule). Account linking stays at the default
-  (verified Google email and verified local email). A Google-only user has no `credential` account:
-  `hasPassword()` (`lib/data/users.ts`) drives `/settings`, which then shows no password form or
-  delete button and points to "Forgot password" (Better Auth's reset creates the credential
-  account). The round trip with Google itself is not covered by tests.
-- Only `lib/data/auth.ts`, `actions/auth.ts`, `app/api/auth/[...all]`, `proxy.ts`, and
-  `prisma/seed.ts` (password hashing via `better-auth/crypto`) import `better-auth`. Everything else asks the DAL: `getSessionUser()`, `requireUser()`,
-  `requireAdmin()`, `getViewer()`.
-- `requireUser()` always **throws** `UnauthorizedError`; it never redirects. Pages wrap their reads
-  in `loadPage(load, path)` (`lib/data/page.ts`), which turns `UnauthorizedError` into a redirect to
-  `/login?next=…` and `NotFoundError` **and `ForbiddenError`** into `notFound()`, so a page the
-  viewer may not see (the admin area) looks like one that does not exist.
-- **Admin** (`/admin`, `ROUTE_ADMIN`, private by default): the first live use of `requireAdmin()`.
-  `listUsers(query)` (name/username/email search, paginated, `postCount`) is never cached because
-  it is viewer-restricted and carries emails; `setUserRole(id, role)` checks admin (401/403) →
-  exists (404) → not the admin's own account (403) → update → `invalidateTags(userTag(id))`.
-  Roles are read from the database session on every request, so a change applies on the target's
-  next request. `setUserRoleAction` is the write; `page.tsx` reads `searchParams` with
-  `usersUrlQuery` and `view.tsx` (table, role `Select`, search, `Pagination`)
-  writes through `useUrlState`. `NavBar` shows an "Admin" link to admins only (cosmetic; the DAL is
-  the guard). Better Auth's `admin` plugin is deliberately not used (see `docs/DECISIONS.md`).
-- **Dashboard** (`/dashboard`, `ROUTE_DASHBOARD`, private; the default target after sign-in): the
-  worked example of aggregate queries, in `lib/data/stats.ts` with DTOs in `lib/dto/stats.ts`.
-  `getSiteStats()` (published posts, comments on them, tags in use) is public and cached under
-  `POSTS_TAG`. `getMyStats()` requires a session (checked before the cache is touched) and returns
-  the viewer's posts per status through Prisma `groupBy` (every status present, zero when empty) and
-  the comments other people left on their posts; its key is per user (`user:<id>:stats`, tags
-  `POSTS_TAG` + the user's tag), so one viewer's numbers never reach another. `getPostsPerDay(days)`
-  is public: published posts per UTC day, zero-filled, oldest first, `days` 1 to 90 (default 30,
-  validated so the cache key is bounded). The page loads all three in one `Promise.all` inside
-  `loadPage`; `StatCard` (server) and `PostsPerDayChart` (the only client component, on the shadcn
-  `chart` primitive over Recharts) render them.
-- `proxy.ts` is optimistic only: it checks cookie _presence_ (`getSessionCookie`) to redirect
-  private pages to `/login?next=…`. It has no guest-only redirect, because a stale cookie must not
-  lock anyone out of `/login`; the `/login` and `/signup` pages call `getViewer()` and redirect
-  signed-in users themselves. The real check is always in the DAL.
-- Better Auth's HTTP router has `disabledPaths: ['/sign-up/email', '/update-user', '/delete-user',
-'/delete-user/callback', '/sign-in/email', '/request-password-reset', '/send-verification-email',
-'/change-password', '/change-email', '/verify-password']`
-  (returns 404; the callback is inert while no deletion token is issued): sign-up goes only through `signUpAction` (validated with `signUpInput`, rate
-  limited), profile edits only through `updateProfile` (the same username and name rules), and
-  account deletion only through `deleteAccountAction`, because over HTTP a fresh session can delete
-  without a password while the action always demands it. Sign-in, password-reset requests and
-  verification-email requests go only through `signInAction`, `requestPasswordResetAction` and
-  `resendVerificationAction`, because those enforce per-account limits (`sign-in:email`,
-  `password-reset:email`, `resend-verification:user`) that the router would skip (it only has Better
-  Auth's per-process limiter, whose client address trusts a spoofable `x-forwarded-for`). The same
-  goes for the session-bound account changes: `/change-password`, `/change-email` and
-  `/verify-password` (a password oracle for a stolen session) are reached only through
-  `changePasswordAction` and `changeEmailAction`, which limit them per user (nothing calls
-  `/verify-password` over HTTP). Direct `auth.api.*` calls from server code are unaffected. Remove
-  an entry only together with the code that validates the same rules and enforces the same limits.
-  The paths that stay enabled are the ones the email links and OAuth need (`/verify-email`,
-  `/reset-password/:token`, `/reset-password`, `/sign-in/social`, `/callback/*`) plus session reads
-  and sign-out.
-- Auth and upload actions that an attacker could spam (`signInAction`, `signUpAction`,
-  `requestPasswordResetAction`, `resetPasswordAction`, `resendVerificationAction`,
-  `signInWithGoogleAction`, `createAvatarUploadAction`, and per user `updateProfileAction`, `changePasswordAction`,
-  `changeEmailAction`, `revokeSessionAction`, `revokeOtherSessionsAction`, `deleteAccountAction`)
-  are rate limited in production with `consumeRateLimit`
-  (`lib/data/rateLimit.ts`, Redis-backed so the limits hold across instances), because Better
-  Auth's own limiter only runs in its HTTP router. It fails open: if Redis is down the attempt is
-  allowed and the error is logged. The per-IP limits read the client from `x-forwarded-for` through
-  `getClientIp`, which assumes the app sits behind `TRUSTED_PROXY_HOPS` (default 1) proxies that
-  append the client address: Next only fills that header when the client sent none, so a directly
-  exposed server lets clients pick their own bucket.
-  Content creation (`createPost`, `createComment`: 20 per minute per user) is limited inside the DAL
-  instead, because the Server Action and the REST handler both reach it. So are changes to existing
-  content: `requirePostChange` (update, status change, delete) and `deleteComment` allow 60 per
-  minute per user, since each write can add tags and drops the cached lists.
-- Better Auth's `databaseHooks.user.update.after` invalidates the cached viewer (`user:<id>`), so
-  changes made inside Better Auth (e.g. email verification) show up immediately.
-- Sessions refresh only through Server Actions or the auth route (Server Components cannot set
-  cookies), so a user who only browses is signed out when the 7-day session expires.
-- Client code never reads or sends a token; the cookie is httpOnly and travels on its own.
-
-## Posts: workflow, visibility, comments, tags
-
-The posts example carries the domain patterns an app needs (all in `lib/data/posts.ts` and
-`lib/data/comments.ts`, shapes in `lib/dto/posts.ts` and `lib/dto/comments.ts`).
-
-- **Schema:** `Post.status` (`draft` | `published` | `archived`, default `draft`) and
-  `publishedAt`; `Comment` (cascades from post and user); `Tag` (`name` unique, stored lowercased)
-  and the explicit join table `PostTag` (composite id, cascades). The migration backfills posts
-  that existed before the workflow to `published`.
-- **Visibility:** only `published` posts are public. A draft or archived post is visible to its
-  author and to admins; for anyone else `getPost` throws `NotFoundError`, the same answer as a
-  missing post. `getPost` caches the viewer-independent part (`getPostBase`, private to
-  `lib/data/posts.ts`, so nothing outside it can read a draft) and applies `canViewPost` and
-  `permissions` after the cache read; `listComments` goes through `getPost` for the same reason,
-  and `canViewPost` is exported only as a pure predicate for `createComment`'s database read. Reads
-  of an invisible post answer 404, but writes follow exists (404) → allowed (403), so a stranger who
-  tries to change or delete a draft gets 403. `listPosts` shows `published` only,
-  except to an author listing their own posts (`authorId` equals their id), who sees every status
-  unless they pass `status`. An admin is not special on a general list: it is `published` only too,
-  but an admin may pass `status` (and so may the author); anyone else's `status` other than
-  `published` is ignored. A result the viewer's identity changed skips `remember()`.
-  `/posts/mine` (`ROUTE_POSTS_MINE`, private) is the author's own list with the filters (including
-  the status select) and `PostStatusActions` per row.
-- **Multi-filter lists:** `listPostsQuery` takes `authorId`, `q`, `sort`, `status`, `tag` and
-  `from` / `to` (UTC `YYYY-MM-DD`, both days inclusive, on `createdAt`); `buildPostWhere` in the DAL
-  composes them. `postsUrlQuery` is the tolerant URL twin (every field `.catch()`es to `''` / its
-  default; `toListPostsParams` turns `''` into `undefined`) shared by the SSR pages and
-  `useUrlState`. `components/Posts/Filters` is one component: tag select (from `listTags`), date
-  inputs, sort, "Clear filters", and a status select only on the page that passes `status`. Any
-  filter change resets `page` to 1 in the same patch.
-- **Status workflow:** `POST_STATUS_TRANSITIONS` in `lib/dto/posts.ts` is the one definition (draft
-  → published; published → archived | draft; archived → published). `setPostStatus` enforces it
-  (signed in → exists → author or admin → transition allowed, else `ValidationError` on `status`),
-  stamps `publishedAt` on the first publication, and writes conditionally on the checked status so
-  concurrent moves cannot both win. The UI (`components/Posts/StatusActions`) only offers the moves
-  the map allows. `createPost` always creates a draft.
-- **Transaction:** `createPost` / `updatePost` write the post and its tags in one `db.$transaction`
-  (`replacePostTags`: upsert tag rows in sorted order, drop the links no longer wanted). On update,
-  omitting `tags` leaves them alone and `[]` clears them. Tag names are normalized by
-  `tagNameSchema` (trimmed, lowercased, at most 30 characters; at most 5 per post, de-duplicated).
-- **Comments** (the nested resource): `listComments(postId)` (oldest first, capped, cached per post,
-  `permissions.delete` added per viewer; it applies the same visibility rule as the post),
-  `createComment` (signed in; the post must be visible and published, read from the database, not
-  the cache), `deleteComment` (the comment's author, the post's author or an admin).
-- **Invalidation:** `commentCount` and `tags` are embedded in cached lists and details, so every
-  comment write invalidates `POSTS_TAG`, `postTag(id)` and `commentsTag(id)`, and every tag or status
-  change invalidates `POSTS_TAG` and `postTag(id)`. Cached comments carry `POSTS_TAG` too, because
-  commenters' names are embedded (a profile edit drops them). `listTags()` (tags of published posts
-  with counts) is cached under `POSTS_TAG`.
-- **UI:** the detail page stays a Server Component (status badge, `PostTags`, an async
-  `CommentThread` in its own `<Suspense>`); the status buttons, `CommentForm` and
-  `DeleteCommentButton` are the client leaves. `components/Form/TagsInput` is the reusable chips
-  control (owns `label` / `error` like `Form/Input`); `PostForm` uses it through RHF's `Controller`.
-- Tests that create posts and expect them to be public set `status: 'published'` explicitly, since
-  the default is `draft`.
-
 ## Data Access Layer
 
 - `lib/data/**` is the only code that imports `@/generated/prisma/*` or `@prisma/*`. Every file
@@ -407,41 +239,6 @@ catch (error) { return toActionFailure(error) }`. Return `ActionResult<T>`; neve
   runs `parseInput` themselves (in `actions/auth.ts`).
 - The calling view owns navigation and toasts; the form owns field errors.
 
-## Route Handlers and client facades
-
-- Use a Route Handler only when a client component must fetch (the `/posts/csr` example) or when an
-  HTTP API is required (the REST endpoints under `app/api/v1/posts`, below). It stays thin: for a
-  query, `parseInput` it to decode it (every value arrives as a string); for a body,
-  `readJsonBody(request)` and decode it with the DTO schema (`parseInput(createPostInput, …)`), as a
-  query is decoded; then call the DAL (which validates again, because it trusts no caller),
-  return JSON or `toErrorResponse(error)`.
-- The client calls it through a facade in `lib/client` (`fetchPosts`) that parses the response with
-  the shared `lib/dto` schema and throws `RequestError` (message + status) on failure. Components do
-  not call `fetch` directly.
-- `/posts/csr` is the single live example of this path and has an end-to-end test.
-- **REST API (`app/api/v1/posts`):** `GET`/`POST /posts`, `GET`/`PATCH`/`DELETE /posts/[id]`,
-  `GET`/`POST /posts/[id]/comments` (table in the README). Auth is the session cookie. A write handler
-  first calls `requireUser()` (so an anonymous caller gets 401 whatever the body or content type),
-  then reads the body with `readJsonBody(request)` (`lib/data/errors.ts`), which rejects a content type other than
-  `application/json` and maps malformed JSON to a `ValidationError` (both 422); that requirement
-  plus the `SameSite=Lax` cookie is the CSRF guard, since a cross-site form cannot send JSON without
-  a CORS preflight. Handlers type their context with the generated `RouteContext<'/api/v1/posts/[id]'>`,
-  await `params`, decode the body with the DTO schema (`parseInput(updatePostInput, …)`, as the
-  GET handler decodes its query) and pass it, with the raw `id` string, to the DAL, which validates
-  both again. Status codes: 201 for a create (with the created DTO), 200 for reads and updates,
-  204 with an empty body for a delete, errors through `toErrorResponse` (401/403/404/422/429).
-  There is deliberately no status endpoint: transitions stay in `setPostStatusAction`. There are no
-  client facades for these endpoints because no UI calls them; their tests call the handlers
-  directly (`tests/app/api/v1/`). API keys and OpenAPI stay deferred.
-- **Realtime and notifications:** `GET /api/v1/events` (the SSE stream, see **Realtime and
-  notifications**) and `GET /api/v1/notifications?page&perPage` (the bell's popover reads the latest
-  ten through `lib/client/notifications.ts`; the `/notifications` page reads the DAL directly). Both
-  need a session (401 JSON otherwise) and are per viewer, so neither is cached.
-- `GET /api/health` is the other Route Handler. It is for load balancers and container probes,
-  not for the client facade: it awaits `connection()`, calls `checkHealth()` (database `SELECT 1`
-  and Redis `PING`, each with a 2 s timeout) and returns 200 `{ status: 'ok', checks }` or 503
-  `{ status: 'degraded', checks }`. It never includes error details.
-
 ## Errors
 
 - The DAL throws `UnauthorizedError`, `ForbiddenError`, `NotFoundError`, and `ValidationError`
@@ -455,259 +252,12 @@ catch (error) { return toActionFailure(error) }`. Return `ActionResult<T>`; neve
 
 ## Caching
 
-There is one cache: the **Redis data cache** (`remember()` in `lib/server/cache.ts`), used inside
-the DAL for data that is the same for every viewer. Next's Cache Components are off
-(`cacheComponents` is not set), so `'use cache'`, `cacheTag` and `cacheLife` are not available; do
-not turn them on to cache data, because a second cache is a copy that Redis invalidation cannot
-reach. Caching is opt-in per DAL function: a new read works without `remember()`, add it when the
-read is viewer independent and worth it.
-
-How the DAL caches:
-
-- `remember(key, { ttl, tags, schema }, load)`: reads the tag versions, builds a versioned key,
-  returns the hit parsed with `schema` (the DTO's `z.coerce.date()` restores `Date`s), or runs
-  `load()` and stores the JSON with a TTL. `invalidateTags(...tags)` bumps each tag's version, so
-  old entries become unreachable at once and age out by TTL.
-- Tags live in `lib/data/cacheTags.ts` (`POSTS_TAG`, `postTag(id)`, `commentsTag(id)`, `userTag(id)`).
-- Check auth first, then `remember()` only the viewer-independent part, then compute viewer-specific
-  fields (`permissions`) after. Never cache something that varies by viewer under a shared key.
-- **Invalidate inside the DAL**, right after the write succeeds, so a caller cannot forget
-  (`createPost` / `updatePost` / `deletePost`, `attachAvatar`; Better Auth user updates via its
-  database hook). Actions still call `revalidatePath` / `refresh()` for the router cache.
-- **Free-text search, date ranges, author lists and unknown tags are never cached.** `listPosts`
-  skips `remember()` when `q`, `from`, `to` or `authorId` is set (high-cardinality, unbounded keys;
-  the one author list in the UI is the viewer's own, which is viewer dependent anyway), when a
-  `tag` is not among the published posts' tags (`listTags()`, itself cached and capped, so a caller
-  cannot mint keys by inventing tags), and when a viewer-chosen status (anything but `published`)
-  shaped the result. Unfiltered lists and lists of a known tag keep the cache (`sort` and the
-  validated `tag` are part of their key). Search input is escaped for LIKE wildcards in the DAL.
-- Cache keys are built from unambiguous parts (`JSON.stringify([...])`, as `listPosts` does), never
-  by joining user-controlled strings, and every input that reaches a key is bounded in its DTO
-  (`page`, `perPage`, `tag`), so a caller cannot collide with another entry or mint unlimited keys. The key space is bounded but
-  large (`page` × `perPage` × `sort` × known tags); `remember()` entries have a TTL and Redis runs
-  `volatile-lru`, so a flood evicts cache entries and rate-limit counters, never tag versions.
-- Redis must be >= 7 (the rate limiter uses `PEXPIRE ... NX`). Run it with `maxmemory` and
-  `maxmemory-policy volatile-lru`, as `docker-compose.yml` does: tag versions have no TTL and must
-  not be evicted.
-- Redis is an optimization, never a dependency: read, write, and invalidation errors are logged
-  and the request falls through to the database. A `load()` that throws (e.g. `NotFoundError`) is
-  never cached.
-
-## Jobs
-
-Background work runs on pg-boss (the same PostgreSQL, `pgboss` schema) in a separate worker process.
-
-- **Definitions** (`jobs/definitions.ts`): one entry per job with its name, Zod payload schema,
-  queue `options` (retries, backoff, expiry) and an optional `cron`. Payload types come from
-  `z.infer` (`JobPayload<'send-email'>`). Today: `send-email`, `delete-object`, `send-push`, `cleanup` (hourly). `delete-object` is also queued, delayed, when an
-  account is deleted or an avatar replaced. `send-email` sets `deleteAfterSeconds: 3600`: its payloads carry live links
-  that expire after an hour, so finished jobs must not keep them for pg-boss's 7-day default.
-- **Enqueue** (`lib/server/queue.ts`): `enqueue(name, payload)` validates the payload with the job's
-  schema and sends it through a lazily started send-only pg-boss instance (`migrate: false`,
-  `supervise: false`, `schedule: false`). The web process never runs maintenance. Enqueue from the
-  DAL or Better Auth callbacks, not from components.
-- **Handlers** (`jobs/*.ts`): `handleXxx(payload: unknown)` re-parses the payload with the job's
-  schema, then does the work. Register each in `worker/index.ts`.
-- **Worker** (`worker/index.ts`, `bun run worker`): the only process that owns pg-boss. It runs the
-  `pgboss` migrations, creates or updates each queue from its definition, schedules crons, runs the
-  handlers, and drains on SIGTERM/SIGINT. It needs `DATABASE_URL` and the `lib/server` variables.
-- It runs through `tsx --tsconfig worker/tsconfig.json`, which keeps the `@/` alias and maps
-  `server-only` to an empty stub so shared server code loads outside Next. Do not use
-  `--conditions=react-server`: it breaks `react-dom/server`, which React Email needs.
-- **System DAL** (`lib/data/maintenance.ts`): job-only functions with no viewer, so no
-  `requireUser()` (expired sessions and verifications, stale pending uploads). ESLint allows
-  importing it from `jobs/**` (and tests) only. Anything a user can trigger belongs in a normal DAL
-  file with auth.
-- To add a job: definition → handler → register in `worker/index.ts` → tests in `tests/jobs/`.
-  The global `tests/setup.ts` mocks `@/lib/server/queue`; only `queue.test.ts` uses the real one.
-
-## Email
-
-- `lib/server/mailer.ts`: `sendMail({ to, subject, react })` renders HTML and plain text with React
-  Email. With `RESEND_API_KEY` set it sends through Resend (a Resend error throws, so pg-boss
-  retries); without it, outside production, it logs the recipient, subject and rendered text, so
-  links show up in the worker console in development. In production a missing key throws and
-  nothing from the message is logged (the text carries live reset and verification links).
-- Templates live in `emails/` (`VerifyEmail`, `ResetPassword`, `ConfirmEmailChange`, shared
-  `EmailLayout`). Email markup
-  uses inline styles because mail clients need them; the no-inline-style rule is for the web UI.
-- Nothing sends mail directly. Callers `enqueue('send-email', { template, to, props })`;
-  `jobs/sendEmail.ts` maps the `template` of the discriminated-union payload to a component and a
-  subject. A new email is a new union member, a new template, and a new case in the handler.
-- Links are built in the web process (by Better Auth, from `BETTER_AUTH_URL`) and travel in the job
-  payload; the worker never reads `BETTER_AUTH_URL`.
-
-## Uploads
-
-Files go straight from the browser to S3-compatible storage; the app only issues tickets and
-records the result.
-
-- `lib/server/storage.ts`: presigned **POST** (a presigned PUT cannot cap size) with
-  `content-length-range` and `Content-Type` conditions, `headObject`, `deleteObject`,
-  `publicUrl(key)`.
-- The `Upload` table (`key` unique, `userId`, `purpose`, `contentType`, `size`, `status`
-  `pending` | `attached`) tracks every object.
-- `lib/data/uploads.ts`: `createAvatarUpload` (signed in → key `avatars/<userId>/<uuid>` → `pending`
-  row → ticket) and `attachAvatar` (signed in → exists → owner, i.e. 401/404/403 → `headObject`
-  re-checks size and type, deleting an object that broke the rules (the row stays `pending` for the
-  cleanup, because the ticket may still be valid) → mark `attached`, set
-  `user.image`, delete the previous avatar's row and queue a delayed `delete-object` for its object (see Orphans) →
-  `invalidateTags(userTag)`).
-- Orphans: the hourly `cleanup` job deletes `pending` uploads older than 24 hours with their
-  objects, looping through batches (at most 20 per run). Tickets last `AVATAR_UPLOAD_TICKET_SECONDS`
-  (300, `lib/dto/uploads.ts`). An object is only deleted after its ticket plus
-  `UPLOAD_OBJECT_GRACE_SECONDS` (600, same file) have passed, because S3 checks expiry when the
-  upload starts and an object re-uploaded to a key with no row would be invisible to every cleanup:
-  the `delete-object` jobs for replaced avatars and deleted accounts are queued with `startAfter`,
-  and `createAvatarUpload` reclaims (object, then row) only pending uploads older than that same
-  cut-off. Rows past the ticket but inside the grace period are neither counted nor touched. When the
-  user holds `MAX_PENDING_AVATAR_UPLOADS` (3) live tickets it throws `RateLimitedError`. `createAvatarUploadAction`
-  is rate limited per user too, so pending rows stay bounded. Because those `delete-object` jobs are
-  delayed by the ticket lifetime plus grace, a replaced avatar, and the avatars of a deleted
-  account, stay readable at their public URL for about 15 minutes.
-- Client: `lib/client/uploads.ts` (`uploadFile`) is the one facade that talks to a non-app URL.
-  `AvatarUploader` on `/settings` runs ticket action → `uploadFile` → attach action.
-- Avatars render through `UserAvatar` (shadcn `Avatar`) with a plain `<img>`, so no `next/image`
-  `remotePatterns` are needed.
-
-## Realtime and notifications
-
-In-app notifications are delivered live over server-sent events, with Web Push for browsers with no
-tab open. The first event is "someone commented on your post".
-
-- **Contract:** `lib/data/notifications.ts` (`createNotification`, `listNotifications`,
-  `getUnreadNotificationCount`, `markNotificationRead`, `markAllNotificationsRead`,
-  `subscribeToNotifications`) with DTOs in `lib/dto/notifications.ts` (`Notification`,
-  `createNotificationInput`, `realtimeEventSchema`). Reads are per viewer and never go through
-  `remember()`. `markNotificationRead` on someone else's notification answers `NotFoundError` (a read
-  of the viewer's own inbox). `ROUTE_NOTIFICATIONS` (`/notifications`) is private by default.
-- **`createNotification` is internal:** it has no `requireUser()` because it is called by DAL functions
-  after their own checks (`createComment`, once the comment is written, for someone else's post),
-  like `maintenance.ts` is for jobs. Never call it from a page, action or Route Handler. It writes the
-  row, publishes it, and when Web Push is configured queues a `send-push` job without awaiting it.
-- **Adding an event type:** one value in the Prisma `NotificationType` enum (and a migration), the same
-  value in `notificationTypeSchema`, and one `createNotification({ userId, type, title, body, url })`
-  call where the event happens. `url` must be an app path in the form a browser resolves to itself: the DTO accepts a value only when `safeRedirectPath(value, '') === value`, so `//x`, `/\x`, `/<TAB>/x`, `/.//x` and absolute URLs are rejected.
-- **Transport:** `lib/server/realtime.ts` is the seam. `publish(channel, event)` never throws (best
-  effort, logged); `subscribe(channel, listener)` returns the unsubscribe function once the channel's
-  `SUBSCRIBE` is acknowledged, for every caller (a per-channel entry holds the listener set and the
-  shared `SUBSCRIBE` promise); a failed `SUBSCRIBE` rejects every waiting caller and leaves no entry.
-  One subscriber connection per process (`getRedisSubscriber()`, separate from `getRedis()`, without a
-  command timeout and with `maxRetriesPerRequest: 1`, so a `SUBSCRIBE` against a down Redis fails in
-  about a second), `UNSUBSCRIBE` when the last listener leaves.
-  Channel names live in `lib/data/channels.ts` (`userChannel(id)` = `realtime:user:<id>`).
-- **`GET /api/v1/events`:** `subscribeToNotifications` checks the session (401 JSON before any stream
-  exists) and returns the unread count, which is the first message; then every event on the viewer's
-  channel is forwarded as `data: <json>`, with a `: ping` comment every 25 s. Headers:
-  `Content-Type: text/event-stream`, `Cache-Control: no-cache, no-transform` (Next's gzip skips
-  `no-transform`, so events are not buffered), `X-Accel-Buffering: no`. It ends, and unsubscribes, when
-  the request aborts (including an abort that happened while the subscribe was still pending), and
-  after 10 minutes at most (`STREAM_MAX_MS`): the session is checked only when a stream opens, and a
-  clean end makes `EventSource` reconnect and authenticate again, so a revoked or expired session
-  stops receiving within 10 minutes. Route Handlers cannot host WebSockets (see `docs/DECISIONS.md`).
-- **Events:** `{ type: 'unread', count }` is authoritative (sent on every connect and after every
-  mark-as-read, so every tab self-heals); `{ type: 'notification', notification }` carries the full
-  record.
-- **Client:** `useRealtime(onEvent)` (`hooks/useRealtime.ts`) is the only consumer of the stream: one
-  `EventSource`, events parsed with `realtimeEventSchema`, the latest handler through
-  `useEffectEvent`. `EventSource` reconnects by itself only after a network drop or a clean close; a
-  non-200 answer (500 while Redis is down, 502 during a deploy) closes it for good, so the hook
-  reopens a closed stream with a backoff (1 s, doubling to 30 s, reset on open) and clears the timer
-  on unmount. `NotificationBell` (`components/Notifications/Bell`) mounts it for a signed-in
-  viewer: badge, toast, and a popover that loads the latest ten through `fetchNotifications`. The
-  `(site)` layout seeds the badge with `getUnreadNotificationCount()`.
-- **Web Push:** the VAPID trio is optional and all-or-none; without it push is off and
-  `getPushConfig()` returns `null`. `lib/server/push.ts` (`sendPush`, `PushGoneError`,
-  `isPushConfigured`) is only used by the worker's `send-push` job (`jobs/sendPush.ts`) and by the DAL
-  to decide whether to queue it. The handler sends to every `PushSubscription` row of the user
-  (`listPushSubscriptions`), deletes a subscription the push service reports gone (404 / 410,
-  `PushGoneError`) and rethrows any other failure after the loop so pg-boss retries. A failed send is rethrown as
-  `PushSendError(statusCode)`, never the raw `WebPushError` (its endpoint, headers and body would reach
-  the worker log). Each request has a 10 s timeout. Endpoints are `https:` only (max 2048 characters),
-  and a user keeps at most `MAX_PUSH_SUBSCRIPTIONS_PER_USER` (10) rows: saving an 11th deletes the
-  oldest, because the worker sends to every row.
-- **Browser side:** `public/sw.js` (served with `Cache-Control: no-cache, no-store` from
-  `next.config.ts`) always shows an OS notification, even in a focused tab (the subscription is
-  `userVisibleOnly`; Chrome and Safari require one per push and Safari may revoke the subscription
-  otherwise), so a focused tab gets the toast and the system notification. A payload that is not
-  JSON shows a generic one. On click it focuses a window already at the `url`, else opens one; it
-  never navigates an existing tab. The `PushSettings` card on `/settings` registers it
-  and stores the subscription through `subscribePushAction` / `unsubscribePushAction`
-  (`savePushSubscription` is rate limited per user in the DAL; an endpoint another user held is
-  re-owned). The card treats the browser as the source of truth for "enabled": a save that fails
-  after the browser subscribed unsubscribes the browser again, and a subscription the browser already
-  holds is re-sent once on mount to repair a lost row. `SignOutButton` calls
-  `unsubscribeBrowserPush()` (`lib/client/push.ts`) and `unsubscribePushAction(endpoint)` before
-  `signOutAction()`, so the next person at that browser does not receive the previous user's
-  notifications (session revocation elsewhere does not remove it). The public key reaches the browser as a prop from `getPushConfig()` (page → view →
-  card), never as a `NEXT_PUBLIC_` variable.
-
-## Infrastructure (`lib/server`)
-
-- Server-only code that is not the database: `env.ts`, `redis.ts`, `cache.ts`, `queue.ts`,
-  `mailer.ts`, `storage.ts`, `realtime.ts`, `push.ts`, `logger.ts`. Every file starts with `import 'server-only'`.
-- **Only `lib/data` (including the Better Auth config), `jobs/`, `worker/` and tests import
-  `@/lib/server/*`.** ESLint forbids it from `app/`, `actions/`, `components/`, `hooks/`, `presenters/`, `lib/client` and
-  `lib/dto`. A page or action that needs infrastructure asks the DAL.
-- **Logging:** `lib/server/logger.ts` exports a pino `logger` (and `createLogger`, which tests use to
-  capture output). Every module makes a child, `const log = logger.child({ module: 'cache' })`, and
-  logs `log.error({ err: error }, 'read failed, loading from source')`: structured fields first,
-  message second. `LOG_LEVEL` sets the level; otherwise `silent` in test, `info` in production
-  and `debug` elsewhere. Output is JSON on stdout, except under `NODE_ENV=development` (`next dev`
-  and `bun run dev:worker` set it), where it is pretty-printed with `pino-pretty`; that is a
-  devDependency, so a plain `bun run worker` must never load it. `LOG_LEVEL` is read from
-  `process.env` directly so the logger works before `serverEnv()` validates. `url`, `token`,
-  `password` (also one level down as `*.url` etc.) and the `cookie` / `authorization` headers are
-  redacted, because job payloads carry live reset and verification links. Never log a payload or a
-  message body. ESLint forbids `console` in `lib/data`, `lib/server`, `jobs` and `worker/index.ts`;
-  the CLI scripts `worker/migrate.ts` and `prisma/seed.ts` keep it. A test that asserts a log line
-  mocks `@/lib/server/logger` with a fake child.
-- Singletons (Redis, pg-boss, S3) hang off `globalThis` and are created lazily, so importing a file
-  never needs its environment variables.
-- `docker-compose.yml` provides Postgres, Redis and MinIO for development (`docker compose up -d`).
-  Under `profiles: ['app']` it also builds the single `Dockerfile` (`node:24-slim` + bun 1.3.10, no
-  `output: 'standalone'`) and runs `migrate` (one-shot: `db:deploy`, then the `pgboss` schema), `web`
-  (`bun run start`, healthcheck on `/api/health`) and `worker` (`bun run worker`) from it. The image's
-  `bun run build` and the CI build step get a build-only placeholder `BETTER_AUTH_SECRET` (inline on
-  the command, never `ENV`), because the auth module refuses to load without one. The
-  containers get every `serverEnv()` variable with service hosts and `S3_PUBLIC_ENDPOINT`. CI is
-  `.github/workflows/ci.yml` (Postgres 18 + Redis 7 services, `.env.test` from the example).
-
-## Hooks
-
-- Located in `hooks/`. Named `useXxx` and exported as named `const` arrow functions.
-- Return objects with state and callbacks.
-- **No `useMemo` / `useCallback` / `React.memo`.** The React Compiler memoizes components and
-  hooks at build time (and in Vitest, through `vitest.config.mts`), so derived values and
-  callbacks are plain `const`s. Two rules keep that safe:
-  - **Never rely on memoization for correctness.** Code must behave the same if a value is
-    recreated on every render. When an effect needs the latest props or state without re-running,
-    read them through `useEffectEvent` (`NavBar`'s resize handler) instead of listing a callback
-    as a dependency.
-  - **A file that uses React Hook Form opts out with `'use no memo'`** below `'use client'`.
-    `register()` must run on every render (a reset clears the field registry and the next render
-    refills it); compiled, the call is cached and the form stops following resets and new
-    `values`. ESLint fails the file if the directive is missing.
-- **URL state:** `useUrlState(schema, { history })` (`hooks/useUrlState.ts`) keeps list filters in
-  the query string. The schema is a Zod object whose fields all have `.default()` / `.catch()`, so
-  any URL parses (`postsUrlQuery` in `lib/dto/posts.ts` is the one contract, shared with the SSR
-  page's `searchParams`, which the page reduces with `toScalarParams` from `lib/searchParams.ts`:
-  a repeated param reads as its last value on server and client alike). `setState(patch)` is one
-  navigation per patch; each patch builds on the last query requested (not the
-  committed URL), so two patches issued before the first lands both survive. Keys that are empty
-  or equal to the default leave the URL, unknown params stay. Scalars only. On a page that
-  reads nothing on the server the component using it must sit inside `<Suspense>` (see **React
-  Components**). A filter change resets `page` in the same patch.
-- **Browser storage:** `useLocalStorage(key, schema)` / `useSessionStorage(key, schema)` return
-  `{ value, setValue, removeValue }`. They sit on `useSyncExternalStore` with a `null` server
-  snapshot, so `value` is `null` on the server and on the first client render (no hydration
-  mismatch) and also when nothing valid is stored (missing, malformed JSON, or failing the Zod
-  schema). Pass a module-level schema. Quota and private-mode errors are swallowed by
-  `lib/browserStorage.ts`; tabs stay in sync through the `storage` event. Do not render
-  storage-dependent UI as if the value were already known on the first render. No page uses them yet;
-  they are ready for per-browser state such as a dismissed banner or a saved filter.
-- Only write a hook for independent logic or logic shared across components (e.g. `useScrollLock`). Never extract a hook for logic that is married to one component and gains
-  nothing from the abstraction.
+One cache: the Redis data cache (`remember()` in `lib/server/cache.ts`), used inside the DAL for data
+that is the same for every viewer. Next's Cache Components are off, so `'use cache'` is not
+available. Check auth first, `remember()` only the viewer-independent part, then compute
+viewer-specific fields after; invalidate inside the DAL right after the write succeeds. Free-text
+search, date ranges, author lists and unknown tags are never cached. Redis is an optimization, never
+a dependency. Full rules: `docs/guides/caching.md`.
 
 ## Helpers & Presenters
 
@@ -776,21 +326,6 @@ tab open. The first event is "someone commented on your post".
 - Reusable component examples belong in the `/ui-kit` catalog instead; keep it in sync when a
   reusable component changes.
 
-## Forms
-
-- React Hook Form + Zod via `zodResolver`. Schemas come from `lib/dto` and are the same ones the
-  DAL validates with.
-- Every form component starts with `'use client'` then `'use no memo'` (see **Hooks**: React Hook
-  Form is not compatible with the React Compiler). Copy an existing form to get both.
-- The form component owns `useForm` and hands validated values to the page through `onSubmit`. The
-  page passes an `onSubmit` that calls a Server Action and returns its `ActionResult`; the form maps
-  failures with `applyActionErrors` (field errors onto fields, otherwise `message` as a form-level
-  alert).
-- Hydrate/build helpers (`hydrateXForm`, `buildXAttributes`) live in a `utils.ts` beside the form.
-- Keep field markup explicit — no field-definition arrays, no generic FormField wrapper.
-- A control that is not a native input (`components/Form/TagsInput`, a list of chips) is controlled
-  and goes through RHF's `Controller`; it still owns its `label` and `error`.
-
 ## Layouts
 
 | Route group | Use case                                               |
@@ -802,36 +337,6 @@ tab open. The first event is "someone commented on your post".
 - The `(site)` layout is async: it reads the session once (`getViewer()`) and passes the viewer
   to `NavBar` and `VerifyEmailBanner`, plus the unread notification count to `NavBar` for a signed-in
   viewer. Every `(site)` route is therefore rendered per request.
-
-## Environment & Config
-
-- Public config comes from `NEXT_PUBLIC_*` variables read once in `lib/env.ts` — do not hardcode
-  URLs or app names.
-- `DATABASE_URL`, `BETTER_AUTH_SECRET`, and `BETTER_AUTH_URL` live in `.env` (dev) and `.env.test`
-  (tests). Both are untracked; update the `*.example` files when adding a variable.
-  `assertAuthEnv()` (`lib/server/env.ts`, called by `instrumentation.ts` in production) rejects a
-  missing or placeholder secret (under 32 characters, the old `.env.example` value, or the build-only placeholder from the
-  `Dockerfile` and CI) and a missing
-  or relative `BETTER_AUTH_URL`; `.env.example` ships an empty secret you must generate.
-- `LOG_LEVEL` (optional) is read directly by `lib/server/logger.ts`, not through `serverEnv()`.
-- **Security headers** live in `next.config.ts` (`SECURITY_HEADERS`, served on every path) and
-  `poweredByHeader` is off. `frame-ancestors 'none'` is the only CSP directive (a script policy would
-  need nonces for Next's inline runtime). Changing the file calls for `bun run build` (see
-  **Verifying Changes**).
-- Server-only config (`REDIS_URL`, `RESEND_API_KEY` (optional), `EMAIL_FROM`, `S3_ENDPOINT`,
-  `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_PUBLIC_URL`,
-  `S3_PUBLIC_ENDPOINT` (optional: the endpoint as the browser reaches it, for presigned uploads;
-  defaults to `S3_ENDPOINT`), `TRUSTED_PROXY_HOPS` (optional, default 1: how many proxies append to
-  `x-forwarded-for`, read by `getClientIp`), `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` (optional pair), `VAPID_PUBLIC_KEY` /
-  `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` (optional trio: all or none, `bunx web-push generate-vapid-keys`;
-  the subject is a `mailto:` or `https:` contact)) is read through `serverEnv()` in `lib/server/env.ts`: Zod-validated,
-  parsed on first use (so `next build` works without it), one error listing every bad variable. An
-  empty optional variable counts as unset. In production `instrumentation.ts` and the worker's
-  start call it at boot, so a bad config fails loudly instead of degrading the rate limiter or
-  cache. Never read these from `process.env` elsewhere (the one exception is the Google pair, which
-  `lib/data/auth.ts` reads directly; see **Authentication**).
-- `.env.test` points `REDIS_URL` at **database 15**; the test helpers flush it and refuse to run
-  against any other database.
 
 ## Verifying Changes
 

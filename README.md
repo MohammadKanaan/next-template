@@ -500,3 +500,20 @@ The posts domain is the worked example; copy its shape. In this order:
 
 - [`docs/DECISIONS.md`](docs/DECISIONS.md): what was chosen over the Nuxt/Revcube setup and why.
 - [`AGENTS.md`](AGENTS.md): project conventions and rules for contributors and agents.
+
+### Guides
+
+Area guides in [`docs/guides/`](docs/guides/) (referenced from `AGENTS.md`):
+
+- [`authentication.md`](docs/guides/authentication.md): Better Auth, email flows, settings, Google, admin, dashboard, rate limits.
+- [`posts.md`](docs/guides/posts.md): status workflow, visibility, comments, tags, invalidation.
+- [`route-handlers.md`](docs/guides/route-handlers.md): Route Handlers, client facades, REST API, health.
+- [`caching.md`](docs/guides/caching.md): the Redis data cache.
+- [`jobs.md`](docs/guides/jobs.md): pg-boss jobs and the worker.
+- [`email.md`](docs/guides/email.md): mailer and templates.
+- [`uploads.md`](docs/guides/uploads.md): presigned uploads and orphan cleanup.
+- [`realtime.md`](docs/guides/realtime.md): SSE, notifications, Web Push.
+- [`infrastructure.md`](docs/guides/infrastructure.md): `lib/server`, logging, Docker and CI.
+- [`hooks.md`](docs/guides/hooks.md): hook rules, URL state, browser storage.
+- [`forms.md`](docs/guides/forms.md): React Hook Form + Zod forms.
+- [`environment.md`](docs/guides/environment.md): config, security headers, `serverEnv()`.
