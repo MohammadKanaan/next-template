@@ -29,15 +29,22 @@ describe('GET /api/v1/notifications', () => {
     expect((await GET(request())).status).toBe(401)
   })
 
-  it('returns the viewer’s page and rejects a bad query with 422', async () => {
+  it('returns the viewer’s cursor page and rejects a bad query with 422', async () => {
     const user = await createUser({})
-    await createNotification({ userId: user.id, type: 'comment', title: 'T', body: '', url: '/x' })
+    for (const title of ['one', 'two', 'three']) {
+      await createNotification({ userId: user.id, type: 'comment', title, body: '', url: '/x' })
+    }
     await signInAs(user)
-    const response = await GET(request('?page=1&perPage=5'))
+    const response = await GET(request('?limit=2'))
     expect(response.status).toBe(200)
-    const body = await response.json()
-    expect(body).toMatchObject({ page: 1, perPage: 5, totalItems: 1 })
-    expect(body.items[0]).toMatchObject({ title: 'T', readAt: null })
-    expect((await GET(request('?page=0'))).status).toBe(422)
+    const first = await response.json()
+    expect(first.items.map((item: { title: string }) => item.title)).toEqual(['three', 'two'])
+    expect(first.items[0]).toMatchObject({ readAt: null })
+    const second = await (
+      await GET(request(`?limit=2&cursor=${encodeURIComponent(first.nextCursor)}`))
+    ).json()
+    expect(second).toMatchObject({ items: [{ title: 'one' }], nextCursor: null })
+    expect((await GET(request('?limit=0'))).status).toBe(422)
+    expect((await GET(request('?limit=51'))).status).toBe(422)
   })
 })

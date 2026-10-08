@@ -1,9 +1,16 @@
 import 'server-only'
 import { Prisma } from '@/generated/prisma/client'
 import { ROUTE_POST_DETAILS } from '@/lib/constants-routes'
-import { idSchema } from '@/lib/dto/common'
+import { decodeCursor } from '@/lib/cursor'
 import {
-  commentsBaseSchema,
+  cursorQuerySchema,
+  idSchema,
+  toCursorPage,
+  type CursorPage,
+  type CursorQuery,
+} from '@/lib/dto/common'
+import {
+  commentsBasePageSchema,
   createCommentInput,
   type CreateCommentInput,
   type Comment,
@@ -27,8 +34,6 @@ import { userProfileSelect } from './users'
 const log = logger.child({ module: 'comments' })
 
 const COMMENTS_CACHE_TTL = 300
-/** A post's comments are listed oldest first, up to this many. */
-const COMMENTS_LIMIT = 200
 /** How much of the comment the notification shows. */
 const NOTIFICATION_EXCERPT_LENGTH = 140
 
@@ -51,42 +56,56 @@ const invalidateComments = (postId: number) => {
 }
 
 /**
- * A post's comments, oldest first, for a viewer who may see the post (otherwise not found, like the
- * post itself). The list is cached for everyone; `permissions.delete` is added per viewer. It is
- * also tagged `POSTS_TAG`, because commenters' names are embedded and a profile edit or a deleted
- * account drops every cached copy.
+ * One page of a post's comments, oldest first (`id > cursor`), for a viewer who may see the post
+ * (otherwise not found, like the post itself). A cursor that cannot be decoded starts from the
+ * first page. Only the first page is cached, for everyone, under a key that includes `limit`
+ * (bounded by the DTO); `permissions.delete` is added per viewer. It is also tagged `POSTS_TAG`,
+ * because commenters' names are embedded and a profile edit or a deleted account drops every
+ * cached copy.
  */
-export const listComments = async (postId: number | string): Promise<Comment[]> => {
+export const listComments = async (
+  postId: number | string,
+  query: Partial<CursorQuery> = {},
+): Promise<CursorPage<Comment>> => {
+  const { cursor, limit } = parseInput(cursorQuerySchema, query)
   // `getPost` applies the visibility rule (not found for a post the viewer may not see).
   const [post, viewer] = await Promise.all([getPost(postId), getSessionUser()])
   // `getPost` lets the author read a post in the trash; its comments are not listed.
   if (post.deletedAt) {
     throw new NotFoundError('Post not found')
   }
-  const comments = await remember(
-    `comments:${post.id}`,
-    {
-      ttl: COMMENTS_CACHE_TTL,
-      tags: [POSTS_TAG, commentsTag(post.id)],
-      schema: commentsBaseSchema,
-    },
-    async () => {
-      const rows = await db.comment.findMany({
-        where: { postId: post.id },
-        select: commentSelect,
-        orderBy: { id: 'asc' },
-        take: COMMENTS_LIMIT,
-      })
-      return rows.map(toCommentBase)
-    },
-  )
-  return comments.map((comment) => ({
-    ...comment,
-    permissions: permissionsFor(commentPolicy, ['delete'], viewer, {
-      authorId: comment.author.id,
-      postAuthorId: post.author.id,
-    }),
-  }))
+  const after = cursor === undefined ? null : decodeCursor(cursor)
+  const load = async () => {
+    const rows = await db.comment.findMany({
+      where: { postId: post.id, ...(after === null ? {} : { id: { gt: after } }) },
+      select: commentSelect,
+      orderBy: { id: 'asc' },
+      take: limit + 1,
+    })
+    return toCursorPage(rows.map(toCommentBase), limit)
+  }
+  const page =
+    after === null
+      ? await remember(
+          `comments:${post.id}:first:${limit}`,
+          {
+            ttl: COMMENTS_CACHE_TTL,
+            tags: [POSTS_TAG, commentsTag(post.id)],
+            schema: commentsBasePageSchema,
+          },
+          load,
+        )
+      : await load()
+  return {
+    ...page,
+    items: page.items.map((comment) => ({
+      ...comment,
+      permissions: permissionsFor(commentPolicy, ['delete'], viewer, {
+        authorId: comment.author.id,
+        postAuthorId: post.author.id,
+      }),
+    })),
+  }
 }
 
 /**

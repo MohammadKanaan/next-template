@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { permissionsSchema } from './common'
+import { cursorPageSchema, permissionsSchema } from './common'
 import { userProfileSchema } from './users'
 
 export const COMMENT_BODY_MAX_LENGTH = 1000
@@ -31,4 +31,7 @@ export const commentSchema = commentBaseSchema.extend({ permissions: commentPerm
 
 export type Comment = z.infer<typeof commentSchema>
 
-export const commentsBaseSchema = z.array(commentBaseSchema)
+/** The cached first page of a thread: viewer-independent, so it is shared between viewers. */
+export const commentsBasePageSchema = cursorPageSchema(commentBaseSchema)
+
+export const commentsPageSchema = cursorPageSchema(commentSchema)

@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { Page } from '@/lib/dto/common'
+import type { CursorPage } from '@/lib/dto/common'
 import {
   notificationsPageSchema,
   type ListNotificationsQuery,
@@ -10,11 +10,11 @@ import { RequestError } from './errors'
 
 const errorMessageSchema = z.object({ message: z.string() })
 
-/** Client facade for `GET /api/v1/notifications`; returns the same `Page<Notification>` as the DAL. */
+/** Client facade for `GET /api/v1/notifications`; returns the same `CursorPage<Notification>` as the DAL. */
 export const fetchNotifications = async (
-  query: ListNotificationsQuery,
+  query: Partial<ListNotificationsQuery>,
   signal?: AbortSignal,
-): Promise<Page<Notification>> => {
+): Promise<CursorPage<Notification>> => {
   const params = new URLSearchParams()
   for (const [key, value] of Object.entries(query)) {
     if (value !== undefined && value !== null) {

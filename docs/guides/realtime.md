@@ -7,7 +7,8 @@ tab open. The first event is "someone commented on your post".
   `getUnreadNotificationCount`, `markNotificationRead`, `markAllNotificationsRead`,
   `subscribeToNotifications`) with DTOs in `lib/dto/notifications.ts` (`Notification`,
   `createNotificationInput`, `realtimeEventSchema`). Reads are per viewer and never go through
-  `remember()`. `markNotificationRead` on someone else's notification answers `NotFoundError` (a read
+  `remember()`. `listNotifications({ cursor, limit })` returns a `CursorPage<Notification>`, newest
+  first (`id < cursor`). `markNotificationRead` on someone else's notification answers `NotFoundError` (a read
   of the viewer's own inbox). `ROUTE_NOTIFICATIONS` (`/notifications`) is private by default.
 - **`createNotification` is internal:** it has no `requireUser()` because it is called by DAL functions
   after their own checks (`createComment`, once the comment is written, for someone else's post),

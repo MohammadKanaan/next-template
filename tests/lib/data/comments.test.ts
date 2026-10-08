@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ROUTE_POST_DETAILS } from '@/lib/constants-routes'
+import { encodeCursor } from '@/lib/cursor'
 import { createComment, deleteComment, listComments } from '@/lib/data/comments'
 import { db } from '@/lib/data/db'
 import {
@@ -203,9 +204,10 @@ describe('comments DAL', () => {
       await signInAs(bob)
       await createComment(post.id, { body: 'Second' })
 
-      const deletable = async () => (await listComments(post.id)).map((c) => c.permissions.delete)
+      const deletable = async () =>
+        (await listComments(post.id)).items.map((c) => c.permissions.delete)
       signOut()
-      expect((await listComments(post.id)).map((comment) => comment.body)).toEqual([
+      expect((await listComments(post.id)).items.map((comment) => comment.body)).toEqual([
         'First',
         'Second',
       ])
@@ -219,7 +221,10 @@ describe('comments DAL', () => {
       expect(await deletable()).toEqual([true, true])
       await signInAs(admin)
       expect(await deletable()).toEqual([true, true])
-      expect((await listComments(post.id))[0].author).toMatchObject({ id: alice.id, name: 'Alice' })
+      expect((await listComments(post.id)).items[0].author).toMatchObject({
+        id: alice.id,
+        name: 'Alice',
+      })
     })
 
     it('treats a hidden or missing post like a missing one', async () => {
@@ -233,7 +238,85 @@ describe('comments DAL', () => {
       await signInAs(other)
       await expect(listComments(draft.id)).rejects.toBeInstanceOf(NotFoundError)
       await signInAs(author)
-      expect(await listComments(draft.id)).toEqual([])
+      expect(await listComments(draft.id)).toEqual({ items: [], nextCursor: null })
+    })
+
+    it('pages with a cursor: limit, limit + 1, no cap, and the boundaries', async () => {
+      const author = await createUser({})
+      const post = await seedPost(author.id)
+      await db.comment.createMany({
+        data: Array.from({ length: 205 }, (_, n) => ({
+          body: `c${n + 1}`,
+          postId: post.id,
+          userId: author.id,
+        })),
+      })
+      const bodies = (page: { items: { body: string }[] }) => page.items.map((c) => c.body)
+      signOut()
+
+      const first = await listComments(post.id, { limit: 2 })
+      expect(bodies(first)).toEqual(['c1', 'c2'])
+      expect(first.nextCursor).toEqual(expect.any(String))
+      const second = await listComments(post.id, { limit: 2, cursor: first.nextCursor ?? '' })
+      expect(bodies(second)).toEqual(['c3', 'c4'])
+
+      // Walking the whole thread reaches past the old cap of 200, with no gaps or repeats.
+      const seen: string[] = []
+      let cursor: string | undefined
+      do {
+        const page = await listComments(post.id, { limit: 50, cursor })
+        seen.push(...bodies(page))
+        cursor = page.nextCursor ?? undefined
+      } while (cursor)
+      expect(seen).toEqual(Array.from({ length: 205 }, (_, n) => `c${n + 1}`))
+
+      // Exactly `limit` rows left means no next page.
+      const all = await db.comment.findMany({ orderBy: { id: 'asc' }, select: { id: true } })
+      const fiveLeft = await listComments(post.id, {
+        limit: 5,
+        cursor: encodeCursor(all[199].id),
+      })
+      expect(bodies(fiveLeft)).toEqual(['c201', 'c202', 'c203', 'c204', 'c205'])
+      expect(fiveLeft.nextCursor).toBeNull()
+      const sixLeft = await listComments(post.id, { limit: 5, cursor: encodeCursor(all[198].id) })
+      expect(sixLeft.items).toHaveLength(5)
+      expect(sixLeft.nextCursor).toBe(encodeCursor(all[203].id))
+    })
+
+    it('starts from the first page for a cursor it cannot read and validates the query', async () => {
+      const author = await createUser({})
+      const post = await seedPost(author.id)
+      await db.comment.create({ data: { postId: post.id, userId: author.id, body: 'Hi' } })
+      expect((await listComments(post.id, { cursor: '%%%' })).items).toHaveLength(1)
+      for (const limit of [0, 51]) {
+        await expect(listComments(post.id, { limit })).rejects.toBeInstanceOf(ValidationError)
+      }
+    })
+
+    it('caches only the first page, per limit, and adds permissions to later pages too', async () => {
+      const author = await createUser({})
+      const reader = await createUser({})
+      const post = await seedPost(author.id)
+      await db.comment.createMany({
+        data: ['a', 'b', 'c'].map((body) => ({ body, postId: post.id, userId: reader.id })),
+      })
+      const findMany = vi.spyOn(db.comment, 'findMany')
+      signOut()
+      const first = await listComments(post.id, { limit: 2 })
+      await listComments(post.id, { limit: 2 })
+      expect(findMany).toHaveBeenCalledTimes(1)
+      // Another limit is another key.
+      await listComments(post.id, { limit: 3 })
+      expect(findMany).toHaveBeenCalledTimes(2)
+      // A later page is never cached: it reads the database every time.
+      const cursor = first.nextCursor ?? ''
+      await listComments(post.id, { limit: 2, cursor })
+      await listComments(post.id, { limit: 2, cursor })
+      expect(findMany).toHaveBeenCalledTimes(4)
+      await signInAs(reader)
+      expect((await listComments(post.id, { limit: 2, cursor })).items[0].permissions.delete).toBe(
+        true,
+      )
     })
 
     it('serves repeated reads from Redis and shares them between viewers', async () => {
@@ -321,13 +404,13 @@ describe('comments DAL', () => {
       const author = await createUser({})
       const reader = await createUser({})
       const post = await seedPost(author.id)
-      expect(await listComments(post.id)).toEqual([])
+      expect(await listComments(post.id)).toEqual({ items: [], nextCursor: null })
       expect((await listPosts({ page: 1, perPage: 10 })).items[0].commentCount).toBe(0)
       expect((await getPost(post.id)).commentCount).toBe(0)
 
       await signInAs(reader)
       await createComment(post.id, { body: 'Hi' })
-      expect(await listComments(post.id)).toHaveLength(1)
+      expect((await listComments(post.id)).items).toHaveLength(1)
       expect((await listPosts({ page: 1, perPage: 10 })).items[0].commentCount).toBe(1)
       expect((await getPost(post.id)).commentCount).toBe(1)
     })
@@ -337,12 +420,12 @@ describe('comments DAL', () => {
       const post = await seedPost(author.id)
       await signInAs(author)
       const comment = await createComment(post.id, { body: 'Hi' })
-      expect(await listComments(post.id)).toHaveLength(1)
+      expect((await listComments(post.id)).items).toHaveLength(1)
       expect((await getPost(post.id)).commentCount).toBe(1)
       expect((await listPosts({ page: 1, perPage: 10 })).items[0].commentCount).toBe(1)
 
       await deleteComment(comment.id)
-      expect(await listComments(post.id)).toEqual([])
+      expect(await listComments(post.id)).toEqual({ items: [], nextCursor: null })
       expect((await getPost(post.id)).commentCount).toBe(0)
       expect((await listPosts({ page: 1, perPage: 10 })).items[0].commentCount).toBe(0)
     })
@@ -352,11 +435,11 @@ describe('comments DAL', () => {
       const commenter = await createUser({ name: 'Before', username: 'before_name' })
       const post = await seedPost(author.id)
       await db.comment.create({ data: { postId: post.id, userId: commenter.id, body: 'Hi' } })
-      expect((await listComments(post.id))[0].author.name).toBe('Before')
+      expect((await listComments(post.id)).items[0].author.name).toBe('Before')
 
       await signInAs(commenter)
       await updateProfile({ name: 'After', username: 'after_name' })
-      expect((await listComments(post.id))[0].author.name).toBe('After')
+      expect((await listComments(post.id)).items[0].author.name).toBe('After')
     })
 
     it('trashing the post hides its comments, and restoring it brings them back', async () => {
@@ -370,7 +453,7 @@ describe('comments DAL', () => {
       expect(await db.comment.count()).toBe(1)
       await expect(listComments(post.id)).rejects.toBeInstanceOf(NotFoundError)
       await restorePost(post.id)
-      expect((await listComments(post.id)).map((comment) => comment.body)).toEqual(['Hi'])
+      expect((await listComments(post.id)).items.map((comment) => comment.body)).toEqual(['Hi'])
     })
 
     it('answers 404 to a comment on a trashed post', async () => {

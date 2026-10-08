@@ -25,10 +25,24 @@
   client facades for these endpoints because no UI calls them; their tests call the handlers
   directly (`tests/app/api/v1/`). API keys and OpenAPI stay deferred.
 - **Realtime and notifications:** `GET /api/v1/events` (the SSE stream, see **Realtime and
-  notifications**) and `GET /api/v1/notifications?page&perPage` (the bell's popover reads the latest
-  ten through `lib/client/notifications.ts`; the `/notifications` page reads the DAL directly). Both
+  notifications**) and `GET /api/v1/notifications?cursor&limit` (the bell's popover reads the latest
+  ten, and the `/notifications` view loads its later pages, through `lib/client/notifications.ts`;
+  the page renders the first page from the DAL directly). Both
   need a session (401 JSON otherwise) and are per viewer, so neither is cached.
 - `GET /api/health` is the other Route Handler. It is for load balancers and container probes,
   not for the client facade: it awaits `connection()`, calls `checkHealth()` (database `SELECT 1`
   and Redis `PING`, each with a 2 s timeout) and returns 200 `{ status: 'ok', checks }` or 503
   `{ status: 'degraded', checks }`. It never includes error details.
+- **Cursor pagination:** feeds that grow (a post's comments, the notifications) are
+  `CursorPage<T> = { items, nextCursor }` (`lib/dto/common.ts`), not `Page<T>`: no total, no
+  `OFFSET`. The query is `cursorQuerySchema` (`cursor` at most 64 characters, `limit` 1 to 50,
+  default 20). A cursor is the id of the last item of the previous page as base64url text
+  (`encodeCursor` / `decodeCursor` in `lib/cursor.ts`, client-safe); the DAL reads `limit + 1` rows
+  ordered by id (`id > cursor` for oldest first, `id < cursor` for newest first) and `toCursorPage`
+  turns the extra row into `nextCursor`. A cursor `decodeCursor` cannot read starts from the first
+  page (it is not a 422), a `limit` out of range is a 422. Only the first page of a thread is
+  cached (`comments:<id>:first:<limit>`, so the key space is bounded); later pages read the
+  database. The facades `fetchComments` and `fetchNotifications` return the same `CursorPage`. The
+  client side is `useInfiniteList(fetchPage, { initial })` (see `hooks.md`): the page renders the
+  first page on the server, and the view appends the rest. `GET /api/v1/posts/[id]/comments` and
+  `GET /api/v1/notifications` take `cursor` and `limit`; the post lists keep `page` and `perPage`.

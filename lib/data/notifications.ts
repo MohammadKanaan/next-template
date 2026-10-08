@@ -1,6 +1,7 @@
 import 'server-only'
 import { Prisma } from '@/generated/prisma/client'
-import { idSchema, toPage, type Page } from '@/lib/dto/common'
+import { decodeCursor } from '@/lib/cursor'
+import { idSchema, toCursorPage, type CursorPage } from '@/lib/dto/common'
 import {
   createNotificationInput,
   listNotificationsQuery,
@@ -62,24 +63,23 @@ export const createNotification = async (input: CreateNotificationInput): Promis
   return notification
 }
 
-/** The viewer's notifications, newest first. Never cached: it is per viewer. */
+/**
+ * One page of the viewer's notifications, newest first (`id < cursor`). A cursor that cannot be
+ * decoded starts from the first page. Never cached: it is per viewer.
+ */
 export const listNotifications = async (
-  query: ListNotificationsQuery,
-): Promise<Page<Notification>> => {
+  query: Partial<ListNotificationsQuery> = {},
+): Promise<CursorPage<Notification>> => {
   const viewer = await requireUser()
-  const { page, perPage } = parseInput(listNotificationsQuery, query)
-  const where = { userId: viewer.id }
-  const [rows, totalItems] = await Promise.all([
-    db.notification.findMany({
-      where,
-      select: notificationSelect,
-      orderBy: { id: 'desc' },
-      skip: (page - 1) * perPage,
-      take: perPage,
-    }),
-    db.notification.count({ where }),
-  ])
-  return toPage(rows.map(toNotification), totalItems, { page, perPage })
+  const { cursor, limit } = parseInput(listNotificationsQuery, query)
+  const before = cursor === undefined ? null : decodeCursor(cursor)
+  const rows = await db.notification.findMany({
+    where: { userId: viewer.id, ...(before === null ? {} : { id: { lt: before } }) },
+    select: notificationSelect,
+    orderBy: { id: 'desc' },
+    take: limit + 1,
+  })
+  return toCursorPage(rows.map(toNotification), limit)
 }
 
 export const getUnreadNotificationCount = async (): Promise<number> => {

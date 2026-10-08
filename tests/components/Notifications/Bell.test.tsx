@@ -27,13 +27,7 @@ const notification = (id: number, readAt: Date | null = null): Notification => (
   createdAt: new Date('2026-10-07T10:00:00.000Z'),
 })
 
-const page = (items: Notification[]) => ({
-  items,
-  page: 1,
-  perPage: 10,
-  totalItems: items.length,
-  totalPages: 1,
-})
+const page = (items: Notification[]) => ({ items, nextCursor: null })
 
 /** The handler the bell gave to `useRealtime` on its last render. */
 const emit = (event: RealtimeEvent) => {
@@ -67,7 +61,7 @@ describe('NotificationBell', () => {
     expect(button).toHaveTextContent('3')
     await userEvent.click(button)
     await waitFor(() => expect(screen.getByRole('link', { name: /Comment 1/ })).toBeInTheDocument())
-    expect(fetchNotifications).toHaveBeenCalledWith({ page: 1, perPage: 10 })
+    expect(fetchNotifications).toHaveBeenCalledWith({ limit: 10 })
     expect(screen.getByRole('link', { name: 'View all' })).toHaveAttribute('href', '/notifications')
   })
 

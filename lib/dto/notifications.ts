@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { safeRedirectPath } from '@/lib/constants-routes'
-import { pageQuerySchema, pageSchema } from './common'
+import { cursorPageSchema, cursorQuerySchema } from './common'
 import { userIdSchema } from './users'
 
 export const notificationTypeSchema = z.enum(['comment'])
@@ -24,16 +24,11 @@ export const notificationSchema = z.object({
 
 export type Notification = z.infer<typeof notificationSchema>
 
-export const notificationsPageSchema = pageSchema(notificationSchema)
+export const notificationsPageSchema = cursorPageSchema(notificationSchema)
 
-export const listNotificationsQuery = pageQuerySchema
+export const listNotificationsQuery = cursorQuerySchema
 
 export type ListNotificationsQuery = z.infer<typeof listNotificationsQuery>
-
-/** The tolerant URL contract of `/notifications` (see `postsUrlQuery`): any query string parses. */
-export const notificationsUrlQuery = z.object({
-  page: pageQuerySchema.shape.page.catch(1),
-})
 
 /**
  * A same-origin app path, in the form a browser resolves to itself: it round-trips through

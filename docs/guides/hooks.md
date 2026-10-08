@@ -31,5 +31,18 @@
   `lib/browserStorage.ts`; tabs stay in sync through the `storage` event. Do not render
   storage-dependent UI as if the value were already known on the first render. No page uses them yet;
   they are ready for per-browser state such as a dismissed banner or a saved filter.
+- **Infinite lists:** `useInfiniteList(fetchPage, { initial })` (`hooks/useInfiniteList.ts`) grows a
+  list one `CursorPage` at a time and returns `{ items, loadMore, hasMore, isLoading, error, reset }`.
+  `initial` is the page the server rendered (read once). `fetchPage(cursor, signal)` is a client
+  facade (`fetchNotifications`, `fetchComments`) and must pass the `signal` on. One request is in
+  flight at a time (a second `loadMore` does nothing), a failure keeps the items and sets `error`
+  (the next `loadMore` retries), and unmount or `reset` aborts the request and drops its result.
+  `components/InfiniteSentinel` calls `loadMore` when it scrolls into view (disable it while
+  loading and after an error); the "Load more" button stays as the fallback, and is the only
+  trigger for comments. Content the server already rendered can stay server-rendered as `children`
+  of the client list (`components/Comments/List`, which starts the hook with no items). A list that
+  keeps its own copy must update it itself after a write (the router refresh only reaches
+  server-rendered props): `/notifications` overlays "mark all read", the comment list drops a
+  deleted comment.
 - Only write a hook for independent logic or logic shared across components (e.g. `useScrollLock`). Never extract a hook for logic that is married to one component and gains
   nothing from the abstraction.

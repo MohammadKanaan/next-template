@@ -19,6 +19,21 @@ describe('DeleteCommentButton', () => {
     expect(toast.success).toHaveBeenCalledWith('Comment deleted')
   })
 
+  it('tells the caller once the comment is gone, and not when it failed', async () => {
+    const onDeleted = vi.fn()
+    vi.mocked(deleteCommentAction).mockResolvedValueOnce({
+      ok: false,
+      code: 'FORBIDDEN',
+      message: 'No',
+    })
+    render(<DeleteCommentButton commentId={9} onDeleted={onDeleted} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Delete comment' }))
+    expect(onDeleted).not.toHaveBeenCalled()
+    vi.mocked(deleteCommentAction).mockResolvedValueOnce({ ok: true, data: null })
+    await userEvent.click(screen.getByRole('button', { name: 'Delete comment' }))
+    expect(onDeleted).toHaveBeenCalledTimes(1)
+  })
+
   it('shows the server message when it fails', async () => {
     vi.mocked(deleteCommentAction).mockResolvedValue({
       ok: false,

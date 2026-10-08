@@ -39,8 +39,10 @@ The posts example carries the domain patterns an app needs (all in `lib/data/pos
   (`replacePostTags`: upsert tag rows in sorted order, drop the links no longer wanted). On update,
   omitting `tags` leaves them alone and `[]` clears them. Tag names are normalized by
   `tagNameSchema` (trimmed, lowercased, at most 30 characters; at most 5 per post, de-duplicated).
-- **Comments** (the nested resource): `listComments(postId)` (oldest first, capped, cached per post,
-  `permissions.delete` added per viewer; it applies the same visibility rule as the post),
+- **Comments** (the nested resource): `listComments(postId, { cursor, limit })` (a
+  `CursorPage<Comment>`, oldest first with `id > cursor`, no cap; only the first page is cached, per
+  post and `limit`; `permissions.delete` added per viewer; it applies the same visibility rule as the
+  post; see **Cursor pagination** in `route-handlers.md`),
   `createComment` (signed in; the post must be visible and published, read from the database, not
   the cache), `deleteComment` (the comment's author, the post's author or an admin).
 - **Invalidation:** `commentCount` and `tags` are embedded in cached lists and details, so every

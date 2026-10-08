@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import {
   createNotificationInput,
   notificationSchema,
-  notificationsUrlQuery,
   realtimeEventSchema,
 } from '@/lib/dto/notifications'
 
@@ -24,12 +23,6 @@ describe('notification DTOs', () => {
     expect(
       notificationSchema.parse({ ...notification, readAt: notification.createdAt }).readAt,
     ).toBeInstanceOf(Date)
-  })
-
-  it('falls back to page 1 for a garbled URL', () => {
-    expect(notificationsUrlQuery.parse({ page: 'x' })).toEqual({ page: 1 })
-    expect(notificationsUrlQuery.parse({ page: '3' })).toEqual({ page: 3 })
-    expect(notificationsUrlQuery.parse({})).toEqual({ page: 1 })
   })
 
   it('accepts only app paths and bounded text as a notification input', () => {

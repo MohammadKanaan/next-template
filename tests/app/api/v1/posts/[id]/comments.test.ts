@@ -20,7 +20,7 @@ const context = (id: string | number): Context => ({ params: Promise.resolve({ i
 
 const url = (id: string | number) => `http://localhost/api/v1/posts/${id}/comments`
 
-const list = (id: string | number) => GET(new Request(url(id)), context(id))
+const list = (id: string | number, query = '') => GET(new Request(url(id) + query), context(id))
 
 const create = (id: string | number, body: unknown, contentType = 'application/json') => {
   return POST(
@@ -50,16 +50,34 @@ describe('/api/v1/posts/[id]/comments', () => {
         await db.comment.create({ data: { body, postId: post.id, userId: commenter.id } })
       }
       const anonymous = await (await list(post.id)).json()
-      expect(anonymous.map((comment: { body: string }) => comment.body)).toEqual([
+      expect(anonymous.items.map((comment: { body: string }) => comment.body)).toEqual([
         'First',
         'Second',
       ])
-      expect(anonymous[0].permissions).toEqual({ delete: false })
+      expect(anonymous.nextCursor).toBeNull()
+      expect(anonymous.items[0].permissions).toEqual({ delete: false })
 
       await signInAs(commenter)
       const response = await list(post.id)
       expect(response.status).toBe(200)
-      expect((await response.json())[0].permissions).toEqual({ delete: true })
+      expect((await response.json()).items[0].permissions).toEqual({ delete: true })
+    })
+
+    it('pages with cursor and limit and rejects a bad query with 422', async () => {
+      const author = await createUser({})
+      const post = await seedPost(author.id)
+      for (const body of ['A', 'B', 'C']) {
+        await db.comment.create({ data: { body, postId: post.id, userId: author.id } })
+      }
+      const first = await (await list(post.id, '?limit=2')).json()
+      expect(first.items.map((comment: { body: string }) => comment.body)).toEqual(['A', 'B'])
+      const second = await (
+        await list(post.id, `?limit=2&cursor=${encodeURIComponent(first.nextCursor)}`)
+      ).json()
+      expect(second.items.map((comment: { body: string }) => comment.body)).toEqual(['C'])
+      expect(second.nextCursor).toBeNull()
+      expect((await list(post.id, '?limit=0')).status).toBe(422)
+      expect((await list(post.id, '?limit=51')).status).toBe(422)
     })
 
     it('answers 404 for a missing post and for a draft the viewer may not see', async () => {

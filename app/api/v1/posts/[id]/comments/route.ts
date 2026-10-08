@@ -3,14 +3,18 @@ import { requireUser } from '@/lib/data/auth'
 import { createComment, listComments } from '@/lib/data/comments'
 import { parseInput, readJsonBody, toErrorResponse } from '@/lib/data/errors'
 import { createCommentInput } from '@/lib/dto/comments'
+import { cursorQuerySchema } from '@/lib/dto/common'
 
 export const GET = async (
-  _request: Request,
+  request: Request,
   context: RouteContext<'/api/v1/posts/[id]/comments'>,
 ) => {
   try {
     const { id } = await context.params
-    return NextResponse.json(await listComments(id))
+    const { searchParams } = new URL(request.url)
+    // Decodes the query string (every value arrives as a string); the DAL validates again.
+    const query = parseInput(cursorQuerySchema, Object.fromEntries(searchParams))
+    return NextResponse.json(await listComments(id, query))
   } catch (error) {
     return toErrorResponse(error)
   }

@@ -140,6 +140,8 @@ docs/DECISIONS.md        # Framework and library choices, with reasons
 - **No Prisma types outside `lib/data`** (and `prisma/`). ESLint enforces this with
   `no-restricted-imports`.
 - Lists are `Page<T> = { items, page, perPage, totalItems, totalPages }` (`lib/dto/common.ts`).
+- Feeds that grow (comments, notifications) are `CursorPage<T> = { items, nextCursor }` instead; see
+  `docs/guides/route-handlers.md`.
 - Cross-cutting result types (`ActionResult<T>`, `ErrorBody`, `FieldErrors`) live in `types/api.ts`.
 - Path alias: use `@/` to reference the project root.
 

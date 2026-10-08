@@ -3,7 +3,7 @@ import { parseInput, toErrorResponse } from '@/lib/data/errors'
 import { listNotifications } from '@/lib/data/notifications'
 import { listNotificationsQuery } from '@/lib/dto/notifications'
 
-/** The bell's popover reads the latest notifications here; the page reads the DAL directly. */
+/** The bell's popover and the page's "Load more" read notifications here, a cursor page at a time. */
 export const GET = async (request: Request) => {
   try {
     const { searchParams } = new URL(request.url)

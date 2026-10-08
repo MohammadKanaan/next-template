@@ -11,6 +11,7 @@ import {
   subscribeToNotifications,
 } from '@/lib/data/notifications'
 import { userChannel } from '@/lib/data/channels'
+import { encodeCursor } from '@/lib/cursor'
 import type { RealtimeEvent } from '@/lib/dto/notifications'
 import { isPushConfigured } from '@/lib/server/push'
 import { enqueue } from '@/lib/server/queue'
@@ -100,7 +101,7 @@ describe('notifications DAL', () => {
   })
 
   describe('reads', () => {
-    it('lists the viewer’s own notifications newest first, paginated, and counts unread', async () => {
+    it('lists the viewer’s own notifications newest first and counts unread', async () => {
       const me = await createUser({})
       const other = await createUser({})
       await createNotification(input(me.id, { title: 'first' }))
@@ -108,18 +109,58 @@ describe('notifications DAL', () => {
       await createNotification(input(other.id, { title: 'theirs' }))
 
       signOut()
-      await expect(listNotifications({ page: 1, perPage: 10 })).rejects.toBeInstanceOf(
-        UnauthorizedError,
-      )
+      await expect(listNotifications()).rejects.toBeInstanceOf(UnauthorizedError)
       await expect(getUnreadNotificationCount()).rejects.toBeInstanceOf(UnauthorizedError)
 
       await signInAs(me)
-      const page = await listNotifications({ page: 1, perPage: 1 })
-      expect(page).toMatchObject({ page: 1, perPage: 1, totalItems: 2, totalPages: 2 })
-      expect(page.items.map((item) => item.title)).toEqual(['second'])
-      expect((await listNotifications({ page: 2, perPage: 1 })).items[0].title).toBe('first')
+      const page = await listNotifications()
+      expect(page.items.map((item) => item.title)).toEqual(['second', 'first'])
+      expect(page.nextCursor).toBeNull()
       expect(await getUnreadNotificationCount()).toBe(2)
-      await expect(listNotifications({ page: 0, perPage: 1 })).rejects.toBeInstanceOf(
+    })
+
+    it('pages with a cursor: limit, limit + 1, and the boundaries', async () => {
+      const me = await createUser({})
+      const other = await createUser({})
+      for (const n of [1, 2, 3]) {
+        await createNotification(input(me.id, { title: `n${n}` }))
+      }
+      await createNotification(input(other.id, { title: 'theirs' }))
+      await signInAs(me)
+      const titles = (page: { items: { title: string }[] }) => page.items.map((item) => item.title)
+
+      // Exactly `limit` rows left: no next page. One more than `limit`: there is one.
+      expect(titles(await listNotifications({ limit: 3 }))).toEqual(['n3', 'n2', 'n1'])
+      expect((await listNotifications({ limit: 3 })).nextCursor).toBeNull()
+      const first = await listNotifications({ limit: 2 })
+      expect(titles(first)).toEqual(['n3', 'n2'])
+      expect(first.nextCursor).toEqual(expect.any(String))
+
+      const second = await listNotifications({ limit: 2, cursor: first.nextCursor ?? '' })
+      expect(titles(second)).toEqual(['n1'])
+      expect(second.nextCursor).toBeNull()
+
+      // A cursor pointing past the oldest row is an empty last page.
+      const oldest = await db.notification.findFirstOrThrow({
+        where: { userId: me.id },
+        orderBy: { id: 'asc' },
+      })
+      expect(await listNotifications({ cursor: encodeCursor(oldest.id) })).toEqual({
+        items: [],
+        nextCursor: null,
+      })
+    })
+
+    it('starts from the first page for a cursor it cannot read and validates the limit', async () => {
+      const me = await createUser({})
+      await createNotification(input(me.id, { title: 'only' }))
+      await signInAs(me)
+      expect((await listNotifications({ cursor: 'not a cursor!' })).items).toHaveLength(1)
+      expect((await listNotifications({ cursor: '%%%' })).items).toHaveLength(1)
+      for (const limit of [0, 51, 1.5]) {
+        await expect(listNotifications({ limit })).rejects.toBeInstanceOf(ValidationError)
+      }
+      await expect(listNotifications({ cursor: 'a'.repeat(65) })).rejects.toBeInstanceOf(
         ValidationError,
       )
     })

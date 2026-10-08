@@ -45,7 +45,7 @@ export const NotificationBell = ({ initialUnreadCount }: NotificationBellProps) 
   const load = async () => {
     setError(null)
     try {
-      const page = await fetchNotifications({ page: 1, perPage: PREVIEW_COUNT })
+      const page = await fetchNotifications({ limit: PREVIEW_COUNT })
       setItems(page.items)
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Could not load notifications')
