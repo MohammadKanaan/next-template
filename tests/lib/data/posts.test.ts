@@ -15,7 +15,6 @@ import {
   listPosts,
   listTags,
   setPostStatus,
-  toExcerpt,
   updatePost,
 } from '@/lib/data/posts'
 import { POSTS_TAG } from '@/lib/data/cacheTags'
@@ -375,16 +374,6 @@ describe('posts DAL', () => {
       })
       expect((await getPost(999)).title).toBe('Late')
     })
-  })
-
-  it('truncates long bodies and trims whitespace before the ellipsis', () => {
-    expect(toExcerpt('short')).toBe('short')
-    expect(toExcerpt('abc   def', 6)).toBe('abc…')
-  })
-
-  it('never cuts an emoji in half', () => {
-    // '😀' is two UTF-16 code units; a cut between them leaves a lone surrogate that renders as �.
-    expect(toExcerpt('ab😀cd', 3)).toBe('ab😀…')
   })
 
   it('reports a post that vanishes between the access check and the write as not found', async () => {

@@ -10,6 +10,7 @@ import {
   type CommentBase,
 } from '@/lib/dto/comments'
 import { NOTIFICATION_TITLE_MAX_LENGTH } from '@/lib/dto/notifications'
+import { toExcerpt } from '@/lib/excerpt'
 import { invalidateTags, remember } from '@/lib/server/cache'
 import { logger } from '@/lib/server/logger'
 import { getSessionUser, requireUser, type SessionUser } from './auth'
@@ -28,11 +29,6 @@ const COMMENTS_CACHE_TTL = 300
 const COMMENTS_LIMIT = 200
 /** How much of the comment the notification shows. */
 const NOTIFICATION_EXCERPT_LENGTH = 140
-
-/** Cuts `text` to at most `max` characters, ending in an ellipsis when it was shortened. */
-const truncate = (text: string, max: number) => {
-  return text.length > max ? `${text.slice(0, max - 1)}…` : text
-}
 
 const commentSelect = {
   id: true,
@@ -134,11 +130,11 @@ export const createComment = async (
       await createNotification({
         userId: post.userId,
         type: 'comment',
-        title: truncate(
+        title: toExcerpt(
           `${row.user.name} commented on "${post.title}"`,
           NOTIFICATION_TITLE_MAX_LENGTH,
         ),
-        body: truncate(body, NOTIFICATION_EXCERPT_LENGTH),
+        body: toExcerpt(body, NOTIFICATION_EXCERPT_LENGTH),
         url: ROUTE_POST_DETAILS(post.userId, id),
       })
     } catch (error) {

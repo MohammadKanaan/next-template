@@ -21,6 +21,7 @@ import {
   updatePostInput,
   type UpdatePostInput,
 } from '@/lib/dto/posts'
+import { toExcerpt } from '@/lib/excerpt'
 import { invalidateTags, remember } from '@/lib/server/cache'
 import { getSessionUser, requireUser, type SessionUser } from './auth'
 import { POSTS_TAG, postTag } from './cacheTags'
@@ -67,14 +68,6 @@ const postDetailSelect = {
 type PostSummaryRow = Prisma.PostGetPayload<{ select: typeof postSummarySelect }>
 type PostDetailRow = Prisma.PostGetPayload<{ select: typeof postDetailSelect }>
 
-/** Counts code points, not UTF-16 units, so the cut never splits an emoji into a lone surrogate. */
-export const toExcerpt = (body: string, maxLength = POST_EXCERPT_LENGTH) => {
-  const characters = Array.from(body)
-  return characters.length <= maxLength
-    ? body
-    : `${characters.slice(0, maxLength).join('').trimEnd()}…`
-}
-
 /** Record-level rule: the author or an admin may change a post. */
 const canModify = (viewer: SessionUser | null, authorId: string) => {
   return viewer !== null && (viewer.id === authorId || viewer.role === 'admin')
@@ -94,7 +87,8 @@ const toPostSummary = (row: PostSummaryRow): PostSummary => {
   return {
     id: row.id,
     title: row.title,
-    excerpt: toExcerpt(row.body),
+    // The ellipsis comes on top of `POST_EXCERPT_LENGTH` characters, as the excerpt always did.
+    excerpt: toExcerpt(row.body, POST_EXCERPT_LENGTH + 1),
     status: row.status,
     tags: row.tags.map(({ tag }) => tag.name),
     commentCount: row._count.comments,
