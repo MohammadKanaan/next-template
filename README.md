@@ -71,7 +71,7 @@ Open http://localhost:3000 and log in as `leanne@example.com` / `password123` (a
 `admin@example.com` / `password123`), or create an account at `/signup`.
 
 The app needs three services: **PostgreSQL >= 15** (18 in `docker-compose.yml`), **Redis >= 7**, and an
-**S3-compatible store** (MinIO, bucket `next-template`, `avatars/` publicly readable). Compose
+**S3-compatible store** (MinIO, bucket `next-template`, `avatars/` and `attachments/` publicly readable). Compose
 starts all three (the MinIO images are Chainguard builds that have not been verified end to end).
 If you run them yourself, create the `next_template_dev` and `next_template_test` databases, point
 `REDIS_URL` and the `S3_*` variables in `.env` at your services, and put the matching values in
@@ -127,7 +127,7 @@ them):
 
 The containers get every variable the app validates at boot. Hosts are the compose service names
 (`db`, `redis`, `minio`); `S3_PUBLIC_ENDPOINT=http://localhost:9000` is what the browser uses for
-avatar uploads. Compose reads `.env` from the project directory for `BETTER_AUTH_SECRET`,
+uploads. Compose reads `.env` from the project directory for `BETTER_AUTH_SECRET`,
 `BETTER_AUTH_URL`, `RESEND_API_KEY`, `EMAIL_FROM`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`,
 `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` and the `NEXT_PUBLIC_*` build args. `BETTER_AUTH_SECRET` is required: compose refuses to start the `app`
 profile without it (it interpolates the whole file, so even `docker compose up -d` needs it set). Production boot
@@ -279,10 +279,14 @@ sync.
 system DAL `lib/data/maintenance.ts`, importable only from `jobs/`.
 
 **Uploads.** The server issues a presigned POST and records an `Upload` row; the browser sends the
-file straight to storage; attaching re-checks the object, updates `user.image`, and queues a delayed
-deletion of the replaced avatar (after its ticket can no longer be used). Abandoned uploads are cleaned up hourly.
+file straight to storage; attaching re-checks the object against the rule of its purpose (`avatar` or
+`attachment`, `UPLOAD_RULES` in `lib/dto/uploads.ts`). An avatar updates `user.image` and queues a delayed
+deletion of the replaced one (after its ticket can no longer be used); an attachment is linked to a post
+(at most 10 per post) and queued the same way when removed. Abandoned uploads are cleaned up hourly.
 Because those deletions are delayed by the ticket lifetime plus a grace period, a replaced avatar,
-and the avatars of a deleted account, stay readable at their public URL for about 15 minutes.
+a removed attachment, and the files of a deleted account, stay readable at their public URL for about
+15 minutes. Anything in `avatars/` or `attachments/` is readable by anyone who has the URL (the key
+holds a random UUID), so attachments are not private files.
 
 **Notifications.** Someone commenting on your post creates a `Notification` row (`createComment` calls
 `createNotification`, never for your own comment). It is published on your Redis channel and streamed to
@@ -416,29 +420,30 @@ status write invalidates the tags those entries were cached under. New posts sta
 
 Where to look to see each pattern done once, properly.
 
-| Pattern                                | Where it is shown                                                                                                                                                                          |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Server-rendered list with URL filters  | `app/(site)/posts/ssr/page.tsx` + `view.tsx`; `hooks/useUrlState.ts`; `postsUrlQuery` in `lib/dto/posts.ts`; `components/Posts/Filters`                                                    |
-| Client-fetched list                    | `app/(site)/posts/csr/page.tsx` + `view.tsx`; facade `lib/client/posts.ts`; handler `app/api/v1/posts/route.ts`                                                                            |
-| Create / edit form with field errors   | `components/Posts/Form/index.tsx` (+ `utils.ts`); `lib/formErrors.ts` (`applyActionErrors`); `actions/posts.ts`; pages `app/(site)/posts/new` and `app/(site)/posts/[userId]/[id]/edit`    |
-| Controlled form field                  | `components/Form/TagsInput/index.tsx`, wired through RHF's `Controller` in `components/Posts/Form/index.tsx`                                                                               |
-| Nested resource (comments)             | `lib/data/comments.ts`; `actions/comments.ts`; `components/Comments/Thread`, `Form`, `DeleteButton`; `app/api/v1/posts/[id]/comments/route.ts`                                             |
-| Many-to-many (tags)                    | `Tag` + `PostTag` in `prisma/schema.prisma`; `replacePostTags` and `listTags` in `lib/data/posts.ts`; `tagNameSchema` in `lib/dto/posts.ts`                                                |
-| Multi-table transaction                | `createPost` / `updatePost` with `db.$transaction` and `replacePostTags` in `lib/data/posts.ts`                                                                                            |
-| Status workflow                        | `POST_STATUS_TRANSITIONS` in `lib/dto/posts.ts`; `setPostStatus` in `lib/data/posts.ts`; `components/Posts/StatusActions`; `app/(site)/posts/mine`                                         |
-| Record-level authorization policies    | `lib/data/policy.ts` (`authorize`, `permissionsFor`); `lib/data/policies/posts.ts` (`postPolicy`, `commentPolicy`); used by `requirePostChange` in `lib/data/posts.ts` and `deleteComment` |
-| Soft delete (trash) and restore        | `deletedAt` on `Post`; `deletePost` / `restorePost` and `resolvePostFilter` in `lib/data/posts.ts`; `purgeDeletedPosts` in `lib/data/maintenance.ts`; `components/Posts/RestoreButton`     |
-| Optimistic locking (409)               | `version` on `Post`; `updatePost` in `lib/data/posts.ts`; `ConflictError` in `lib/data/errors.ts`; `components/Posts/Form`, `app/(site)/posts/[userId]/[id]/edit/view.tsx`                 |
-| Viewer-dependent visibility            | `canViewPost`, `getPost` and `listPosts` in `lib/data/posts.ts` (cache the shared part, check the viewer after)                                                                            |
-| Redis caching and invalidation         | `remember` / `invalidateTags` in `lib/server/cache.ts`; tags in `lib/data/cacheTags.ts`; used throughout `lib/data/posts.ts` and `lib/data/comments.ts`                                    |
-| Multi-filter `where` builder           | `resolvePostFilter` and `toPrismaWhere` in `lib/data/posts.ts`; `listPostsQuery` in `lib/dto/posts.ts`                                                                                     |
-| Full-text search (Postgres `tsvector`) | `search_vector` generated column and GIN index in `prisma/migrations/*_add_post_search_vector`; `searchPosts` and `toSqlConditions` in `lib/data/posts.ts`; `docs/guides/search.md`        |
-| REST CRUD handlers                     | `app/api/v1/posts/route.ts`, `app/api/v1/posts/[id]/route.ts`, `app/api/v1/posts/[id]/comments/route.ts`; `readJsonBody` and `toErrorResponse` in `lib/data/errors.ts`                     |
-| Aggregates and raw SQL                 | `lib/data/stats.ts` (`getSiteStats`, `getMyStats` with `groupBy`, `getPostsPerDay` with `$queryRaw`); `components/Stats/PostsPerDayChart`; page `app/(site)/dashboard`                     |
-| File upload                            | `lib/data/uploads.ts`; `actions/uploads.ts`; `lib/server/storage.ts`; `lib/client/uploads.ts`; `components/Settings/AvatarUploader`                                                        |
-| Background job and email               | `jobs/definitions.ts`, `jobs/sendEmail.ts`; `lib/server/queue.ts`; `worker/index.ts`; `lib/server/mailer.ts`; `emails/`                                                                    |
-| Admin-only page                        | `app/(site)/admin/page.tsx` + `view.tsx`; `listUsers` / `setUserRole` with `requireAdmin()` in `lib/data/users.ts`                                                                         |
-| OAuth (Google)                         | `lib/data/auth.ts` (`socialProviders`, `isGoogleAuthEnabled`); `signInWithGoogleAction` in `actions/auth.ts`; `lib/username.ts`; `components/Auth/GoogleButton`                            |
+| Pattern                                | Where it is shown                                                                                                                                                                                                 |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Server-rendered list with URL filters  | `app/(site)/posts/ssr/page.tsx` + `view.tsx`; `hooks/useUrlState.ts`; `postsUrlQuery` in `lib/dto/posts.ts`; `components/Posts/Filters`                                                                           |
+| Client-fetched list                    | `app/(site)/posts/csr/page.tsx` + `view.tsx`; facade `lib/client/posts.ts`; handler `app/api/v1/posts/route.ts`                                                                                                   |
+| Create / edit form with field errors   | `components/Posts/Form/index.tsx` (+ `utils.ts`); `lib/formErrors.ts` (`applyActionErrors`); `actions/posts.ts`; pages `app/(site)/posts/new` and `app/(site)/posts/[userId]/[id]/edit`                           |
+| Controlled form field                  | `components/Form/TagsInput/index.tsx`, wired through RHF's `Controller` in `components/Posts/Form/index.tsx`                                                                                                      |
+| Nested resource (comments)             | `lib/data/comments.ts`; `actions/comments.ts`; `components/Comments/Thread`, `Form`, `DeleteButton`; `app/api/v1/posts/[id]/comments/route.ts`                                                                    |
+| Many-to-many (tags)                    | `Tag` + `PostTag` in `prisma/schema.prisma`; `replacePostTags` and `listTags` in `lib/data/posts.ts`; `tagNameSchema` in `lib/dto/posts.ts`                                                                       |
+| Multi-table transaction                | `createPost` / `updatePost` with `db.$transaction` and `replacePostTags` in `lib/data/posts.ts`                                                                                                                   |
+| Status workflow                        | `POST_STATUS_TRANSITIONS` in `lib/dto/posts.ts`; `setPostStatus` in `lib/data/posts.ts`; `components/Posts/StatusActions`; `app/(site)/posts/mine`                                                                |
+| Record-level authorization policies    | `lib/data/policy.ts` (`authorize`, `permissionsFor`); `lib/data/policies/posts.ts` (`postPolicy`, `commentPolicy`); used by `requirePostChange` in `lib/data/posts.ts` and `deleteComment`                        |
+| Soft delete (trash) and restore        | `deletedAt` on `Post`; `deletePost` / `restorePost` and `resolvePostFilter` in `lib/data/posts.ts`; `purgeDeletedPosts` in `lib/data/maintenance.ts`; `components/Posts/RestoreButton`                            |
+| Optimistic locking (409)               | `version` on `Post`; `updatePost` in `lib/data/posts.ts`; `ConflictError` in `lib/data/errors.ts`; `components/Posts/Form`, `app/(site)/posts/[userId]/[id]/edit/view.tsx`                                        |
+| Viewer-dependent visibility            | `canViewPost`, `getPost` and `listPosts` in `lib/data/posts.ts` (cache the shared part, check the viewer after)                                                                                                   |
+| Redis caching and invalidation         | `remember` / `invalidateTags` in `lib/server/cache.ts`; tags in `lib/data/cacheTags.ts`; used throughout `lib/data/posts.ts` and `lib/data/comments.ts`                                                           |
+| Multi-filter `where` builder           | `resolvePostFilter` and `toPrismaWhere` in `lib/data/posts.ts`; `listPostsQuery` in `lib/dto/posts.ts`                                                                                                            |
+| Full-text search (Postgres `tsvector`) | `search_vector` generated column and GIN index in `prisma/migrations/*_add_post_search_vector`; `searchPosts` and `toSqlConditions` in `lib/data/posts.ts`; `docs/guides/search.md`                               |
+| REST CRUD handlers                     | `app/api/v1/posts/route.ts`, `app/api/v1/posts/[id]/route.ts`, `app/api/v1/posts/[id]/comments/route.ts`; `readJsonBody` and `toErrorResponse` in `lib/data/errors.ts`                                            |
+| Aggregates and raw SQL                 | `lib/data/stats.ts` (`getSiteStats`, `getMyStats` with `groupBy`, `getPostsPerDay` with `$queryRaw`); `components/Stats/PostsPerDayChart`; page `app/(site)/dashboard`                                            |
+| File upload                            | `lib/data/uploads.ts`; `actions/uploads.ts`; `lib/server/storage.ts`; `lib/client/uploads.ts`; `components/Settings/AvatarUploader`                                                                               |
+| Generic attachments on a record        | `UPLOAD_RULES` in `lib/dto/uploads.ts`; `createUpload`, `attachPostUpload`, `detachPostUpload` in `lib/data/uploads.ts`; `components/Form/FileUploader`, `components/Posts/Attachments`; `docs/guides/uploads.md` |
+| Background job and email               | `jobs/definitions.ts`, `jobs/sendEmail.ts`; `lib/server/queue.ts`; `worker/index.ts`; `lib/server/mailer.ts`; `emails/`                                                                                           |
+| Admin-only page                        | `app/(site)/admin/page.tsx` + `view.tsx`; `listUsers` / `setUserRole` with `requireAdmin()` in `lib/data/users.ts`                                                                                                |
+| OAuth (Google)                         | `lib/data/auth.ts` (`socialProviders`, `isGoogleAuthEnabled`); `signInWithGoogleAction` in `actions/auth.ts`; `lib/username.ts`; `components/Auth/GoogleButton`                                                   |
 
 ## Design decisions
 

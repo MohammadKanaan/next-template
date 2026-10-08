@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { updatePostAction } from '@/actions/posts'
+import { detachPostUploadAction } from '@/actions/uploads'
 import { PostEditView } from '@/app/(site)/posts/[userId]/[id]/edit/view'
 import type { PostDetail } from '@/lib/dto/posts'
 
@@ -9,6 +10,11 @@ const { push, refresh } = vi.hoisted(() => ({ push: vi.fn(), refresh: vi.fn() })
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push, refresh }) }))
 vi.mock('sonner', () => ({ toast: Object.assign(vi.fn(), { success: vi.fn() }) }))
 vi.mock('@/actions/posts', () => ({ updatePostAction: vi.fn() }))
+vi.mock('@/actions/uploads', () => ({
+  createUploadAction: vi.fn(),
+  attachPostUploadAction: vi.fn(),
+  detachPostUploadAction: vi.fn(),
+}))
 
 const post: PostDetail = {
   id: 7,
@@ -18,6 +24,7 @@ const post: PostDetail = {
   version: 4,
   tags: [],
   commentCount: 0,
+  attachments: [],
   publishedAt: null,
   deletedAt: null,
   createdAt: new Date('2026-01-01T00:00:00.000Z'),
@@ -67,5 +74,30 @@ describe('PostEditView', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Save changes' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('You cannot change this post')
     expect(screen.queryByRole('button', { name: 'Reload' })).not.toBeInTheDocument()
+  })
+
+  it('shows the attachments and removes one for this post, then reloads the page', async () => {
+    vi.mocked(detachPostUploadAction).mockResolvedValue({ ok: true, data: null })
+    render(
+      <PostEditView
+        post={{
+          ...post,
+          attachments: [
+            {
+              id: 'att-1',
+              name: 'report.pdf',
+              url: 'http://storage.test/bucket/attachments/u1/x',
+              contentType: 'application/pdf',
+              size: 2048,
+              createdAt: new Date('2026-01-02T00:00:00.000Z'),
+            },
+          ],
+        }}
+      />,
+    )
+    expect(screen.getByRole('link', { name: 'report.pdf' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Remove report.pdf' }))
+    expect(detachPostUploadAction).toHaveBeenCalledWith(7, 'att-1')
+    await vi.waitFor(() => expect(refresh).toHaveBeenCalledTimes(1))
   })
 })

@@ -4,10 +4,17 @@ import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { updatePostAction } from '@/actions/posts'
+import {
+  attachPostUploadAction,
+  createUploadAction,
+  detachPostUploadAction,
+} from '@/actions/uploads'
 import { PageHeader } from '@/components/PageHeader'
+import { PostAttachments } from '@/components/Posts/Attachments'
 import { PostForm } from '@/components/Posts/Form'
 import { buildPostAttributes } from '@/components/Posts/Form/utils'
 import { Button } from '@/components/SCN/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/SCN/card'
 import { ROUTE_POST_DETAILS } from '@/lib/constants-routes'
 import type { PostDetail, PostFormInput } from '@/lib/dto/posts'
 import styles from '../styles.module.scss'
@@ -68,6 +75,23 @@ export const PostEditView = ({ post }: PostEditViewProps) => {
           )
         }
       />
+      <Card>
+        <CardHeader>
+          <CardTitle>Attachments</CardTitle>
+          <CardDescription>
+            Files are added or removed at once; they do not wait for Save changes.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <PostAttachments
+            attachments={post.attachments}
+            onCreateUpload={createUploadAction}
+            onAttach={(uploadId) => attachPostUploadAction(post.id, uploadId)}
+            onDetach={(uploadId) => detachPostUploadAction(post.id, uploadId)}
+            onChanged={() => router.refresh()}
+          />
+        </CardContent>
+      </Card>
     </div>
   )
 }

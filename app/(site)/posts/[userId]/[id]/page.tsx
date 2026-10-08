@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
 import { CommentThread } from '@/components/Comments/Thread'
 import { PageHeader } from '@/components/PageHeader'
+import { PostAttachmentList } from '@/components/Posts/AttachmentList'
 import { DeletePostButton } from '@/components/Posts/DeleteButton'
 import { RestorePostButton } from '@/components/Posts/RestoreButton'
 import { PostStatusActions } from '@/components/Posts/StatusActions'
@@ -98,6 +99,17 @@ const PostDetailPage = async ({ params }: PageProps<'/posts/[userId]/[id]'>) => 
           </CardContent>
         </Card>
       </div>
+
+      {post.attachments.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Attachments</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <PostAttachmentList attachments={post.attachments} />
+          </CardContent>
+        </Card>
+      )}
 
       {!post.deletedAt && (
         <Suspense fallback={null}>

@@ -8,12 +8,15 @@ import {
   UnauthorizedError,
   ValidationError,
 } from '@/lib/data/errors'
-import { attachAvatar, createAvatarUpload } from '@/lib/data/uploads'
+import { attachAvatar, createUpload } from '@/lib/data/uploads'
 import { getViewer } from '@/lib/data/users'
 import {
+  ATTACHMENT_MAX_SIZE,
   AVATAR_MAX_SIZE,
-  AVATAR_UPLOAD_TICKET_SECONDS,
+  objectDeleteDelaySeconds,
   UPLOAD_OBJECT_GRACE_SECONDS,
+  UPLOAD_RULES,
+  UPLOAD_TICKET_SECONDS,
 } from '@/lib/dto/uploads'
 import { enqueue } from '@/lib/server/queue'
 import { createUploadTicket, deleteObject, headObject } from '@/lib/server/storage'
@@ -40,7 +43,7 @@ vi.mock('@/lib/server/storage', () => ({
 /** Sign-up also queues an email; only the object-deletion jobs matter here. */
 const deleteJobs = () => vi.mocked(enqueue).mock.calls.filter(([name]) => name === 'delete-object')
 
-const input = { contentType: 'image/png', size: 1024 } as const
+const input = { purpose: 'avatar', contentType: 'image/png', size: 1024 } as const
 
 describe('uploads DAL', () => {
   beforeEach(async () => {
@@ -52,16 +55,16 @@ describe('uploads DAL', () => {
   })
   afterAll(() => db.$disconnect())
 
-  describe('createAvatarUpload', () => {
+  describe('createUpload (avatar)', () => {
     it('requires a session', async () => {
-      await expect(createAvatarUpload(input)).rejects.toBeInstanceOf(UnauthorizedError)
+      await expect(createUpload(input)).rejects.toBeInstanceOf(UnauthorizedError)
       expect(await db.upload.count()).toBe(0)
     })
 
     it('stores a pending upload under the viewer and returns a ticket', async () => {
       const user = await createUser({})
       await signInAs(user)
-      const ticket = await createAvatarUpload(input)
+      const ticket = await createUpload(input)
 
       const row = await db.upload.findUniqueOrThrow({ where: { id: ticket.uploadId } })
       expect(row).toMatchObject({
@@ -77,14 +80,14 @@ describe('uploads DAL', () => {
         key: row.key,
         contentType: 'image/png',
         maxSize: AVATAR_MAX_SIZE,
-        expiresIn: AVATAR_UPLOAD_TICKET_SECONDS,
+        expiresIn: UPLOAD_TICKET_SECONDS,
       })
     })
 
     it('uses a different key every time', async () => {
       await signInAs(await createUser({}))
-      const a = await createAvatarUpload(input)
-      const b = await createAvatarUpload(input)
+      const a = await createUpload(input)
+      const b = await createUpload(input)
       const rows = await db.upload.findMany({ where: { id: { in: [a.uploadId, b.uploadId] } } })
       expect(new Set(rows.map((row) => row.key)).size).toBe(2)
     })
@@ -93,10 +96,10 @@ describe('uploads DAL', () => {
       const user = await createUser({})
       await signInAs(user)
       for (let i = 0; i < 3; i += 1) {
-        await createAvatarUpload(input)
+        await createUpload(input)
       }
 
-      await expect(createAvatarUpload(input)).rejects.toBeInstanceOf(RateLimitedError)
+      await expect(createUpload(input)).rejects.toBeInstanceOf(RateLimitedError)
 
       expect(await db.upload.count({ where: { userId: user.id } })).toBe(3)
       expect(deleteObject).not.toHaveBeenCalled()
@@ -106,15 +109,15 @@ describe('uploads DAL', () => {
       const user = await createUser({})
       await signInAs(user)
       for (let i = 0; i < 3; i += 1) {
-        await createAvatarUpload(input)
+        await createUpload(input)
       }
       // The ticket is dead but a slow upload that started just before expiry may still land.
       await db.upload.updateMany({
         where: { userId: user.id },
-        data: { createdAt: new Date(Date.now() - (AVATAR_UPLOAD_TICKET_SECONDS + 1) * 1000) },
+        data: { createdAt: new Date(Date.now() - (UPLOAD_TICKET_SECONDS + 1) * 1000) },
       })
 
-      await createAvatarUpload(input)
+      await createUpload(input)
 
       expect(deleteObject).not.toHaveBeenCalled()
       expect(await db.upload.count({ where: { userId: user.id } })).toBe(4)
@@ -125,16 +128,16 @@ describe('uploads DAL', () => {
       await signInAs(user)
       const keys: string[] = []
       for (let i = 0; i < 3; i += 1) {
-        const ticket = await createAvatarUpload(input)
+        const ticket = await createUpload(input)
         keys.push((await db.upload.findUniqueOrThrow({ where: { id: ticket.uploadId } })).key)
       }
-      const age = (AVATAR_UPLOAD_TICKET_SECONDS + UPLOAD_OBJECT_GRACE_SECONDS + 1) * 1000
+      const age = (UPLOAD_TICKET_SECONDS + UPLOAD_OBJECT_GRACE_SECONDS + 1) * 1000
       await db.upload.updateMany({
         where: { userId: user.id },
         data: { createdAt: new Date(Date.now() - age) },
       })
 
-      const ticket = await createAvatarUpload(input)
+      const ticket = await createUpload(input)
 
       expect(deleteObject).toHaveBeenCalledTimes(3)
       expect(
@@ -151,16 +154,121 @@ describe('uploads DAL', () => {
       const a = await createUser({})
       const b = await createUser({})
       await signInAs(a)
-      await createAvatarUpload(input)
-      await createAvatarUpload(input)
-      await createAvatarUpload(input)
+      await createUpload(input)
+      await createUpload(input)
+      await createUpload(input)
       // A's cap is full, but B's first ticket is not affected by it.
       await signInAs(b)
-      await createAvatarUpload(input)
+      await createUpload(input)
 
       expect(await db.upload.count({ where: { userId: b.id } })).toBe(1)
       expect(await db.upload.count({ where: { userId: a.id } })).toBe(3)
       expect(deleteObject).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('createUpload (rules per purpose)', () => {
+    const attachment = {
+      purpose: 'attachment',
+      contentType: 'application/pdf',
+      size: 5000,
+      name: 'report.pdf',
+    } as const
+
+    it('keeps the table in sync with the numbers the plan names', () => {
+      expect(UPLOAD_RULES.avatar).toMatchObject({ maxSize: AVATAR_MAX_SIZE, maxPending: 3 })
+      expect(UPLOAD_RULES.attachment).toMatchObject({ maxSize: ATTACHMENT_MAX_SIZE, maxPending: 5 })
+      expect(ATTACHMENT_MAX_SIZE).toBe(10 * 1024 * 1024)
+    })
+
+    it('stores an attachment under attachments/<user>/ with its name and the attachment limits', async () => {
+      const user = await createUser({})
+      await signInAs(user)
+      const ticket = await createUpload(attachment)
+
+      const row = await db.upload.findUniqueOrThrow({ where: { id: ticket.uploadId } })
+      expect(row).toMatchObject({
+        userId: user.id,
+        purpose: 'attachment',
+        contentType: 'application/pdf',
+        size: 5000,
+        name: 'report.pdf',
+        postId: null,
+        status: 'pending',
+      })
+      expect(row.key).toMatch(new RegExp(`^attachments/${user.id}/[0-9a-f-]{36}$`))
+      expect(createUploadTicket).toHaveBeenCalledWith({
+        key: row.key,
+        contentType: 'application/pdf',
+        maxSize: ATTACHMENT_MAX_SIZE,
+        expiresIn: UPLOAD_TICKET_SECONDS,
+      })
+    })
+
+    it('does not keep a name for an avatar', async () => {
+      await signInAs(await createUser({}))
+      const ticket = await createUpload({ ...input, name: 'me.png' })
+      expect(
+        (await db.upload.findUniqueOrThrow({ where: { id: ticket.uploadId } })).name,
+      ).toBeNull()
+    })
+
+    it.each([
+      ['an avatar that is not an image it knows', { ...input, contentType: 'application/pdf' }],
+      ['an avatar over 2 MB', { ...input, size: AVATAR_MAX_SIZE + 1 }],
+      ['an attachment of an unknown type', { ...attachment, contentType: 'text/html' }],
+      ['an svg attachment', { ...attachment, contentType: 'image/svg+xml' }],
+      ['an attachment over 10 MB', { ...attachment, size: ATTACHMENT_MAX_SIZE + 1 }],
+      ['an attachment without a name', { ...attachment, name: undefined }],
+      ['an empty file', { ...attachment, size: 0 }],
+      ['an unknown purpose', { ...attachment, purpose: 'banner' }],
+    ])('rejects %s', async (_name, bad) => {
+      await signInAs(await createUser({}))
+      await expect(createUpload(bad as never)).rejects.toBeInstanceOf(ValidationError)
+      expect(await db.upload.count()).toBe(0)
+    })
+
+    it('accepts every attachment type the rule lists', async () => {
+      await signInAs(await createUser({}))
+      for (const contentType of UPLOAD_RULES.attachment.contentTypes) {
+        await db.upload.deleteMany()
+        await expect(createUpload({ ...attachment, contentType })).resolves.toBeDefined()
+      }
+      expect(UPLOAD_RULES.attachment.contentTypes).toContain('text/csv')
+    })
+
+    it('allows five pending attachments, a sixth is refused, and avatars count apart', async () => {
+      const user = await createUser({})
+      await signInAs(user)
+      for (let i = 0; i < 5; i += 1) {
+        await createUpload(attachment)
+      }
+      await expect(createUpload(attachment)).rejects.toBeInstanceOf(RateLimitedError)
+      // Three avatar tickets are their own budget.
+      for (let i = 0; i < 3; i += 1) {
+        await createUpload(input)
+      }
+      await expect(createUpload(input)).rejects.toBeInstanceOf(RateLimitedError)
+      expect(await db.upload.count({ where: { userId: user.id } })).toBe(8)
+    })
+
+    it('reclaims only stale rows of the same purpose', async () => {
+      const user = await createUser({})
+      await signInAs(user)
+      const avatarTicket = await createUpload(input)
+      const attachmentTicket = await createUpload(attachment)
+      const age = (UPLOAD_TICKET_SECONDS + UPLOAD_OBJECT_GRACE_SECONDS + 1) * 1000
+      await db.upload.updateMany({
+        where: { userId: user.id },
+        data: { createdAt: new Date(Date.now() - age) },
+      })
+
+      await createUpload(attachment)
+
+      const rows = await db.upload.findMany({ where: { userId: user.id } })
+      expect(rows.map((row) => row.id)).toContain(avatarTicket.uploadId)
+      expect(rows.map((row) => row.id)).not.toContain(attachmentTicket.uploadId)
+      expect(deleteObject).toHaveBeenCalledTimes(1)
     })
   })
 
@@ -238,11 +346,7 @@ describe('uploads DAL', () => {
       await attachAvatar(second.id)
 
       expect(deleteJobs()).toEqual([
-        [
-          'delete-object',
-          { key: first.key },
-          { startAfter: AVATAR_UPLOAD_TICKET_SECONDS + UPLOAD_OBJECT_GRACE_SECONDS },
-        ],
+        ['delete-object', { key: first.key }, { startAfter: objectDeleteDelaySeconds('avatar') }],
       ])
       const rows = await db.upload.findMany({ where: { userId: user.id } })
       expect(rows.map((row) => row.id)).toEqual([second.id])

@@ -11,7 +11,7 @@ import {
   revokeSessionAction,
 } from '@/actions/auth'
 import { subscribePushAction, unsubscribePushAction } from '@/actions/push'
-import { attachAvatarAction, createAvatarUploadAction } from '@/actions/uploads'
+import { attachAvatarAction, createUploadAction } from '@/actions/uploads'
 import { updateProfileAction } from '@/actions/users'
 import { DeleteAccountDialog } from '@/components/Settings/DeleteAccountDialog'
 import { AvatarUploader } from '@/components/Settings/AvatarUploader'
@@ -100,7 +100,7 @@ export const SettingsView = ({ user, sessions, hasPassword, pushConfig }: Settin
           <AvatarUploader
             name={user.name}
             image={user.image}
-            onCreateUpload={createAvatarUploadAction}
+            onCreateUpload={createUploadAction}
             onAttach={attachAvatarAction}
             onUploaded={() => toast.success('Profile photo updated')}
           />

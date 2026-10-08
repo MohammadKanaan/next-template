@@ -89,3 +89,9 @@ The posts example carries the domain patterns an app needs (all in `lib/data/pos
   too. `hydratePostForm` carries `version`, `PostForm` holds it as a non-rendered value
   (`postFormInput`), and the edit view shows a `CONFLICT` failure as the form alert with a Reload
   button (`router.refresh()`). `toActionFailure`, `toErrorResponse` and `applyActionErrors` needed no change.
+- **Attachments:** files uploaded to a post (`PostDetail.attachments`, at most `POST_ATTACHMENTS_MAX`
+  = 10, added and removed with `attachPostUpload` / `detachPostUpload` in `lib/data/uploads.ts`, see
+  `docs/guides/uploads.md`). Adding or removing one needs `postPolicy.update` on a live post (a trashed
+  post answers 404), does not bump `version` (it guards title, body and tags only), and invalidates
+  `postTag(id)`. `purgeDeletedPosts` queues `delete-object` for every attachment key before the posts
+  go. UI: `PostAttachments` on the edit page, `PostAttachmentList` on the detail page.

@@ -7,7 +7,7 @@ import { headers } from 'next/headers'
 import { cache } from 'react'
 import { loginPath } from '@/lib/constants-routes'
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, signUpInput } from '@/lib/dto/auth'
-import { AVATAR_UPLOAD_TICKET_SECONDS, UPLOAD_OBJECT_GRACE_SECONDS } from '@/lib/dto/uploads'
+import { MAX_OBJECT_DELETE_DELAY_SECONDS } from '@/lib/dto/uploads'
 import type { JobPayload } from '@/jobs/definitions'
 import { roleSchema, type Role } from '@/lib/dto/users'
 import { deriveUsername } from '@/lib/username'
@@ -160,21 +160,19 @@ export const auth = betterAuth({
     deleteUser: {
       enabled: true,
       // Upload rows go with the user (cascade) but their objects would stay in the bucket, so the
-      // keys are read and queued for deletion before the rows disappear. The jobs are delayed past
-      // every ticket's lifetime plus the grace period: an object uploaded through a still-valid
-      // ticket after the rows are gone would otherwise be orphaned.
+      // keys are read and queued for deletion before the rows disappear. That includes files that
+      // other people (an admin) attached to this user's posts: the posts cascade, and those rows
+      // would otherwise be left behind. The jobs are delayed past every ticket's lifetime plus the
+      // grace period: an object uploaded through a still-valid ticket after the rows are gone
+      // would otherwise be orphaned.
       beforeDelete: async (user) => {
         const uploads = await db.upload.findMany({
-          where: { userId: user.id },
+          where: { OR: [{ userId: user.id }, { post: { userId: user.id } }] },
           select: { key: true },
         })
         const results = await Promise.allSettled(
           uploads.map(({ key }) =>
-            enqueue(
-              'delete-object',
-              { key },
-              { startAfter: AVATAR_UPLOAD_TICKET_SECONDS + UPLOAD_OBJECT_GRACE_SECONDS },
-            ),
+            enqueue('delete-object', { key }, { startAfter: MAX_OBJECT_DELETE_DELAY_SECONDS }),
           ),
         )
         for (const result of results) {
@@ -182,6 +180,9 @@ export const auth = betterAuth({
             log.error({ err: result.reason, userId: user.id }, 'object not queued for deletion')
           }
         }
+        await db.upload.deleteMany({
+          where: { post: { userId: user.id }, userId: { not: user.id } },
+        })
       },
       // Posts cascade too: drop the cached lists and the cached viewer.
       afterDelete: async (user) => {

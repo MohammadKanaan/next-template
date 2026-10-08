@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { idSchema, pageQuerySchema, pageSchema, permissionsSchema } from './common'
+import { attachmentSchema } from './uploads'
 import { userIdSchema, userProfileSchema } from './users'
 
 export const POST_TITLE_MAX_LENGTH = 200
@@ -220,6 +221,8 @@ export const postDetailSchema = z.object({
   version: postVersionSchema,
   tags: z.array(z.string()),
   commentCount: z.number().int(),
+  /** Files attached to the post, oldest first; visible to everyone who can see the post. */
+  attachments: z.array(attachmentSchema),
   publishedAt: z.coerce.date().nullable(),
   /** Set while the post is in the trash; only its author and admins can read such a post. */
   deletedAt: z.coerce.date().nullable(),

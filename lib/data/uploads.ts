@@ -1,12 +1,16 @@
 import 'server-only'
 import { randomUUID } from 'node:crypto'
+import { idSchema } from '@/lib/dto/common'
 import {
-  AVATAR_CONTENT_TYPES,
-  AVATAR_MAX_SIZE,
-  AVATAR_UPLOAD_TICKET_SECONDS,
-  createAvatarUploadInput,
-  type CreateAvatarUploadInput,
+  type Attachment,
+  createUploadInput,
+  type CreateUploadInput,
+  isAllowedContentType,
+  objectDeleteDelaySeconds,
+  POST_ATTACHMENTS_MAX,
+  UPLOAD_RULES,
   uploadIdSchema,
+  type UploadPurpose,
   type UploadTicket,
   UPLOAD_OBJECT_GRACE_SECONDS,
 } from '@/lib/dto/uploads'
@@ -16,7 +20,7 @@ import { logger } from '@/lib/server/logger'
 import { enqueue } from '@/lib/server/queue'
 import { createUploadTicket, deleteObject, headObject, publicUrl } from '@/lib/server/storage'
 import { requireUser } from './auth'
-import { userTag } from './cacheTags'
+import { postTag, userTag } from './cacheTags'
 import { db } from './db'
 import {
   ForbiddenError,
@@ -25,95 +29,131 @@ import {
   RateLimitedError,
   ValidationError,
 } from './errors'
+import { requirePostChange } from './posts'
 import { currentUserSelect } from './users'
 
 const log = logger.child({ module: 'uploads' })
 
 /**
- * Pending avatar uploads one user may hold with a ticket that can still be used. Tickets are cheap
- * and every object may be 2 MB, so the per-user backlog is bounded here, not only by the hourly
- * cleanup. Past the cap, the user waits for a ticket to expire or finishes one.
+ * Queues the deletion of an uploaded object only once its ticket can no longer be used (the
+ * ticket's lifetime plus `UPLOAD_OBJECT_GRACE_SECONDS`): until then the browser could still upload
+ * to the key, and an object re-uploaded after its row and delete job are gone would never be
+ * deleted. pg-boss reads a numeric `startAfter` as seconds.
  */
-const MAX_PENDING_AVATAR_UPLOADS = 3
-
-/**
- * Queues the deletion of an avatar object only once its ticket can no longer be used (the ticket's
- * lifetime plus `UPLOAD_OBJECT_GRACE_SECONDS`): until then the browser could still upload to the key,
- * and an object re-uploaded after its row and delete job are gone would never be deleted. pg-boss
- * reads a numeric `startAfter` as seconds.
- */
-const deleteObjectAfterTicket = (key: string) => {
-  return enqueue(
-    'delete-object',
-    { key },
-    { startAfter: AVATAR_UPLOAD_TICKET_SECONDS + UPLOAD_OBJECT_GRACE_SECONDS },
-  )
+const deleteObjectAfterTicket = (key: string, purpose: UploadPurpose) => {
+  return enqueue('delete-object', { key }, { startAfter: objectDeleteDelaySeconds(purpose) })
 }
 
 /**
- * Signed in → returns a presigned POST for a new avatar object and the pending upload's id. Pending
- * uploads whose ticket expired more than `UPLOAD_OBJECT_GRACE_SECONDS` ago are reclaimed first
- * (object, then row). Rows in between (ticket expired, upload possibly still arriving) are neither
- * counted nor touched; the hourly cleanup or a later ticket gets them. When the viewer still holds
- * `MAX_PENDING_AVATAR_UPLOADS` live ones, the request is refused with `RateLimitedError`.
+ * Signed in → input valid for its purpose → returns a presigned POST for a new object and the
+ * pending upload's id. Pending uploads of that purpose whose ticket expired more than
+ * `UPLOAD_OBJECT_GRACE_SECONDS` ago are reclaimed first (object, then row). Rows in between (ticket
+ * expired, upload possibly still arriving) are neither counted nor touched; the hourly cleanup or a
+ * later ticket gets them. When the viewer still holds `maxPending` live ones for the purpose, the
+ * request is refused with `RateLimitedError`. Tickets are cheap and an object may be 10 MB, so the
+ * per-user backlog is bounded here, not only by the hourly cleanup.
  */
-export const createAvatarUpload = async (input: CreateAvatarUploadInput): Promise<UploadTicket> => {
+export const createUpload = async (input: CreateUploadInput): Promise<UploadTicket> => {
   const viewer = await requireUser()
-  const { contentType, size } = parseInput(createAvatarUploadInput, input)
+  const { purpose, contentType, size, name } = parseInput(createUploadInput, input)
+  const rule = UPLOAD_RULES[purpose]
 
   const pending = await db.upload.findMany({
-    where: { userId: viewer.id, purpose: 'avatar', status: 'pending' },
+    where: { userId: viewer.id, purpose, status: 'pending' },
     select: { id: true, key: true, createdAt: true },
     orderBy: { createdAt: 'asc' },
   })
   const now = Date.now()
-  const liveSince = now - AVATAR_UPLOAD_TICKET_SECONDS * 1000
-  const reclaimBefore = now - (AVATAR_UPLOAD_TICKET_SECONDS + UPLOAD_OBJECT_GRACE_SECONDS) * 1000
+  const liveSince = now - rule.ticketSeconds * 1000
+  const reclaimBefore = now - (rule.ticketSeconds + UPLOAD_OBJECT_GRACE_SECONDS) * 1000
   const live = pending.filter((upload) => upload.createdAt.getTime() >= liveSince)
   const expired = pending.filter((upload) => upload.createdAt.getTime() < reclaimBefore)
   // Object first, so a storage failure leaves the row for the cleanup job.
   for (const stale of expired) {
     await deleteObject(stale.key)
-    // Only a still-pending row: a concurrent `attachAvatar` may have just claimed it.
+    // Only a still-pending row: a concurrent attach may have just claimed it.
     await db.upload.deleteMany({ where: { id: stale.id, status: 'pending' } })
   }
-  if (live.length >= MAX_PENDING_AVATAR_UPLOADS) {
+  if (live.length >= rule.maxPending) {
     throw new RateLimitedError('Finish or wait for your pending uploads before starting another')
   }
 
-  const key = `avatars/${viewer.id}/${randomUUID()}`
+  const key = `${purpose}s/${viewer.id}/${randomUUID()}`
   const upload = await db.upload.create({
-    data: { key, userId: viewer.id, purpose: 'avatar', contentType, size },
+    data: {
+      key,
+      userId: viewer.id,
+      purpose,
+      contentType,
+      size,
+      name: purpose === 'attachment' ? name : null,
+    },
     select: { id: true },
   })
   const ticket = await createUploadTicket({
     key,
     contentType,
-    maxSize: AVATAR_MAX_SIZE,
-    expiresIn: AVATAR_UPLOAD_TICKET_SECONDS,
+    maxSize: rule.maxSize,
+    expiresIn: rule.ticketSeconds,
   })
   return { uploadId: upload.id, ...ticket }
 }
 
-const isAvatarContentType = (value: string | null): boolean => {
-  return AVATAR_CONTENT_TYPES.some((type) => type === value)
-}
-
-/** Signed in, upload exists, and it is the viewer's own — in that order. */
-const requireOwnUpload = async (uploadId: string) => {
-  const viewer = await requireUser()
-  const id = parseInput(uploadIdSchema, uploadId)
+/** The upload exists (and is of `purpose`) and is the viewer's own — in that order. */
+const findOwnUpload = async (viewerId: string, id: string, purpose: UploadPurpose) => {
   const upload = await db.upload.findUnique({
     where: { id },
-    select: { id: true, key: true, userId: true, purpose: true, status: true },
+    select: {
+      id: true,
+      key: true,
+      userId: true,
+      purpose: true,
+      status: true,
+      name: true,
+      createdAt: true,
+    },
   })
-  if (!upload || upload.purpose !== 'avatar') {
+  if (!upload || upload.purpose !== purpose) {
     throw new NotFoundError('Upload not found')
   }
-  if (upload.userId !== viewer.id) {
+  if (upload.userId !== viewerId) {
     throw new ForbiddenError('You cannot use this upload')
   }
-  return { viewer, upload }
+  return upload
+}
+
+/**
+ * Signed in, input valid, upload exists (and is of `purpose`), and it is the viewer's own — in
+ * that order.
+ */
+const requireOwnUpload = async (uploadId: string, purpose: UploadPurpose) => {
+  const viewer = await requireUser()
+  const id = parseInput(uploadIdSchema, uploadId)
+  return { viewer, upload: await findOwnUpload(viewer.id, id, purpose) }
+}
+
+/**
+ * Reads the stored object and checks it against the purpose's rule. An object that broke the rules
+ * is deleted at once; the row stays pending (the ticket may still be valid for another upload to
+ * this key). The hourly cleanup removes it after 24 hours, and `createUpload` reclaims it sooner,
+ * once it is older than the ticket plus grace; until the ticket expires it keeps counting toward
+ * the pending cap.
+ */
+const verifyStoredObject = async (key: string, purpose: UploadPurpose) => {
+  const rule = UPLOAD_RULES[purpose]
+  const head = await headObject(key)
+  if (!head) {
+    throw new ValidationError({ uploadId: ['The file was not uploaded'] })
+  }
+  if (
+    head.size < 1 ||
+    head.size > rule.maxSize ||
+    !isAllowedContentType(purpose, head.contentType)
+  ) {
+    await deleteObject(key)
+    throw new ValidationError({ uploadId: [`${rule.typeError}. ${rule.sizeError}.`] })
+  }
+  return head
 }
 
 /**
@@ -123,23 +163,12 @@ const requireOwnUpload = async (uploadId: string) => {
  * fail independently.
  */
 export const attachAvatar = async (uploadId: string): Promise<CurrentUser> => {
-  const { viewer, upload } = await requireOwnUpload(uploadId)
+  const { viewer, upload } = await requireOwnUpload(uploadId, 'avatar')
   if (upload.status !== 'pending') {
     throw new ValidationError({ uploadId: ['This upload was already used'] })
   }
 
-  const head = await headObject(upload.key)
-  if (!head) {
-    throw new ValidationError({ uploadId: ['The file was not uploaded'] })
-  }
-  if (head.size < 1 || head.size > AVATAR_MAX_SIZE || !isAvatarContentType(head.contentType)) {
-    // Never keep an object that broke the rules. The row stays pending: the ticket may still be
-    // valid for another upload to this key. The hourly cleanup removes it after 24 hours, and
-    // `createAvatarUpload` reclaims it sooner, once it is older than the ticket plus grace; until
-    // the ticket expires it keeps counting toward the pending cap.
-    await deleteObject(upload.key)
-    throw new ValidationError({ uploadId: ['The image must be a PNG, JPEG, or WebP up to 2 MB'] })
-  }
+  const head = await verifyStoredObject(upload.key, 'avatar')
 
   const [replaced, user] = await db.$transaction(async (tx) => {
     // Updating the user first takes its row lock, so two attaches by the same user run one after
@@ -169,9 +198,107 @@ export const attachAvatar = async (uploadId: string): Promise<CurrentUser> => {
   await invalidateTags(userTag(viewer.id))
   for (const { key } of replaced) {
     // The row is already gone; a failure to queue leaves an orphaned object, never a broken avatar.
-    deleteObjectAfterTicket(key).catch((error) =>
+    deleteObjectAfterTicket(key, 'avatar').catch((error) =>
       log.error({ err: error, key }, 'old avatar not queued for deletion'),
     )
   }
   return user
+}
+
+/**
+ * Attaches a finished `attachment` upload to a post: signed in (401) → input valid (422) → the post
+ * exists and is live (404) → `postPolicy.update` (403) → the upload exists (404) and is the
+ * viewer's own (403) → still pending (422) → the stored object passes the rule (422) → the post
+ * has room (422). Does not bump the post's `version` (attachments are not title, body or tags).
+ */
+export const attachPostUpload = async (
+  postId: number | string,
+  uploadId: string,
+): Promise<Attachment> => {
+  const viewer = await requireUser()
+  const id = parseInput(idSchema, postId)
+  const uploadKey = parseInput(uploadIdSchema, uploadId)
+  await requirePostChange(viewer, id, 'update')
+  const upload = await findOwnUpload(viewer.id, uploadKey, 'attachment')
+  if (upload.status !== 'pending') {
+    throw new ValidationError({ uploadId: ['This upload was already used'] })
+  }
+  const head = await verifyStoredObject(upload.key, 'attachment')
+
+  const attached = await db.$transaction(async (tx) => {
+    // Locking the (live) post serializes attaches to it, so the count below cannot be raced past
+    // the maximum, and a post trashed meanwhile is a 404.
+    const locked = await tx.$queryRaw<{ id: number }[]>`
+      SELECT id FROM posts WHERE id = ${id} AND deleted_at IS NULL FOR UPDATE`
+    if (locked.length === 0) {
+      throw new NotFoundError('Post not found')
+    }
+    const count = await tx.upload.count({
+      where: { postId: id, purpose: 'attachment', status: 'attached' },
+    })
+    if (count >= POST_ATTACHMENTS_MAX) {
+      throw new ValidationError({
+        uploadId: [`A post can have at most ${POST_ATTACHMENTS_MAX} attachments`],
+      })
+    }
+    // Only a still-pending upload can be claimed: a concurrent attach of the same upload loses.
+    const claimed = await tx.upload.updateMany({
+      where: { id: upload.id, status: 'pending' },
+      data: {
+        status: 'attached',
+        postId: id,
+        size: head.size,
+        contentType: head.contentType ?? undefined,
+      },
+    })
+    if (claimed.count === 0) {
+      throw new ValidationError({ uploadId: ['This upload was already used'] })
+    }
+    return tx.upload.findUniqueOrThrow({
+      where: { id: upload.id },
+      select: { id: true, name: true, key: true, contentType: true, size: true, createdAt: true },
+    })
+  })
+
+  await invalidateTags(postTag(id))
+  return {
+    id: attached.id,
+    name: attached.name ?? '',
+    url: publicUrl(attached.key),
+    contentType: attached.contentType,
+    size: attached.size,
+    createdAt: attached.createdAt,
+  }
+}
+
+/**
+ * Removes an attachment from a post: signed in (401) → input valid (422) → the post exists and is
+ * live (404) → `postPolicy.update` (403) → the attachment belongs to the post (404). Whoever may
+ * edit the post may remove any of its attachments. The row goes now; the object is deleted by a
+ * delayed job (see `deleteObjectAfterTicket`), so it stays readable at its URL for about 15 minutes.
+ */
+export const detachPostUpload = async (
+  postId: number | string,
+  uploadId: string,
+): Promise<void> => {
+  const viewer = await requireUser()
+  const id = parseInput(idSchema, postId)
+  const uploadKey = parseInput(uploadIdSchema, uploadId)
+  await requirePostChange(viewer, id, 'update')
+  const upload = await db.upload.findFirst({
+    where: { id: uploadKey, postId: id, purpose: 'attachment', status: 'attached' },
+    select: { id: true, key: true },
+  })
+  if (!upload) {
+    throw new NotFoundError('Attachment not found')
+  }
+  const removed = await db.upload.deleteMany({ where: { id: upload.id, postId: id } })
+  if (removed.count === 0) {
+    throw new NotFoundError('Attachment not found')
+  }
+  await invalidateTags(postTag(id))
+  // The row is already gone; a failure to queue leaves an orphaned object, never a broken post.
+  deleteObjectAfterTicket(upload.key, 'attachment').catch((error) =>
+    log.error({ err: error, key: upload.key }, 'attachment not queued for deletion'),
+  )
 }

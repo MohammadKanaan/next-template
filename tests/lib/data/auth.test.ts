@@ -5,7 +5,7 @@ import { auth, getSessionUser, requireAdmin, requireUser } from '@/lib/data/auth
 import { db } from '@/lib/data/db'
 import { ForbiddenError, UnauthorizedError } from '@/lib/data/errors'
 import { getViewer } from '@/lib/data/users'
-import { AVATAR_UPLOAD_TICKET_SECONDS, UPLOAD_OBJECT_GRACE_SECONDS } from '@/lib/dto/uploads'
+import { MAX_OBJECT_DELETE_DELAY_SECONDS } from '@/lib/dto/uploads'
 import { enqueue } from '@/lib/server/queue'
 import { getRedis } from '@/lib/server/redis'
 import { cookieJar } from '../../helpers/cookies'
@@ -297,9 +297,45 @@ describe('DAL auth', () => {
       // Delayed past every ticket's lifetime, so an upload still in flight cannot be orphaned.
       for (const [, , options] of jobs) {
         expect(options).toEqual({
-          startAfter: AVATAR_UPLOAD_TICKET_SECONDS + UPLOAD_OBJECT_GRACE_SECONDS,
+          startAfter: MAX_OBJECT_DELETE_DELAY_SECONDS,
         })
       }
+    })
+
+    it('also queues and removes the files other people attached to their posts', async () => {
+      const user = await createUser({})
+      const admin = await createUser({ role: 'admin' })
+      const mine = await db.post.create({ data: { userId: user.id, title: 'Mine', body: 'b' } })
+      const theirs = await db.post.create({
+        data: { userId: admin.id, title: 'Theirs', body: 'b' },
+      })
+      const attach = (key: string, postId: number) =>
+        db.upload.create({
+          data: {
+            key,
+            userId: admin.id,
+            postId,
+            purpose: 'attachment',
+            name: 'f.pdf',
+            contentType: 'application/pdf',
+            size: 1,
+            status: 'attached',
+          },
+        })
+      await attach('attachments/admin/on-mine', mine.id)
+      await attach('attachments/admin/on-theirs', theirs.id)
+      await signInAs(user)
+      vi.mocked(enqueue).mockClear()
+
+      await auth.api.deleteUser({ body: { password: TEST_PASSWORD }, headers: requestHeaders() })
+
+      const jobs = vi.mocked(enqueue).mock.calls.filter(([name]) => name === 'delete-object')
+      expect(jobs.map(([, payload]) => (payload as { key: string }).key)).toEqual([
+        'attachments/admin/on-mine',
+      ])
+      expect((await db.upload.findMany()).map((row) => row.key)).toEqual([
+        'attachments/admin/on-theirs',
+      ])
     })
 
     it('drops the cached post lists and viewer', async () => {

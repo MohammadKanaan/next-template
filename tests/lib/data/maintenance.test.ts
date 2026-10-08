@@ -1,11 +1,12 @@
 // @vitest-environment node
-import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/data/db'
 import {
   deleteExpiredAuthRows,
   deleteStalePendingUploads,
   purgeDeletedPosts,
 } from '@/lib/data/maintenance'
+import { enqueue } from '@/lib/server/queue'
 import { deleteObject } from '@/lib/server/storage'
 import { createUser, resetDatabase } from '../../helpers/server'
 
@@ -23,6 +24,7 @@ const hour = 60 * 60 * 1000
 
 describe('maintenance DAL', () => {
   beforeEach(resetDatabase)
+  afterEach(() => vi.restoreAllMocks())
   afterAll(() => db.$disconnect())
 
   it('deletes only expired sessions and verifications', async () => {
@@ -49,12 +51,18 @@ describe('maintenance DAL', () => {
   })
 
   describe('deleteStalePendingUploads', () => {
-    const upload = (key: string, userId: string, status: 'pending' | 'attached', ageMs: number) =>
+    const upload = (
+      key: string,
+      userId: string,
+      status: 'pending' | 'attached',
+      ageMs: number,
+      purpose: 'avatar' | 'attachment' = 'avatar',
+    ) =>
       db.upload.create({
         data: {
           key,
           userId,
-          purpose: 'avatar',
+          purpose,
           contentType: 'image/png',
           size: 10,
           status,
@@ -78,6 +86,17 @@ describe('maintenance DAL', () => {
       expect(deleteObject).toHaveBeenCalledWith('old-pending')
       const keys = (await db.upload.findMany({ orderBy: { key: 'asc' } })).map((row) => row.key)
       expect(keys).toEqual(['fresh-pending', 'old-attached'])
+    })
+
+    it('reaps stale pending uploads of every purpose', async () => {
+      const user = await createUser({})
+      await upload('avatars/stale', user.id, 'pending', 25 * hour, 'avatar')
+      await upload('attachments/stale', user.id, 'pending', 25 * hour, 'attachment')
+      await upload('attachments/attached', user.id, 'attached', 48 * hour, 'attachment')
+
+      expect(await deleteStalePendingUploads()).toEqual({ uploads: 2 })
+
+      expect((await db.upload.findMany()).map((row) => row.key)).toEqual(['attachments/attached'])
     })
 
     it('keeps deleting while batches come back full', async () => {
@@ -165,6 +184,92 @@ describe('maintenance DAL', () => {
       }
       expect(await purgeDeletedPosts({ olderThanDays: 30, batch: 2 })).toEqual({ posts: 5 })
       expect(await db.post.count()).toBe(0)
+    })
+
+    describe('attachments', () => {
+      const attachTo = (postId: number, userId: string, key: string) =>
+        db.upload.create({
+          data: {
+            key,
+            userId,
+            postId,
+            purpose: 'attachment',
+            name: 'f.pdf',
+            contentType: 'application/pdf',
+            size: 10,
+            status: 'attached',
+          },
+        })
+      const deleteJobs = () =>
+        vi
+          .mocked(enqueue)
+          .mock.calls.filter(([name]) => name === 'delete-object')
+          .map(([, payload]) => (payload as { key: string }).key)
+          .sort()
+
+      beforeEach(() => {
+        vi.mocked(enqueue).mockReset()
+      })
+
+      it('queues a delete-object job for every attachment key and removes the rows', async () => {
+        const author = await createUser({})
+        const admin = await createUser({ role: 'admin' })
+        const old = await db.post.create({
+          data: { userId: author.id, title: 'old', body: 'B', deletedAt: daysAgo(40) },
+        })
+        const recent = await db.post.create({
+          data: { userId: author.id, title: 'recent', body: 'B', deletedAt: daysAgo(5) },
+        })
+        const live = await db.post.create({ data: { userId: author.id, title: 'live', body: 'B' } })
+        await attachTo(old.id, author.id, 'attachments/a/1')
+        // Uploaded by someone else (an admin) onto the post: still goes.
+        await attachTo(old.id, admin.id, 'attachments/b/2')
+        await attachTo(recent.id, author.id, 'attachments/a/recent')
+        await attachTo(live.id, author.id, 'attachments/a/live')
+
+        expect(await purgeDeletedPosts({ olderThanDays: 30 })).toEqual({ posts: 1 })
+
+        expect(deleteJobs()).toEqual(['attachments/a/1', 'attachments/b/2'])
+        expect(
+          (await db.upload.findMany({ orderBy: { key: 'asc' } })).map((row) => row.key),
+        ).toEqual(['attachments/a/live', 'attachments/a/recent'])
+      })
+
+      it('deletes nothing when a job cannot be queued, so the next run retries', async () => {
+        const author = await createUser({})
+        const old = await db.post.create({
+          data: { userId: author.id, title: 'old', body: 'B', deletedAt: daysAgo(40) },
+        })
+        await attachTo(old.id, author.id, 'attachments/a/1')
+        vi.mocked(enqueue).mockRejectedValue(new Error('queue down'))
+
+        await expect(purgeDeletedPosts({ olderThanDays: 30 })).rejects.toThrow('queue down')
+
+        expect(await db.post.count()).toBe(1)
+        expect(await db.upload.count()).toBe(1)
+      })
+
+      it('leaves a post alone that is restored after the batch was read, queueing nothing', async () => {
+        const author = await createUser({})
+        const old = await db.post.create({
+          data: { userId: author.id, title: 'old', body: 'B', deletedAt: daysAgo(40) },
+        })
+        await attachTo(old.id, author.id, 'attachments/a/1')
+        const findMany = db.post.findMany.bind(db.post)
+        // The restore lands between the purge's read of the batch and its locked delete.
+        vi.spyOn(db.post, 'findMany').mockImplementationOnce(((args: never) => {
+          return findMany(args).then(async (rows) => {
+            await db.post.update({ where: { id: old.id }, data: { deletedAt: null } })
+            return rows
+          })
+        }) as never)
+
+        expect(await purgeDeletedPosts({ olderThanDays: 30 })).toEqual({ posts: 0 })
+
+        expect(deleteJobs()).toEqual([])
+        expect(await db.post.count()).toBe(1)
+        expect(await db.upload.count()).toBe(1)
+      })
     })
   })
 })

@@ -4,6 +4,7 @@ import { X } from 'lucide-react'
 import { useState, type ComponentProps, type ReactNode } from 'react'
 import { toast } from 'sonner'
 import { Empty } from '@/components/Empty'
+import { FileUploader } from '@/components/Form/FileUploader'
 import { Input } from '@/components/Form/Input'
 import { TagsInput } from '@/components/Form/TagsInput'
 import { Textarea } from '@/components/Form/Textarea'
@@ -234,6 +235,36 @@ export const UiKitView = () => {
             error="Use at most 5 tags"
           />
           <TagsInput label="Disabled" value={['locked']} onChange={() => {}} disabled />
+        </div>
+      </Section>
+
+      <Section
+        id="file-uploader"
+        eyebrow="Forms"
+        title="FileUploader"
+        description="Picks one or many files, checks type and size from its props, and hands them to onUpload one after the other; each file shows waiting, uploading, uploaded or its error. This demo fails every file called fail."
+      >
+        <div className={styles.formGrid}>
+          <FileUploader
+            label="Add files"
+            accept={['application/pdf', 'image/png', 'text/csv']}
+            maxSize={1024 * 1024}
+            multiple
+            hint="PDF, PNG or CSV, up to 1 MB each. A file named fail.* is rejected."
+            onUpload={async (file) => {
+              await new Promise((resolve) => setTimeout(resolve, 800))
+              if (file.name.startsWith('fail')) {
+                throw new Error('The upload was rejected')
+              }
+            }}
+          />
+          <FileUploader
+            label="Disabled"
+            accept={['application/pdf']}
+            maxSize={1024}
+            disabled
+            onUpload={async () => {}}
+          />
         </div>
       </Section>
 

@@ -18,7 +18,7 @@ vi.mock('@/actions/push', () => ({
 }))
 vi.mock('@/actions/uploads', () => ({
   attachAvatarAction: vi.fn(),
-  createAvatarUploadAction: vi.fn(),
+  createUploadAction: vi.fn(),
 }))
 vi.mock('@/actions/users', () => ({ updateProfileAction: vi.fn() }))
 

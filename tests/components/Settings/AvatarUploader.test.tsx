@@ -55,7 +55,11 @@ describe('AvatarUploader', () => {
     await choose(file)
 
     await waitFor(() => expect(onUploaded).toHaveBeenCalledWith(user))
-    expect(onCreateUpload).toHaveBeenCalledWith({ contentType: 'image/png', size: 1234 })
+    expect(onCreateUpload).toHaveBeenCalledWith({
+      purpose: 'avatar',
+      contentType: 'image/png',
+      size: 1234,
+    })
     expect(uploadFile).toHaveBeenCalledWith(ticket, file)
     expect(onAttach).toHaveBeenCalledWith('upload-1')
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()

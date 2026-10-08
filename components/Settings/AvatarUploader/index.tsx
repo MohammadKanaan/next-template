@@ -6,8 +6,8 @@ import { UserAvatar } from '@/components/UserAvatar'
 import { uploadFile } from '@/lib/client/uploads'
 import {
   AVATAR_CONTENT_TYPES,
-  createAvatarUploadInput,
-  type CreateAvatarUploadInput,
+  createUploadInput,
+  type CreateUploadInput,
   type UploadTicket,
 } from '@/lib/dto/uploads'
 import type { CurrentUser } from '@/lib/dto/users'
@@ -18,7 +18,7 @@ export type AvatarUploaderProps = {
   name: string
   image: string | null
   /** Asks for a presigned upload (a Server Action). */
-  onCreateUpload: (input: CreateAvatarUploadInput) => Promise<ActionResult<UploadTicket>>
+  onCreateUpload: (input: CreateUploadInput) => Promise<ActionResult<UploadTicket>>
   /** Makes the finished upload the avatar (a Server Action). */
   onAttach: (uploadId: string) => Promise<ActionResult<CurrentUser>>
   onUploaded?: (user: CurrentUser) => void
@@ -38,7 +38,11 @@ export const AvatarUploader = ({
   const [uploading, setUploading] = useState(false)
 
   const upload = async (file: File) => {
-    const input = createAvatarUploadInput.safeParse({ contentType: file.type, size: file.size })
+    const input = createUploadInput.safeParse({
+      purpose: 'avatar',
+      contentType: file.type,
+      size: file.size,
+    })
     if (!input.success) {
       setError(input.error.issues[0].message)
       return

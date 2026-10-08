@@ -108,7 +108,7 @@
   and sign-out.
 - Auth and upload actions that an attacker could spam (`signInAction`, `signUpAction`,
   `requestPasswordResetAction`, `resetPasswordAction`, `resendVerificationAction`,
-  `signInWithGoogleAction`, `createAvatarUploadAction`, and per user `updateProfileAction`, `changePasswordAction`,
+  `signInWithGoogleAction`, `createUploadAction`, and per user `updateProfileAction`, `changePasswordAction`,
   `changeEmailAction`, `revokeSessionAction`, `revokeOtherSessionsAction`, `deleteAccountAction`)
   are rate limited in production with `consumeRateLimit`
   (`lib/data/rateLimit.ts`, Redis-backed so the limits hold across instances), because Better

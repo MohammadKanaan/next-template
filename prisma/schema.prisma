@@ -103,6 +103,7 @@ model Post {
   user         User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
   comments     Comment[]
   tags         PostTag[]
+  uploads      Upload[]
   createdAt    DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt    DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -181,6 +182,7 @@ model PostTag {
 
 enum UploadPurpose {
   avatar
+  attachment
 }
 
 enum UploadStatus {
@@ -200,10 +202,16 @@ model Upload {
   purpose     UploadPurpose
   contentType String        @map("content_type")
   size        Int
+  /// The file's original name; only set for an attachment (shown to people, never used as a key).
+  name        String?       @db.VarChar(255)
+  /// The post an attachment belongs to, once attached; the purge deletes the objects and rows itself.
+  postId      Int?          @map("post_id")
+  post        Post?         @relation(fields: [postId], references: [id], onDelete: SetNull)
   status      UploadStatus  @default(pending)
   createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([userId, purpose, status])
+  @@index([postId])
   @@index([status, createdAt])
   @@map("uploads")
 }

@@ -26,6 +26,7 @@ import {
 } from '@/lib/dto/posts'
 import { toExcerpt } from '@/lib/excerpt'
 import { invalidateTags, remember } from '@/lib/server/cache'
+import { publicUrl } from '@/lib/server/storage'
 import { getSessionUser, requireUser, type SessionUser } from './auth'
 import { POSTS_TAG, postTag } from './cacheTags'
 import { db } from './db'
@@ -69,6 +70,11 @@ const postDetailSelect = {
   user: { select: userProfileSelect },
   tags: postTagsSelect,
   _count: { select: { comments: true } },
+  uploads: {
+    where: { purpose: 'attachment', status: 'attached' },
+    select: { id: true, name: true, key: true, contentType: true, size: true, createdAt: true },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+  },
 } satisfies Prisma.PostSelect
 
 type PostSummaryRow = Prisma.PostGetPayload<{ select: typeof postSummarySelect }>
@@ -98,6 +104,14 @@ const toPostBase = (row: PostDetailRow): PostDetailBase => {
     version: row.version,
     tags: row.tags.map(({ tag }) => tag.name),
     commentCount: row._count.comments,
+    attachments: row.uploads.map((upload) => ({
+      id: upload.id,
+      name: upload.name ?? '',
+      url: publicUrl(upload.key),
+      contentType: upload.contentType,
+      size: upload.size,
+      createdAt: upload.createdAt,
+    })),
     publishedAt: row.publishedAt,
     deletedAt: row.deletedAt,
     createdAt: row.createdAt,
@@ -437,7 +451,7 @@ const mapMissingRecord = (error: unknown): never => {
  * 404) for an existing post, draft or not. A post in the trash does not exist for every action but
  * `restore`, and `restore` finds nothing to restore on a live post: both answer 404.
  */
-const requirePostChange = async (
+export const requirePostChange = async (
   viewer: SessionUser,
   id: number,
   action: 'update' | 'delete' | 'changeStatus' | 'restore',

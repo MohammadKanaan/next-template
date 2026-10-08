@@ -13,6 +13,7 @@ const post: PostDetail = {
   version: 3,
   tags: ['news'],
   commentCount: 0,
+  attachments: [],
   publishedAt: null,
   deletedAt: null,
   createdAt: new Date('2026-01-01T00:00:00.000Z'),
