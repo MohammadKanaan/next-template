@@ -13,30 +13,76 @@ Using this as the base of a new project? Roughly:
   email change, password, sessions, avatar, account deletion), optional Google sign-in, `/admin`
   (user list and roles), `proxy.ts`, the rate limiter.
 - The layering and its helpers: `lib/dto` conventions, `lib/data` (`db`, `auth`, `errors`, `page`,
-  `rateLimit`, `sessions`, `users`, `uploads`, `health`, `maintenance`), `lib/server/*`, `actions/`
-  conventions, `lib/formErrors.ts`, `types/api.ts`, `hooks/`.
-- Jobs and email (`jobs/`, `worker/`, `emails/`), uploads, `GET /api/health`, logging.
+  `policy`, `rateLimit`, `sessions`, `users`, `uploads`, `audit`, `notifications`, `health`,
+  `maintenance`), `lib/server/*`, `actions/` conventions, `lib/formErrors.ts`, `lib/cursor.ts`,
+  `lib/money.ts`, `types/api.ts`, `hooks/` (including `useUrlState` and `useInfiniteList`).
+- Jobs and email (`jobs/`, `worker/`, `emails/`), uploads (the avatar flow and the `UPLOAD_RULES`
+  table), the admin audit log (`/admin/audit`), notifications and realtime, `GET /api/health`, logging.
 - Tooling: `Dockerfile`, `docker-compose.yml`, CI, ESLint rules, the test helpers in `tests/helpers`,
   `components/SCN` plus the small application wrappers (`Form/Input`, `Form/Textarea`,
-  `LoadingButton`, `Pagination`, `PageHeader`, `Empty`).
+  `Form/TagsInput`, `Form/FileUploader`, `LoadingButton`, `Pagination`, `InfiniteSentinel`,
+  `PageHeader`, `Empty`).
 
-**Example code to adapt or strip** (it exists to show the patterns in the index below):
+**Example code to adapt or strip** (it exists to show the patterns in the index below). A dry run of
+removing it (see "Strip-posts dry run" in [`docs/DECISIONS.md`](docs/DECISIONS.md)) got `bun run
+typecheck` and `bun run lint` green in about 9 minutes of wall-clock time (about 7 without a stall I
+caused), with the test suite and the migration still to do. Do it in this order and run both commands
+after each step; `tsc` finds the references, `eslint` finds the imports it leaves unused.
 
-- The posts, comments and tags domain: the `Post`, `Comment`, `Tag`, `PostTag` models and their
-  migrations, `lib/dto/posts.ts`, `lib/dto/comments.ts`, `lib/data/posts.ts`, `lib/data/comments.ts`,
-  `actions/posts.ts`, `actions/comments.ts`, `app/(site)/posts/**`, `components/Posts`,
-  `components/Comments`, `components/Form/TagsInput` (reusable; keep it if you want a chips field),
-  the seed data in `prisma/seed.ts`, and their tests. Rename or replace; do not leave half of it.
-  Places outside those files that mention posts and need a look when you remove them: `POSTS_TAG` in
-  `lib/data/auth.ts` (`afterDelete`), `lib/data/users.ts` (`updateProfile`, `postCount` in the admin
-  list), `lib/data/cacheTags.ts`, the NavBar links and `AUTHORING_ROUTE_PATTERN` in
-  `lib/constants-routes.ts`, and `listTags` / `getSiteStats` consumers.
-- `/dashboard` and `lib/data/stats.ts` (aggregate examples; the numbers are about posts).
-- The SSR-vs-CSR comparison pages `/posts/ssr` and `/posts/csr`, with `lib/client/posts.ts` and the
-  `GET /api/v1/posts` handler behind the client one. Keep the facade pattern if a client component
-  of yours must fetch; drop it otherwise. The REST write endpoints under `app/api/v1/posts` are
-  only for HTTP API consumers; no UI calls them.
-- `/ui-kit` (a component catalog) and the home page placeholder (`app/(site)/page.tsx`).
+1. **Delete the domain files:** `actions/posts.ts`, `actions/comments.ts`, `app/(site)/posts/**`,
+   `app/api/v1/posts/**` (the REST endpoints and the client-fetch example behind
+   `lib/client/posts.ts`), `components/Posts`, `components/Comments`, `components/Stats`,
+   `lib/client/posts.ts`, `lib/client/comments.ts`, `lib/dto/posts.ts`, `lib/dto/comments.ts`,
+   `lib/dto/stats.ts`, `lib/data/posts.ts`, `lib/data/comments.ts`, `lib/data/stats.ts`,
+   `lib/data/policies/posts.ts`, and `/dashboard` (`app/(site)/dashboard`: its numbers are about
+   posts). Delete the matching tests under `tests/`. Keep `lib/data/policy.ts` (generic: your own
+   policy file goes next to it), `lib/cursor.ts`, `hooks/useInfiniteList.ts` and the reusable
+   components. `lib/excerpt.ts` becomes unused; delete it (and its test) unless you keep a text excerpt.
+2. **Schema:** remove `Post`, `Comment`, `Tag`, `PostTag` and `PostStatus` from
+   `prisma/schema.prisma`, the `posts` / `comments` relations on `User`, and from `Upload` the
+   `postId` relation, the `name` column and the `attachment` value of `UploadPurpose`. Keep the
+   `NotificationType` enum non-empty (replace `comment` with your first event type). Then
+   `bun run db:migrate` for the drop migration. The old migrations create `posts` and the
+   `search_vector` trigger by hand-written SQL; squashing them is optional, since a drop migration
+   after them is valid. Run `bun run db:test:prepare`.
+3. **References the first two steps leave behind** (none of them is in the files above):
+   - `lib/data/auth.ts`: `deleteUser.beforeDelete` also queries and deletes files that others
+     attached to the user's posts, and `afterDelete` invalidates `POSTS_TAG`.
+   - `lib/data/users.ts` and `lib/dto/users.ts`: the `postCount` in the admin list (`_count`, the
+     `toAdminUser` mapper, the DTO field, the "Posts" column in `app/(site)/admin/view.tsx`), and
+     `POSTS_TAG` in `updateProfile`; `actions/users.ts` revalidates `ROUTE_POSTS`.
+   - `lib/data/cacheTags.ts` (`POSTS_TAG`, `postTag`, `commentsTag`), `components/Layout/NavBar` (the
+     Posts, My posts and Dashboard links).
+   - `lib/constants-routes.ts`: the post routes, `AUTHORING_ROUTE_PATTERN`, `/posts` in
+     `PUBLIC_ROUTES`, and `ROUTE_DASHBOARD`, which is also the default target of `safeRedirectPath`
+     (the page after sign-in): point it at your own landing page. The login, signup, route and proxy
+     tests mention `/dashboard` and `/posts` as sample paths.
+   - Uploads: `lib/dto/uploads.ts` (the `attachment` rule, `POST_ATTACHMENTS_MAX`, the `name` field
+     and `attachmentSchema`), `lib/data/uploads.ts` (`attachPostUpload`, `detachPostUpload` and the
+     imports of `./posts` and `postTag`) and `actions/uploads.ts`. `createUpload` and
+     `UPLOAD_RULES` stay: add your own purpose there.
+   - Jobs: `purgeDeletedPosts` in `lib/data/maintenance.ts` and its call in `jobs/cleanup.ts`.
+   - Audit: `auditActionSchema` and `auditEntityTypeSchema` in `lib/dto/audit.ts`, the labels and the
+     entity-type select in `app/(site)/admin/audit/view.tsx`; keep `user.role` and add your own
+     actions as you add writes.
+   - `app/(site)/ui-kit/view.tsx` renders the posts components (filters, status badge, tags, form) and
+     `StatCard`; drop those sections (`TagsInput` has no posts dependency but borrowed
+     `normalizeTagName`).
+   - `prisma/seed.ts` (posts, tags, comments) and `tests/helpers/server.ts`: `resetDatabase()`
+     truncates `posts` and `tags`; list your tables there instead.
+   - Copy that talks about posts: the notifications page and empty state, `PushSettings`,
+     `DeleteAccountDialog` and the `/settings` delete card. `createNotification` has no caller
+     until you add your first event.
+   - Tests that name posts without being about them: `tests/lib/data/{audit,auth,users,uploads,
+maintenance}.test.ts`, `tests/actions/{auth,uploads}.test.ts`, `tests/lib/dto/uploads.test.ts`,
+     `tests/jobs/cleanup.test.ts`, `tests/lib/constants-routes.test.ts`, `tests/proxy.test.ts` and
+     the admin and audit view tests.
+4. Docs that describe the posts domain (`AGENTS.md`, `docs/guides/posts.md`, `search.md`, the
+   pattern index below) go last.
+
+Also kept, because they are infrastructure: `/ui-kit` (a component catalog), the home page
+placeholder (`app/(site)/page.tsx`), and the SSR-vs-CSR pattern, which you rebuild from the pattern
+index if a client component of yours must fetch (a Route Handler plus a facade in `lib/client`).
 
 **Order to build a new resource** (details in "Adding a resource" below): schema and migration →
 DTOs → DAL (auth, validation, caching, tests) → Server Actions → pages and forms → seed → route
@@ -478,7 +524,12 @@ The posts domain is the worked example; copy its shape. In this order:
 1. **Schema.** Add the model to `prisma/schema.prisma` (camelCase fields with snake_case `@map`s,
    an index on every foreign key you filter by, `onDelete: Cascade` where the child cannot outlive
    its parent), then `bun run db:migrate` and `bun run db:test:prepare`. Backfill existing rows in
-   the migration SQL when a new column changes what old rows mean.
+   the migration SQL when a new column changes what old rows mean. Decide four things now, because
+   they are cheap here and costly later: a **`deletedAt`** column if users can delete it and might
+   want it back (soft delete: the trash convention is in `docs/guides/posts.md`); a **`version`**
+   integer if two people can edit it (optimistic locking, `ConflictError`); a **`Decimal`** column,
+   never `Float`, for money (`docs/guides/money-and-concurrency.md`); a new table that does not hang
+   off `users` goes into `resetDatabase()`'s TRUNCATE list in `tests/helpers/server.ts`.
 2. **DTOs** in `lib/dto/<name>.ts`: one input schema per write, one output schema per read shape
    (`...Summary` for lists, `...Detail` for one record), output dates with `z.coerce.date()`, list
    query schemas with every field bounded. A URL-facing twin (`xxxUrlQuery`) with `.catch()` on
@@ -487,8 +538,19 @@ The posts domain is the worked example; copy its shape. In this order:
    `requireAdmin()`, then `parseInput`, then existence, then permission; select exactly the DTO
    columns and map rows to DTOs; typed errors only. Use `db.$transaction` when one write touches
    several tables. Cache with `remember()` only the viewer-independent, bounded reads, and invalidate
-   inside the write functions (new tags go in `lib/data/cacheTags.ts`). Test it first, in
-   `tests/lib/data/<name>.test.ts`, per viewer (signed out, owner, other user, admin).
+   inside the write functions (new tags go in `lib/data/cacheTags.ts`). Put the record-level rules
+   (who may view, edit, delete) in `lib/data/policies/<name>.ts` as pure functions of `(viewer,
+record)`, call them with `authorize()` after the exists check, and build the DTO's `permissions`
+   with `permissionsFor()` (`lib/data/policy.ts`). Where the resource keeps `deletedAt`, every read
+   skips trashed rows and only a `restore` rule acts on them. After each write that succeeded and
+   invalidated its caches, call `recordAudit` (`lib/data/audit.ts`; add the action to
+   `auditActionSchema` and a label to the audit page). Writes that depend on a value you read use a
+   conditional `updateMany` or a `FOR UPDATE` (see the money and concurrency guide). A list that
+   people page through _and_ that grows without bound (a feed, comments, notifications) uses a
+   **cursor** (`cursorQuerySchema`, `toCursorPage`, `useInfiniteList`); a list with a total, page
+   numbers and filters (a table, an admin view, search) uses **page/perPage** (`pageQuerySchema`,
+   `toPage`, `Pagination`). Test it first, in `tests/lib/data/<name>.test.ts`, per viewer (signed
+   out, owner, other user, admin), and race the concurrent writes with `Promise.allSettled`.
 4. **Server Actions** in `actions/<name>.ts`: pass the arguments to the DAL untouched, then
    `revalidatePath` / `refresh`, return `ActionResult<T>` through `toActionFailure`. Add a Route
    Handler under `app/api/v1/<name>/` (thin: decode with the DTO schema, call the DAL, return JSON
@@ -498,7 +560,10 @@ The posts domain is the worked example; copy its shape. In this order:
    load through `loadPage`, render. Add a `'use client'` `view.tsx` beside it only for what is
    interactive. Forms use React Hook Form with the DTO schema, start with the `'use client'` /
    `'use no memo'` header (copy `components/Settings/ProfileForm`) and map failures with
-   `applyActionErrors`. Styles are an SCSS module with shadcn tokens.
+   `applyActionErrors`. An edit form sends the record's `version` and offers Reload on a
+   `CONFLICT` (copy `components/Posts/Form`). Amounts are strings in the form, `moneyInputSchema`
+   in the schema and `formatMoney` for display. Files on a record go through `FileUploader` and the
+   `UPLOAD_RULES` table (`docs/guides/uploads.md`). Styles are an SCSS module with shadcn tokens.
 6. **Routes and navigation.** Add the route constants to `lib/constants-routes.ts` and decide
    whether each route is public (`PUBLIC_ROUTES`) or private (the default); add the NavBar link.
 7. **Only if a view needs reshaped fields**, add `presentX` in `presenters/<Name>Presenter.ts`.
@@ -511,6 +576,9 @@ The posts domain is the worked example; copy its shape. In this order:
 
 - [`docs/DECISIONS.md`](docs/DECISIONS.md): what was chosen over the Nuxt/Revcube setup and why.
 - [`AGENTS.md`](AGENTS.md): project conventions and rules for contributors and agents.
+- `docs/handoff/` and `docs/superpowers/` are artefacts of developing this template (a hand-off note,
+  design specs and implementation plans). They are not documentation of the code: delete both from
+  a project or a submission that starts from the template.
 
 ### Guides
 
@@ -525,6 +593,7 @@ Area guides in [`docs/guides/`](docs/guides/) (referenced from `AGENTS.md`):
 - [`uploads.md`](docs/guides/uploads.md): presigned uploads and orphan cleanup.
 - [`realtime.md`](docs/guides/realtime.md): SSE, notifications, Web Push.
 - [`audit.md`](docs/guides/audit.md): the admin audit log.
+- [`search.md`](docs/guides/search.md): Postgres full-text search on posts.
 - [`money-and-concurrency.md`](docs/guides/money-and-concurrency.md): Decimal amounts, `FOR UPDATE`, conditional writes, serializable isolation.
 - [`infrastructure.md`](docs/guides/infrastructure.md): `lib/server`, logging, Docker and CI.
 - [`hooks.md`](docs/guides/hooks.md): hook rules, URL state, browser storage.

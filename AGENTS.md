@@ -40,6 +40,7 @@ Long area narratives live in `docs/guides/`. Read the one for the area you touch
 - `docs/guides/email.md`: the mailer and React Email templates.
 - `docs/guides/uploads.md`: presigned POST uploads, the `Upload` table, orphan cleanup.
 - `docs/guides/realtime.md`: SSE, notifications, Web Push.
+- `docs/guides/search.md`: Postgres full-text search on posts (`search_vector`, `websearch_to_tsquery`, the shared `PostFilter`).
 - `docs/guides/audit.md`: the admin audit log (`recordAudit`, `listAuditLog`, what goes in `metadata`).
 - `docs/guides/money-and-concurrency.md`: Decimal amounts as strings (`lib/money.ts`), `FOR UPDATE`, conditional writes, serializable isolation (a recipe, no model).
 - `docs/guides/infrastructure.md`: `lib/server`, logging, singletons, Docker and CI.
