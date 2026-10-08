@@ -32,9 +32,11 @@ export const getRedis = (): Redis => {
 /**
  * The connection that `SUBSCRIBE`s (see `realtime.ts`). A subscribed connection accepts no other
  * command and waits for messages indefinitely, so it is separate from the shared client and has no
- * command timeout. ioredis re-subscribes its channels after a reconnect.
+ * command timeout. `maxRetriesPerRequest: 1` makes a `SUBSCRIBE` against a down Redis fail within
+ * about a second (ioredis' default of 20 retries hangs ~30 s), so the events route answers 500
+ * promptly instead of holding the request. ioredis re-subscribes its channels after a reconnect.
  */
 export const getRedisSubscriber = (): Redis => {
-  globalForRedis.redisSubscriber ??= createClient({})
+  globalForRedis.redisSubscriber ??= createClient({ maxRetriesPerRequest: 1 })
   return globalForRedis.redisSubscriber
 }
