@@ -41,8 +41,12 @@ const emit = (event: RealtimeEvent) => {
   act(() => calls[calls.length - 1][0](event))
 }
 
+/** jsdom cannot navigate; swallow the default action of a link click. */
+const blockNavigation = (event: Event) => event.preventDefault()
+
 describe('NotificationBell', () => {
   beforeEach(() => {
+    document.addEventListener('click', blockNavigation)
     vi.mocked(fetchNotifications).mockResolvedValue(
       page([notification(1), notification(2, new Date())]),
     )
@@ -52,7 +56,10 @@ describe('NotificationBell', () => {
     })
     vi.mocked(markAllNotificationsReadAction).mockResolvedValue({ ok: true, data: 1 })
   })
-  afterEach(() => vi.clearAllMocks())
+  afterEach(() => {
+    document.removeEventListener('click', blockNavigation)
+    vi.clearAllMocks()
+  })
 
   it('shows the unread count and loads the latest notifications when opened', async () => {
     render(<NotificationBell initialUnreadCount={3} />)
