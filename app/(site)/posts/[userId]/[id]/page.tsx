@@ -5,9 +5,11 @@ import { Suspense } from 'react'
 import { CommentThread } from '@/components/Comments/Thread'
 import { PageHeader } from '@/components/PageHeader'
 import { DeletePostButton } from '@/components/Posts/DeleteButton'
+import { RestorePostButton } from '@/components/Posts/RestoreButton'
 import { PostStatusActions } from '@/components/Posts/StatusActions'
 import { PostStatusBadge } from '@/components/Posts/StatusBadge'
 import { PostTags } from '@/components/Posts/Tags'
+import { Badge } from '@/components/SCN/badge'
 import { Button } from '@/components/SCN/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/SCN/card'
 
@@ -40,6 +42,7 @@ const PostDetailPage = async ({ params }: PageProps<'/posts/[userId]/[id]'>) => 
             <Button asChild variant="secondary">
               <Link href={ROUTE_POSTS}>Back</Link>
             </Button>
+            {post.permissions.restore && <RestorePostButton postId={post.id} />}
             {post.permissions.update && <PostStatusActions postId={post.id} status={post.status} />}
             {post.permissions.update && (
               <Button asChild variant="outline">
@@ -59,6 +62,7 @@ const PostDetailPage = async ({ params }: PageProps<'/posts/[userId]/[id]'>) => 
           <CardContent>
             <div className={styles.badges}>
               <PostStatusBadge status={post.status} />
+              {post.deletedAt && <Badge variant="destructive">In trash</Badge>}
               <PostTags tags={post.tags} />
             </div>
             <h2 className={styles.postTitle}>{post.title}</h2>
@@ -95,14 +99,16 @@ const PostDetailPage = async ({ params }: PageProps<'/posts/[userId]/[id]'>) => 
         </Card>
       </div>
 
-      <Suspense fallback={null}>
-        <CommentThread
-          postId={post.id}
-          postStatus={post.status}
-          commentCount={post.commentCount}
-          path={ROUTE_POST_DETAILS(post.author.id, post.id)}
-        />
-      </Suspense>
+      {!post.deletedAt && (
+        <Suspense fallback={null}>
+          <CommentThread
+            postId={post.id}
+            postStatus={post.status}
+            commentCount={post.commentCount}
+            path={ROUTE_POST_DETAILS(post.author.id, post.id)}
+          />
+        </Suspense>
+      )}
     </div>
   )
 }

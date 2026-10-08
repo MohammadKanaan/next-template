@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { Empty } from '@/components/Empty'
 import { Pagination } from '@/components/Pagination'
 import { PostsFilters } from '@/components/Posts/Filters'
+import { RestorePostButton } from '@/components/Posts/RestoreButton'
 import { PostStatusActions } from '@/components/Posts/StatusActions'
 import { PostStatusBadge } from '@/components/Posts/StatusBadge'
 import { PostTags } from '@/components/Posts/Tags'
@@ -61,14 +62,19 @@ export const MyPostsView = ({ posts, tags }: MyPostsViewProps) => {
         from={state.from}
         to={state.to}
         status={state.status}
+        trash={state.trash}
         tags={tags}
         onChange={(patch) => setState({ ...patch, page: 1 })}
       />
       {posts.items.length === 0 ? (
         posts.totalItems === 0 ? (
           <Empty
-            title="No matching posts"
-            description="No post matches these filters. Clear them to see all your posts."
+            title={state.trash ? 'The trash is empty' : 'No matching posts'}
+            description={
+              state.trash
+                ? 'Posts you move to the trash stay here for 30 days.'
+                : 'No post matches these filters. Clear them to see all your posts.'
+            }
           />
         ) : (
           <Empty
@@ -107,10 +113,16 @@ export const MyPostsView = ({ posts, tags }: MyPostsViewProps) => {
                     <Button asChild size="sm" variant="secondary">
                       <Link href={ROUTE_POST_DETAILS(post.author.id, post.id)}>View</Link>
                     </Button>
-                    <Button asChild size="sm" variant="outline">
-                      <Link href={ROUTE_POST_EDIT(post.author.id, post.id)}>Edit</Link>
-                    </Button>
-                    <PostStatusActions postId={post.id} status={post.status} />
+                    {state.trash ? (
+                      <RestorePostButton postId={post.id} />
+                    ) : (
+                      <>
+                        <Button asChild size="sm" variant="outline">
+                          <Link href={ROUTE_POST_EDIT(post.author.id, post.id)}>Edit</Link>
+                        </Button>
+                        <PostStatusActions postId={post.id} status={post.status} />
+                      </>
+                    )}
                   </div>
                 </TableCell>
               </TableRow>

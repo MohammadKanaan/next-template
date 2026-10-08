@@ -159,6 +159,33 @@ describe('stats DAL', () => {
     })
   })
 
+  describe('posts in the trash', () => {
+    it('count nowhere: not in the site numbers, the viewer numbers or the daily series', async () => {
+      const ann = await createUser({})
+      const bob = await createUser({})
+      const kept = await seedPost(ann.id, 'published', daysAgo(1))
+      const trashed = await seedPost(ann.id, 'published', daysAgo(1))
+      const trashedDraft = await seedPost(ann.id, 'draft')
+      await seedComment(kept.id, bob.id)
+      await seedComment(trashed.id, bob.id)
+      const tag = await db.tag.create({ data: { name: 'only-trashed' } })
+      await db.postTag.create({ data: { postId: trashed.id, tagId: tag.id } })
+      await db.post.updateMany({
+        where: { id: { in: [trashed.id, trashedDraft.id] } },
+        data: { deletedAt: new Date() },
+      })
+
+      expect(await getSiteStats()).toEqual({ publishedPosts: 1, comments: 1, tags: 0 })
+      await signInAs(ann)
+      expect(await getMyStats()).toEqual({
+        posts: { draft: 0, published: 1, archived: 0 },
+        commentsReceived: 1,
+      })
+      const series = await getPostsPerDay(3)
+      expect(series.at(-2)?.count).toBe(1)
+    })
+  })
+
   describe('caching', () => {
     it('shows new numbers after a post or comment write', async () => {
       const ann = await createUser({})

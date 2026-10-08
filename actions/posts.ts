@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { ROUTE_POSTS } from '@/lib/constants-routes'
 import { toActionFailure } from '@/lib/data/errors'
-import { createPost, deletePost, setPostStatus, updatePost } from '@/lib/data/posts'
+import { createPost, deletePost, restorePost, setPostStatus, updatePost } from '@/lib/data/posts'
 import type { CreatePostParams, PostDetail, PostStatus, UpdatePostInput } from '@/lib/dto/posts'
 import type { ActionResult } from '@/types/api'
 
@@ -50,6 +50,16 @@ export const deletePostAction = async (id: number): Promise<ActionResult<null>> 
     await deletePost(id)
     revalidatePath(ROUTE_POSTS, 'layout')
     return { ok: true, data: null }
+  } catch (error) {
+    return toActionFailure(error)
+  }
+}
+
+export const restorePostAction = async (id: number): Promise<ActionResult<PostDetail>> => {
+  try {
+    const post = await restorePost(id)
+    revalidatePath(ROUTE_POSTS, 'layout')
+    return { ok: true, data: post }
   } catch (error) {
     return toActionFailure(error)
   }

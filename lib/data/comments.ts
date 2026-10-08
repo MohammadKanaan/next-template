@@ -59,6 +59,10 @@ const invalidateComments = (postId: number) => {
 export const listComments = async (postId: number | string): Promise<Comment[]> => {
   // `getPost` applies the visibility rule (not found for a post the viewer may not see).
   const [post, viewer] = await Promise.all([getPost(postId), getSessionUser()])
+  // `getPost` lets the author read a post in the trash; its comments are not listed.
+  if (post.deletedAt) {
+    throw new NotFoundError('Post not found')
+  }
   const comments = await remember(
     `comments:${post.id}`,
     {
@@ -101,12 +105,12 @@ export const createComment = async (
   // Read from the database, not the cache: a post that was just archived must not take comments.
   const post = await db.post.findUnique({
     where: { id },
-    select: { userId: true, status: true, title: true },
+    select: { userId: true, status: true, title: true, deletedAt: true },
   })
   if (!post) {
     throw new NotFoundError('Post not found')
   }
-  const record = { status: post.status, authorId: post.userId }
+  const record = { status: post.status, authorId: post.userId, deletedAt: post.deletedAt }
   if (!postPolicy.view(viewer, record)) {
     throw new NotFoundError('Post not found')
   }

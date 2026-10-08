@@ -138,6 +138,7 @@ export const UiKitView = () => {
     tag: '',
     from: '',
     to: '',
+    trash: false,
   })
 
   return (
@@ -516,7 +517,7 @@ export const UiKitView = () => {
         id="posts-filters"
         eyebrow="Application components"
         title="PostsFilters"
-        description="Debounced title search, tag, status (only where the page passes it), date range, sort order and a clear button; the page decides where the values live (URL state on the post lists)."
+        description="Debounced title search, tag, status and trash toggle (only where the page passes a status), date range, sort order and a clear button; the page decides where the values live (URL state on the post lists)."
       >
         <PostsFilters
           q={filters.q}
@@ -525,6 +526,7 @@ export const UiKitView = () => {
           from={filters.from}
           to={filters.to}
           status={filters.status}
+          trash={filters.trash}
           tags={[
             { name: 'news', postCount: 4 },
             { name: 'tips', postCount: 2 },

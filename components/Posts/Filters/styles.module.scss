@@ -15,6 +15,13 @@
   gap: 0.5rem;
 }
 
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  height: 2.25rem;
+}
+
 @media (width >= $breakpoint-md) {
   .filters {
     flex-direction: row;

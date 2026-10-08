@@ -4,7 +4,7 @@ Background work runs on pg-boss (the same PostgreSQL, `pgboss` schema) in a sepa
 
 - **Definitions** (`jobs/definitions.ts`): one entry per job with its name, Zod payload schema,
   queue `options` (retries, backoff, expiry) and an optional `cron`. Payload types come from
-  `z.infer` (`JobPayload<'send-email'>`). Today: `send-email`, `delete-object`, `send-push`, `cleanup` (hourly). `delete-object` is also queued, delayed, when an
+  `z.infer` (`JobPayload<'send-email'>`). Today: `send-email`, `delete-object`, `send-push`, `cleanup` (hourly: expired sessions and verifications, stale pending uploads, posts trashed for more than 30 days). `delete-object` is also queued, delayed, when an
   account is deleted or an avatar replaced. `send-email` sets `deleteAfterSeconds: 3600`: its payloads carry live links
   that expire after an hour, so finished jobs must not keep them for pg-boss's 7-day default.
 - **Enqueue** (`lib/server/queue.ts`): `enqueue(name, payload)` validates the payload with the job's

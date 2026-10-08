@@ -19,7 +19,10 @@ import { parseInput } from './errors'
 
 const STATS_CACHE_TTL = 300
 
-const published = { status: 'published' } satisfies Prisma.PostWhereInput
+/** Posts in the trash count nowhere. */
+const live = { deletedAt: null } satisfies Prisma.PostWhereInput
+
+const published = { status: 'published', ...live } satisfies Prisma.PostWhereInput
 
 /** Published posts, the comments on them and the tags they use. Public and the same for everyone. */
 export const getSiteStats = async (): Promise<SiteStats> => {
@@ -51,10 +54,12 @@ export const getMyStats = async (): Promise<MyStats> => {
       const [groups, commentsReceived] = await Promise.all([
         db.post.groupBy({
           by: ['status'],
-          where: { userId: viewer.id },
+          where: { userId: viewer.id, ...live },
           _count: { _all: true },
         }),
-        db.comment.count({ where: { post: { userId: viewer.id }, userId: { not: viewer.id } } }),
+        db.comment.count({
+          where: { post: { userId: viewer.id, ...live }, userId: { not: viewer.id } },
+        }),
       ])
       const countOf = (status: PostStatus) => {
         return groups.find((group) => group.status === status)?._count._all ?? 0
@@ -96,6 +101,7 @@ export const getPostsPerDay = async (days?: number): Promise<DailyPostCount[]> =
         ) AS series(day)
         LEFT JOIN posts p
           ON p.status = 'published'
+          AND p.deleted_at IS NULL
           AND date_trunc('day', p.published_at AT TIME ZONE 'UTC') = series.day
         GROUP BY series.day
         ORDER BY series.day`

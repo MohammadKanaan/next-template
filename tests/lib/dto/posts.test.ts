@@ -127,6 +127,7 @@ describe('postsUrlQuery', () => {
       tag: '',
       from: '',
       to: '',
+      trash: false,
     })
   })
 
@@ -140,6 +141,7 @@ describe('postsUrlQuery', () => {
         tag: 'x'.repeat(31),
         from: '2026-13-45',
         to: 'yesterday',
+        trash: 'maybe',
       }),
     ).toEqual(postsUrlQuery.parse({}))
     expect(postsUrlQuery.parse({ page: '0' }).page).toBe(1)
@@ -148,6 +150,12 @@ describe('postsUrlQuery', () => {
       page: 1,
       sort: 'newest',
     })
+  })
+
+  it('reads trash as a flag: only a true value turns it on', () => {
+    expect(postsUrlQuery.parse({ trash: 'true' }).trash).toBe(true)
+    expect(postsUrlQuery.parse({ trash: 'false' }).trash).toBe(false)
+    expect(postsUrlQuery.parse({ trash: '' }).trash).toBe(false)
   })
 
   it('keeps valid values', () => {
@@ -164,6 +172,17 @@ describe('postsUrlQuery', () => {
       postsUrlQuery.parse({ status: 'draft', tag: ' News ', from: '2026-10-01', to: '2026-10-31' }),
     ).toMatchObject({ status: 'draft', tag: 'news', from: '2026-10-01', to: '2026-10-31' })
     expect(postsUrlQuery.parse({ status: '' }).status).toBe('')
+  })
+})
+
+describe('listPostsQuery trash', () => {
+  it('defaults to false and reads true / false as a boolean or a string', () => {
+    expect(listPostsQuery.parse({}).trash).toBe(false)
+    expect(listPostsQuery.parse({ trash: true }).trash).toBe(true)
+    expect(listPostsQuery.parse({ trash: 'true' }).trash).toBe(true)
+    // `z.coerce.boolean()` would read the string 'false' as true.
+    expect(listPostsQuery.parse({ trash: 'false' }).trash).toBe(false)
+    expect(listPostsQuery.safeParse({ trash: 'maybe' }).success).toBe(false)
   })
 })
 
@@ -213,6 +232,7 @@ describe('toListPostsParams', () => {
       tag: undefined,
       from: undefined,
       to: undefined,
+      trash: false,
     })
     expect(
       toListPostsParams(postsUrlQuery.parse({ page: '2', tag: 'news', status: 'draft' })),
@@ -223,8 +243,15 @@ describe('toListPostsParams', () => {
 describe('hasActivePostFilters', () => {
   it('ignores page and sort', () => {
     expect(hasActivePostFilters(postsUrlQuery.parse({ page: '3', sort: 'oldest' }))).toBe(false)
-    for (const key of ['q', 'tag', 'from', 'to', 'status']) {
-      const value = key === 'from' || key === 'to' ? '2026-10-01' : key === 'status' ? 'draft' : 'x'
+    for (const key of ['q', 'tag', 'from', 'to', 'status', 'trash']) {
+      const value =
+        key === 'from' || key === 'to'
+          ? '2026-10-01'
+          : key === 'status'
+            ? 'draft'
+            : key === 'trash'
+              ? 'true'
+              : 'x'
       expect(hasActivePostFilters(postsUrlQuery.parse({ [key]: value })), key).toBe(true)
     }
   })

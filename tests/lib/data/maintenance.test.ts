@@ -1,7 +1,11 @@
 // @vitest-environment node
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/data/db'
-import { deleteExpiredAuthRows, deleteStalePendingUploads } from '@/lib/data/maintenance'
+import {
+  deleteExpiredAuthRows,
+  deleteStalePendingUploads,
+  purgeDeletedPosts,
+} from '@/lib/data/maintenance'
 import { deleteObject } from '@/lib/server/storage'
 import { createUser, resetDatabase } from '../../helpers/server'
 
@@ -126,6 +130,41 @@ describe('maintenance DAL', () => {
       expect(await deleteStalePendingUploads()).toEqual({ uploads: 1 })
 
       expect((await db.upload.findMany()).map((row) => row.key)).toEqual(['a-broken'])
+    })
+  })
+
+  describe('purgeDeletedPosts', () => {
+    const daysAgo = (days: number) => new Date(Date.now() - days * 24 * hour)
+
+    it('removes only posts trashed before the cut-off, with their comments and tag links', async () => {
+      const user = await createUser({})
+      const post = (title: string, deletedAt: Date | null) =>
+        db.post.create({ data: { userId: user.id, title, body: 'B', deletedAt } })
+      const old = await post('old', daysAgo(31))
+      await post('recent', daysAgo(29))
+      await post('live', null)
+      await db.comment.create({ data: { postId: old.id, userId: user.id, body: 'bye' } })
+      const tag = await db.tag.create({ data: { name: 'x' } })
+      await db.postTag.create({ data: { postId: old.id, tagId: tag.id } })
+
+      expect(await purgeDeletedPosts({ olderThanDays: 30 })).toEqual({ posts: 1 })
+
+      expect(
+        (await db.post.findMany({ orderBy: { title: 'asc' } })).map((row) => row.title),
+      ).toEqual(['live', 'recent'])
+      expect(await db.comment.count()).toBe(0)
+      expect(await db.postTag.count()).toBe(0)
+    })
+
+    it('works through several batches, oldest first', async () => {
+      const user = await createUser({})
+      for (let n = 1; n <= 5; n += 1) {
+        await db.post.create({
+          data: { userId: user.id, title: `p${n}`, body: 'B', deletedAt: daysAgo(40 + n) },
+        })
+      }
+      expect(await purgeDeletedPosts({ olderThanDays: 30, batch: 2 })).toEqual({ posts: 5 })
+      expect(await db.post.count()).toBe(0)
     })
   })
 })

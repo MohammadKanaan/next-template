@@ -359,16 +359,29 @@ describe('comments DAL', () => {
       expect((await listComments(post.id))[0].author.name).toBe('After')
     })
 
-    it('deleting the post removes its comments and drops the cached ones', async () => {
+    it('trashing the post hides its comments, and restoring it brings them back', async () => {
       const author = await createUser({})
       const post = await seedPost(author.id)
       await signInAs(author)
       await createComment(post.id, { body: 'Hi' })
       await listComments(post.id)
-      const { deletePost } = await import('@/lib/data/posts')
+      const { deletePost, restorePost } = await import('@/lib/data/posts')
       await deletePost(post.id)
-      expect(await db.comment.count()).toBe(0)
+      expect(await db.comment.count()).toBe(1)
       await expect(listComments(post.id)).rejects.toBeInstanceOf(NotFoundError)
+      await restorePost(post.id)
+      expect((await listComments(post.id)).map((comment) => comment.body)).toEqual(['Hi'])
+    })
+
+    it('answers 404 to a comment on a trashed post', async () => {
+      const author = await createUser({})
+      const reader = await createUser({})
+      const post = await seedPost(author.id)
+      await db.post.update({ where: { id: post.id }, data: { deletedAt: new Date() } })
+      await signInAs(reader)
+      await expect(createComment(post.id, { body: 'Hi' })).rejects.toBeInstanceOf(NotFoundError)
+      await signInAs(author)
+      await expect(createComment(post.id, { body: 'Hi' })).rejects.toBeInstanceOf(NotFoundError)
     })
   })
 })

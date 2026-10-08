@@ -14,6 +14,7 @@ import {
   getPost,
   listPosts,
   listTags,
+  restorePost,
   setPostStatus,
   updatePost,
 } from '@/lib/data/posts'
@@ -239,13 +240,29 @@ describe('posts DAL', () => {
     const post = await seedPost(owner.id)
 
     signOut()
-    expect((await getPost(post.id)).permissions).toEqual({ update: false, delete: false })
+    expect((await getPost(post.id)).permissions).toEqual({
+      update: false,
+      delete: false,
+      restore: false,
+    })
     await signInAs(other)
-    expect((await getPost(post.id)).permissions).toEqual({ update: false, delete: false })
+    expect((await getPost(post.id)).permissions).toEqual({
+      update: false,
+      delete: false,
+      restore: false,
+    })
     await signInAs(owner)
-    expect((await getPost(post.id)).permissions).toEqual({ update: true, delete: true })
+    expect((await getPost(post.id)).permissions).toEqual({
+      update: true,
+      delete: true,
+      restore: false,
+    })
     await signInAs(admin)
-    expect((await getPost(post.id)).permissions).toEqual({ update: true, delete: true })
+    expect((await getPost(post.id)).permissions).toEqual({
+      update: true,
+      delete: true,
+      restore: false,
+    })
   })
 
   it('requires a session to create, and creates as the viewer', async () => {
@@ -284,7 +301,7 @@ describe('posts DAL', () => {
     await signInAs(admin)
     expect((await updatePost(post.id, { body: 'Moderated' })).body).toBe('Moderated')
     await deletePost(post.id)
-    expect(await db.post.count()).toBe(0)
+    expect(await db.post.count({ where: { deletedAt: null } })).toBe(0)
   })
 
   it('forbids a non-owner from deleting', async () => {
@@ -351,6 +368,9 @@ describe('posts DAL', () => {
       await signInAs(author)
       await deletePost(post.id)
       expect((await listPosts({ page: 1, perPage: 10 })).items).toEqual([])
+      // The author can still read it (to restore it); the cached detail must not reach a visitor.
+      expect((await getPost(post.id)).deletedAt).toBeInstanceOf(Date)
+      signOut()
       await expect(getPost(post.id)).rejects.toBeInstanceOf(NotFoundError)
     })
 
@@ -359,11 +379,23 @@ describe('posts DAL', () => {
       const other = await createUser({})
       const post = await seedPost(owner.id)
       await signInAs(owner)
-      expect((await getPost(post.id)).permissions).toEqual({ update: true, delete: true })
+      expect((await getPost(post.id)).permissions).toEqual({
+        update: true,
+        delete: true,
+        restore: false,
+      })
       await signInAs(other)
-      expect((await getPost(post.id)).permissions).toEqual({ update: false, delete: false })
+      expect((await getPost(post.id)).permissions).toEqual({
+        update: false,
+        delete: false,
+        restore: false,
+      })
       signOut()
-      expect((await getPost(post.id)).permissions).toEqual({ update: false, delete: false })
+      expect((await getPost(post.id)).permissions).toEqual({
+        update: false,
+        delete: false,
+        restore: false,
+      })
     })
 
     it('does not cache a missing post', async () => {
@@ -386,7 +418,7 @@ describe('posts DAL', () => {
       .catch((error: unknown) => error)
     // `updatePost` writes inside a transaction, so that is where the failure surfaces.
     vi.spyOn(db, '$transaction').mockImplementation(() => Promise.reject(vanished) as never)
-    vi.spyOn(db.post, 'delete').mockImplementation(() => Promise.reject(vanished) as never)
+    vi.spyOn(db.post, 'updateMany').mockImplementation(() => Promise.resolve({ count: 0 }) as never)
     await expect(updatePost(post.id, { title: 'x' })).rejects.toBeInstanceOf(NotFoundError)
     await expect(deletePost(post.id)).rejects.toBeInstanceOf(NotFoundError)
   })
@@ -395,7 +427,9 @@ describe('posts DAL', () => {
     const owner = await createUser({})
     const post = await seedPost(owner.id)
     await signInAs(owner)
-    vi.spyOn(db.post, 'delete').mockImplementation(() => Promise.reject(new Error('boom')) as never)
+    vi.spyOn(db.post, 'updateMany').mockImplementation(
+      () => Promise.reject(new Error('boom')) as never,
+    )
     await expect(deletePost(post.id)).rejects.toThrow('boom')
   })
 
@@ -989,6 +1023,189 @@ describe('posts DAL', () => {
       )
       // The row changed (here: was deleted) after the checks, so the guarded write matches nothing.
       await expect(setPostStatus(post.id, 'published')).rejects.toBeInstanceOf(ValidationError)
+    })
+  })
+
+  describe('trash', () => {
+    const trashedNow = (id: number, deletedAt = new Date()) => {
+      return db.post.update({ where: { id }, data: { deletedAt } })
+    }
+
+    it('moves a post to the trash instead of deleting the row', async () => {
+      const author = await createUser({})
+      const post = await seedPost(author.id)
+      await signInAs(author)
+      await deletePost(post.id)
+      const row = await db.post.findUniqueOrThrow({ where: { id: post.id } })
+      expect(row.deletedAt).toBeInstanceOf(Date)
+    })
+
+    it('hides a trashed post from every public read', async () => {
+      const author = await createUser({})
+      const viewer = await createUser({})
+      const post = await seedPost(author.id)
+      await db.tag.create({ data: { name: 'gone' } })
+      await db.postTag.create({
+        data: {
+          postId: post.id,
+          tagId: (await db.tag.findUniqueOrThrow({ where: { name: 'gone' } })).id,
+        },
+      })
+      await signInAs(viewer)
+      expect((await listPosts({ page: 1, perPage: 10 })).totalItems).toBe(1)
+      expect((await listTags()).map((tag) => tag.name)).toEqual(['gone'])
+      await signInAs(author)
+      await deletePost(post.id)
+
+      signOut()
+      expect((await listPosts({ page: 1, perPage: 10 })).items).toEqual([])
+      expect(await listTags()).toEqual([])
+      await expect(getPost(post.id)).rejects.toBeInstanceOf(NotFoundError)
+      await signInAs(viewer)
+      expect((await listPosts({ page: 1, perPage: 10, authorId: author.id })).items).toEqual([])
+      await expect(getPost(post.id)).rejects.toBeInstanceOf(NotFoundError)
+    })
+
+    it('lets the author and admins read a trashed post, with restore as the only permission', async () => {
+      const author = await createUser({})
+      const admin = await createUser({ role: 'admin' })
+      const post = await seedPost(author.id)
+      await trashedNow(post.id)
+      for (const viewer of [author, admin]) {
+        await signInAs(viewer)
+        const detail = await getPost(post.id)
+        expect(detail.deletedAt).toBeInstanceOf(Date)
+        expect(detail.permissions).toEqual({ update: false, delete: false, restore: true })
+      }
+    })
+
+    it('answers 404 to an update, status change or second delete on a trashed post (R4)', async () => {
+      const author = await createUser({})
+      const admin = await createUser({ role: 'admin' })
+      const post = await seedPost(author.id, 'T', 'B', 'draft')
+      await trashedNow(post.id)
+      for (const viewer of [author, admin]) {
+        await signInAs(viewer)
+        await expect(updatePost(post.id, { title: 'x' })).rejects.toBeInstanceOf(NotFoundError)
+        await expect(setPostStatus(post.id, 'published')).rejects.toBeInstanceOf(NotFoundError)
+        await expect(deletePost(post.id)).rejects.toBeInstanceOf(NotFoundError)
+      }
+      expect((await db.post.findUniqueOrThrow({ where: { id: post.id } })).title).toBe('T')
+    })
+
+    describe('trash list', () => {
+      it('lists the viewer’s own trash only, never in the live list', async () => {
+        const author = await createUser({})
+        const other = await createUser({})
+        const live = await seedPost(author.id, 'Live', 'B', 'draft')
+        const gone = await seedPost(author.id, 'Gone', 'B', 'draft')
+        const goneArchived = await seedPost(author.id, 'Gone too', 'B', 'archived')
+        const othersGone = await seedPost(other.id, 'Theirs', 'B', 'published')
+        await trashedNow(gone.id)
+        await trashedNow(goneArchived.id)
+        await trashedNow(othersGone.id)
+        await signInAs(author)
+
+        const live1 = await listPosts({ page: 1, perPage: 10, authorId: author.id })
+        expect(live1.items.map((post) => post.id)).toEqual([live.id])
+        const trash = await listPosts({ page: 1, perPage: 10, authorId: author.id, trash: true })
+        expect(trash.items.map((post) => post.title)).toEqual(['Gone too', 'Gone'])
+        const narrowed = await listPosts({
+          page: 1,
+          perPage: 10,
+          authorId: author.id,
+          trash: true,
+          status: 'draft',
+        })
+        expect(narrowed.items.map((post) => post.title)).toEqual(['Gone'])
+      })
+
+      it('ignores trash for visitors, other users and an author listing someone else', async () => {
+        const author = await createUser({})
+        const other = await createUser({})
+        const published = await seedPost(author.id, 'Visible')
+        const gone = await seedPost(author.id, 'Gone')
+        await trashedNow(gone.id)
+
+        signOut()
+        const asVisitor = await listPosts({ page: 1, perPage: 10, trash: true })
+        expect(asVisitor.items.map((post) => post.id)).toEqual([published.id])
+        await signInAs(other)
+        const asOther = await listPosts({ page: 1, perPage: 10, authorId: author.id, trash: true })
+        expect(asOther.items.map((post) => post.id)).toEqual([published.id])
+        // Their own trash is empty, and asking for yours through another author id is ignored.
+        const own = await listPosts({ page: 1, perPage: 10, authorId: other.id, trash: true })
+        expect(own.items).toEqual([])
+      })
+
+      it('lets an admin list everyone’s trash, whatever the status', async () => {
+        const author = await createUser({})
+        const admin = await createUser({ role: 'admin' })
+        const draft = await seedPost(author.id, 'Draft', 'B', 'draft')
+        const published = await seedPost(author.id, 'Pub', 'B', 'published')
+        await seedPost(author.id, 'Live', 'B', 'published')
+        await trashedNow(draft.id)
+        await trashedNow(published.id)
+        await signInAs(admin)
+        const page = await listPosts({ page: 1, perPage: 10, trash: true })
+        expect(page.items.map((post) => post.title)).toEqual(['Pub', 'Draft'])
+      })
+
+      it('never caches the trash list and does not leak it into the cached list', async () => {
+        const admin = await createUser({ role: 'admin' })
+        const post = await seedPost(admin.id, 'Mine')
+        await signInAs(admin)
+        await listPosts({ page: 1, perPage: 10 })
+        await deletePost(post.id)
+        expect((await listPosts({ page: 1, perPage: 10 })).items).toEqual([])
+        const trash = await listPosts({ page: 1, perPage: 10, trash: true, status: 'published' })
+        expect(trash.items.map((item) => item.id)).toEqual([post.id])
+        await restorePost(post.id)
+        expect((await listPosts({ page: 1, perPage: 10, trash: true })).items).toEqual([])
+        expect((await listPosts({ page: 1, perPage: 10 })).items.map((item) => item.id)).toEqual([
+          post.id,
+        ])
+      })
+    })
+
+    describe('restorePost', () => {
+      it('brings the post back for its author and admins, with caches refreshed', async () => {
+        const author = await createUser({})
+        const admin = await createUser({ role: 'admin' })
+        const post = await seedPost(author.id)
+        await signInAs(author)
+        await listPosts({ page: 1, perPage: 10 })
+        await deletePost(post.id)
+        expect((await listPosts({ page: 1, perPage: 10 })).items).toEqual([])
+
+        const restored = await restorePost(post.id)
+        expect(restored.deletedAt).toBeNull()
+        expect(restored.permissions).toEqual({ update: true, delete: true, restore: false })
+        expect((await listPosts({ page: 1, perPage: 10 })).items.map((item) => item.id)).toEqual([
+          post.id,
+        ])
+
+        await deletePost(post.id)
+        await signInAs(admin)
+        expect((await restorePost(post.id)).deletedAt).toBeNull()
+      })
+
+      it('checks session, existence (a live post has nothing to restore) and ownership', async () => {
+        const author = await createUser({})
+        const stranger = await createUser({})
+        const post = await seedPost(author.id)
+        signOut()
+        await expect(restorePost(post.id)).rejects.toBeInstanceOf(UnauthorizedError)
+        await signInAs(author)
+        await expect(restorePost(999_999)).rejects.toBeInstanceOf(NotFoundError)
+        await expect(restorePost(post.id)).rejects.toBeInstanceOf(NotFoundError)
+        await trashedNow(post.id)
+        await signInAs(stranger)
+        await expect(restorePost(post.id)).rejects.toBeInstanceOf(ForbiddenError)
+        expect(
+          (await db.post.findUniqueOrThrow({ where: { id: post.id } })).deletedAt,
+        ).not.toBeNull()
+      })
     })
   })
 

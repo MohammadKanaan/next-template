@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
 import type { SessionUser } from '@/lib/data/auth'
-import { canViewPost, commentPolicy, postPolicy } from '@/lib/data/policies/posts'
+import { commentPolicy, postPolicy } from '@/lib/data/policies/posts'
 import type { PostStatus } from '@/lib/dto/posts'
 
 const author: SessionUser = { id: 'author', role: 'user', sessionId: 's1' }
@@ -9,7 +9,8 @@ const stranger: SessionUser = { id: 'stranger', role: 'user', sessionId: 's2' }
 const admin: SessionUser = { id: 'admin', role: 'admin', sessionId: 's3' }
 const viewers = { anonymous: null, author, stranger, admin }
 
-const post = (status: PostStatus) => ({ status, authorId: author.id })
+const post = (status: PostStatus) => ({ status, authorId: author.id, deletedAt: null })
+const trashed = (status: PostStatus) => ({ ...post(status), deletedAt: new Date() })
 
 describe('postPolicy', () => {
   it.each([
@@ -46,10 +47,23 @@ describe('postPolicy', () => {
     }
   })
 
-  it('canViewPost applies the view rule to a status and an author id', () => {
-    expect(canViewPost(null, 'draft', author.id)).toBe(false)
-    expect(canViewPost(author, 'draft', author.id)).toBe(true)
-    expect(canViewPost(null, 'published', author.id)).toBe(true)
+  it('restore applies only to a trashed post, for its author and admins', () => {
+    for (const status of ['draft', 'published', 'archived'] as const) {
+      expect(postPolicy.restore(author, post(status))).toBe(false)
+      expect(postPolicy.restore(admin, post(status))).toBe(false)
+      expect(postPolicy.restore(null, trashed(status))).toBe(false)
+      expect(postPolicy.restore(stranger, trashed(status))).toBe(false)
+      expect(postPolicy.restore(author, trashed(status))).toBe(true)
+      expect(postPolicy.restore(admin, trashed(status))).toBe(true)
+    }
+  })
+
+  it('a trashed post allows nothing but restore, even to its author and admins', () => {
+    for (const action of ['view', 'update', 'delete', 'changeStatus', 'comment'] as const) {
+      for (const viewer of Object.values(viewers)) {
+        expect(postPolicy[action](viewer, trashed('published')), action).toBe(false)
+      }
+    }
   })
 })
 

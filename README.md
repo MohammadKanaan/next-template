@@ -306,17 +306,17 @@ authorizes. Authentication is the session cookie; writes require `Content-Type: 
 (a cross-site form cannot send it without a CORS preflight, which together with the `SameSite=Lax`
 cookie is the CSRF guard).
 
-| Method   | Path                          | Auth                                            | Success                                                                                                    |
-| -------- | ----------------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `GET`    | `/api/v1/posts`               | none (drafts: own list, or admin with `status`) | 200 `Page<PostSummary>`; filters `q`, `sort`, `tag`, `status`, `from`, `to`, `authorId`, `page`, `perPage` |
-| `POST`   | `/api/v1/posts`               | signed in                                       | 201 `PostDetail` (a draft)                                                                                 |
-| `GET`    | `/api/v1/posts/{id}`          | none for published; author or admin otherwise   | 200 `PostDetail`                                                                                           |
-| `PATCH`  | `/api/v1/posts/{id}`          | author or admin                                 | 200 `PostDetail` (`title`, `body`, `tags`; no status)                                                      |
-| `DELETE` | `/api/v1/posts/{id}`          | author or admin                                 | 204, empty body                                                                                            |
-| `GET`    | `/api/v1/posts/{id}/comments` | none for published; author or admin otherwise   | 200 `Comment[]`, oldest first                                                                              |
-| `POST`   | `/api/v1/posts/{id}/comments` | signed in; post must be published               | 201 `Comment`                                                                                              |
-| `GET`    | `/api/v1/events`              | signed in                                       | 200 `text/event-stream` of `RealtimeEvent`; first message is the unread count                              |
-| `GET`    | `/api/v1/notifications`       | signed in                                       | 200 `Page<Notification>`; `page`, `perPage`                                                                |
+| Method   | Path                          | Auth                                            | Success                                                                                                             |
+| -------- | ----------------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `GET`    | `/api/v1/posts`               | none (drafts: own list, or admin with `status`) | 200 `Page<PostSummary>`; filters `q`, `sort`, `tag`, `status`, `from`, `to`, `trash`, `authorId`, `page`, `perPage` |
+| `POST`   | `/api/v1/posts`               | signed in                                       | 201 `PostDetail` (a draft)                                                                                          |
+| `GET`    | `/api/v1/posts/{id}`          | none for published; author or admin otherwise   | 200 `PostDetail`                                                                                                    |
+| `PATCH`  | `/api/v1/posts/{id}`          | author or admin                                 | 200 `PostDetail` (`title`, `body`, `tags`; no status)                                                               |
+| `DELETE` | `/api/v1/posts/{id}`          | author or admin                                 | 204, empty body (moves the post to the trash)                                                                       |
+| `GET`    | `/api/v1/posts/{id}/comments` | none for published; author or admin otherwise   | 200 `Comment[]`, oldest first                                                                                       |
+| `POST`   | `/api/v1/posts/{id}/comments` | signed in; post must be published               | 201 `Comment`                                                                                                       |
+| `GET`    | `/api/v1/events`              | signed in                                       | 200 `text/event-stream` of `RealtimeEvent`; first message is the unread count                                       |
+| `GET`    | `/api/v1/notifications`       | signed in                                       | 200 `Page<Notification>`; `page`, `perPage`                                                                         |
 
 Errors are `{ code, message, fieldErrors? }` with 401, 403, 404, 422 (validation, including a
 non-JSON content type or malformed JSON) or 429. Status transitions (publish, archive) are
@@ -427,6 +427,7 @@ Where to look to see each pattern done once, properly.
 | Multi-table transaction               | `createPost` / `updatePost` with `db.$transaction` and `replacePostTags` in `lib/data/posts.ts`                                                                                            |
 | Status workflow                       | `POST_STATUS_TRANSITIONS` in `lib/dto/posts.ts`; `setPostStatus` in `lib/data/posts.ts`; `components/Posts/StatusActions`; `app/(site)/posts/mine`                                         |
 | Record-level authorization policies   | `lib/data/policy.ts` (`authorize`, `permissionsFor`); `lib/data/policies/posts.ts` (`postPolicy`, `commentPolicy`); used by `requirePostChange` in `lib/data/posts.ts` and `deleteComment` |
+| Soft delete (trash) and restore       | `deletedAt` on `Post`; `deletePost` / `restorePost` and `buildPostWhere` in `lib/data/posts.ts`; `purgeDeletedPosts` in `lib/data/maintenance.ts`; `components/Posts/RestoreButton`        |
 | Viewer-dependent visibility           | `canViewPost`, `getPost` and `listPosts` in `lib/data/posts.ts` (cache the shared part, check the viewer after)                                                                            |
 | Redis caching and invalidation        | `remember` / `invalidateTags` in `lib/server/cache.ts`; tags in `lib/data/cacheTags.ts`; used throughout `lib/data/posts.ts` and `lib/data/comments.ts`                                    |
 | Multi-filter `where` builder          | `buildPostWhere` in `lib/data/posts.ts`; `listPostsQuery` in `lib/dto/posts.ts`                                                                                                            |

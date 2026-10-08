@@ -60,6 +60,7 @@ const postDetailSelect = {
   body: true,
   status: true,
   publishedAt: true,
+  deletedAt: true,
   createdAt: true,
   updatedAt: true,
   user: { select: userProfileSelect },
@@ -69,9 +70,6 @@ const postDetailSelect = {
 
 type PostSummaryRow = Prisma.PostGetPayload<{ select: typeof postSummarySelect }>
 type PostDetailRow = Prisma.PostGetPayload<{ select: typeof postDetailSelect }>
-
-// Pure predicate for `createComment`, which reads its row straight from the database.
-export { canViewPost } from './policies/posts'
 
 const toPostSummary = (row: PostSummaryRow): PostSummary => {
   return {
@@ -97,6 +95,7 @@ const toPostBase = (row: PostDetailRow): PostDetailBase => {
     tags: row.tags.map(({ tag }) => tag.name),
     commentCount: row._count.comments,
     publishedAt: row.publishedAt,
+    deletedAt: row.deletedAt,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     author: row.user,
@@ -105,8 +104,11 @@ const toPostBase = (row: PostDetailRow): PostDetailBase => {
 
 /** Adds what this viewer may do with the post; never cached, because it differs per viewer. */
 const withPermissions = (post: PostDetailBase, viewer: SessionUser | null): PostDetail => {
-  const record = { status: post.status, authorId: post.author.id }
-  return { ...post, permissions: permissionsFor(postPolicy, ['update', 'delete'], viewer, record) }
+  const record = { status: post.status, authorId: post.author.id, deletedAt: post.deletedAt }
+  return {
+    ...post,
+    permissions: permissionsFor(postPolicy, ['update', 'delete', 'restore'], viewer, record),
+  }
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -130,14 +132,19 @@ const resolveStatusFilter = (
 }
 
 /**
- * Composes every list condition into one `where`, and returns the status it applied so the caller
- * can tell whether the result depends on the viewer. `from` and `to` are UTC days, both inclusive.
+ * Composes every list condition into one `where`, and returns the status it applied and whether it
+ * is the trash, so the caller can tell whether the result depends on the viewer. `from` and `to`
+ * are UTC days, both inclusive. The trash is listed only by an admin or by an author listing their
+ * own posts (like `status`, a request from anyone else is ignored); there `status` is whatever was
+ * asked, no filter by default.
  */
 const buildPostWhere = (
-  query: Pick<ListPostsQuery, 'authorId' | 'q' | 'status' | 'tag' | 'from' | 'to'>,
+  query: Pick<ListPostsQuery, 'authorId' | 'q' | 'status' | 'tag' | 'from' | 'to' | 'trash'>,
   viewer: SessionUser | null,
 ) => {
-  const status = resolveStatusFilter(viewer, query.authorId, query.status)
+  const mayListTrash = viewer !== null && (viewer.role === 'admin' || query.authorId === viewer.id)
+  const trashed = query.trash && mayListTrash
+  const status = trashed ? query.status : resolveStatusFilter(viewer, query.authorId, query.status)
   const createdAt: Prisma.DateTimeFilter = {}
   if (query.from) {
     createdAt.gte = new Date(`${query.from}T00:00:00.000Z`)
@@ -146,13 +153,14 @@ const buildPostWhere = (
     createdAt.lt = new Date(Date.parse(`${query.to}T00:00:00.000Z`) + DAY_MS)
   }
   const where: Prisma.PostWhereInput = {
+    deletedAt: trashed ? { not: null } : null,
     ...(query.authorId ? { userId: query.authorId } : {}),
     ...(status ? { status } : {}),
     ...(query.q ? { title: { contains: escapeLike(query.q), mode: 'insensitive' } } : {}),
     ...(query.tag ? { tags: { some: { tag: { name: query.tag } } } } : {}),
     ...(query.from || query.to ? { createdAt } : {}),
   }
-  return { where, status }
+  return { where, status, trashed }
 }
 
 /**
@@ -164,7 +172,7 @@ export const listPosts = async (params: ListPostsParams): Promise<Page<PostSumma
   const query = parseInput(listPostsQuery, params)
   const { page, perPage, authorId, tag, sort } = query
   const viewer = await getSessionUser()
-  const { where, status } = buildPostWhere(query, viewer)
+  const { where, status, trashed } = buildPostWhere(query, viewer)
   const load = async () => {
     const [rows, totalItems] = await Promise.all([
       db.post.findMany({
@@ -182,9 +190,9 @@ export const listPosts = async (params: ListPostsParams): Promise<Page<PostSumma
   // cached only when its key is bounded. Search terms, date ranges and arbitrary author ids are
   // high-cardinality (the one author list in the UI is the viewer's own, which is not cached
   // anyway), a tag that no published post uses (not in `listTags`, itself cached and capped) is
-  // free for a caller to invent, and any other status means the viewer's identity chose the
-  // result, so those go straight to the database.
-  if (query.q || query.from || query.to || authorId || status !== 'published') {
+  // free for a caller to invent, and any other status, or the trash, means the viewer's identity
+  // chose the result, so those go straight to the database.
+  if (query.q || query.from || query.to || authorId || trashed || status !== 'published') {
     return load()
   }
   if (tag && !(await listTags()).some((known) => known.name === tag)) {
@@ -200,9 +208,10 @@ export const listPosts = async (params: ListPostsParams): Promise<Page<PostSumma
 }
 
 /**
- * The viewer-independent part of a post, cached for everyone, whatever its status. Private to this
- * file: `getPost` applies `canViewPost` before any of it reaches a viewer. `id` may come straight
- * from a route param; one that is not a valid id is simply not found.
+ * The viewer-independent part of a post, cached for everyone, whatever its status or whether it is
+ * in the trash. Private to this file: `getPost` applies `postPolicy` before any of it reaches a
+ * viewer. `id` may come straight from a route param; one that is not a valid id is simply not
+ * found.
  */
 const getPostBase = async (id: number | string): Promise<PostDetailBase> => {
   const parsedId = idSchema.safeParse(id)
@@ -225,22 +234,25 @@ const getPostBase = async (id: number | string): Promise<PostDetailBase> => {
 
 /**
  * A post the viewer may see: a draft or archived post that is not theirs (and they are not an
- * admin) is reported as not found, the same answer as a missing post. This is for reads only; a
- * write on someone else's post follows exists (404) → allowed (403), so a stranger who tries to
- * change a draft gets 403.
+ * admin) is reported as not found, the same answer as a missing post. A post in the trash is only
+ * readable by whoever may restore it. This is for reads only; a write on someone else's post
+ * follows exists (404) → allowed (403), so a stranger who tries to change a draft gets 403.
  */
 export const getPost = async (id: number | string): Promise<PostDetail> => {
   // Cached for everyone; the visibility check and `permissions` follow per viewer, never cached.
   const [post, viewer] = await Promise.all([getPostBase(id), getSessionUser()])
-  if (!postPolicy.view(viewer, { status: post.status, authorId: post.author.id })) {
+  const record = { status: post.status, authorId: post.author.id, deletedAt: post.deletedAt }
+  if (!(post.deletedAt ? postPolicy.restore(viewer, record) : postPolicy.view(viewer, record))) {
     throw new NotFoundError('Post not found')
   }
   return withPermissions(post, viewer)
 }
 
-/** Tags used by published posts, with how many; the same for every viewer, so it is cached. */
+/** Tags used by published, live posts, with how many; the same for every viewer, so it is cached. */
 export const listTags = async (): Promise<TagSummary[]> => {
-  const published = { post: { status: 'published' } } satisfies Prisma.PostTagWhereInput
+  const published = {
+    post: { status: 'published', deletedAt: null },
+  } satisfies Prisma.PostTagWhereInput
   return remember(
     'posts:tags',
     { ttl: POSTS_CACHE_TTL, tags: [POSTS_TAG], schema: tagSummariesSchema },
@@ -310,27 +322,28 @@ const mapMissingRecord = (error: unknown): never => {
 }
 
 /**
- * The post exists and the viewer may change it — in that order, so a stranger gets 403 (not 404)
- * for an existing post, draft or not.
+ * The post exists and the viewer may do `action` to it, in that order, so a stranger gets 403 (not
+ * 404) for an existing post, draft or not. A post in the trash does not exist for every action but
+ * `restore`, and `restore` finds nothing to restore on a live post: both answer 404.
  */
 const requirePostChange = async (
   viewer: SessionUser,
   id: number,
-  action: 'update' | 'delete' | 'changeStatus',
+  action: 'update' | 'delete' | 'changeStatus' | 'restore',
 ) => {
   // Every change drops the cached lists and may add tags, so one account cannot hammer it.
   await consumeRateLimit(`write-post:user:${viewer.id}`, { max: 60, windowMs: 60_000 })
   const post = await db.post.findUnique({
     where: { id },
-    select: { userId: true, status: true, publishedAt: true },
+    select: { userId: true, status: true, publishedAt: true, deletedAt: true },
   })
-  if (!post) {
+  if (!post || (post.deletedAt !== null) !== (action === 'restore')) {
     throw new NotFoundError('Post not found')
   }
   authorize(
     postPolicy[action],
     viewer,
-    { status: post.status, authorId: post.userId },
+    { status: post.status, authorId: post.userId, deletedAt: post.deletedAt },
     'You cannot change this post',
   )
   return post
@@ -347,7 +360,10 @@ export const updatePost = async (
   const row = await db
     .$transaction(async (tx) => {
       // Prisma skips `@updatedAt` for an empty `data`, so it is set here: a tags-only edit is an edit.
-      await tx.post.update({ where: { id: postId }, data: { ...data, updatedAt: new Date() } })
+      await tx.post.update({
+        where: { id: postId, deletedAt: null },
+        data: { ...data, updatedAt: new Date() },
+      })
       if (tags !== undefined) {
         await replacePostTags(tx, postId, tags)
       }
@@ -375,7 +391,7 @@ export const setPostStatus = async (id: number, status: PostStatus): Promise<Pos
     })
   }
   const moved = await db.post.updateMany({
-    where: { id: postId, status: current.status },
+    where: { id: postId, status: current.status, deletedAt: null },
     data: {
       status: next,
       ...(next === 'published' && current.publishedAt === null ? { publishedAt: new Date() } : {}),
@@ -392,10 +408,44 @@ export const setPostStatus = async (id: number, status: PostStatus): Promise<Pos
   return withPermissions(post, viewer)
 }
 
+/**
+ * Moves a post to the trash: signed in (401) → exists and live (404) → the author or an admin
+ * (403). The row stays, with `deletedAt` set, until `purgeDeletedPosts` removes it; `restorePost`
+ * brings it back.
+ */
 export const deletePost = async (id: number | string): Promise<void> => {
   const viewer = await requireUser()
   const postId = parseInput(idSchema, id)
   await requirePostChange(viewer, postId, 'delete')
-  await db.post.delete({ where: { id: postId } }).catch(mapMissingRecord)
+  // Conditional on the checked state, so a concurrent trash or restore cannot be overwritten.
+  const trashed = await db.post.updateMany({
+    where: { id: postId, deletedAt: null },
+    data: { deletedAt: new Date() },
+  })
+  if (trashed.count === 0) {
+    throw new NotFoundError('Post not found')
+  }
   await invalidateTags(POSTS_TAG, postTag(postId))
+}
+
+/**
+ * Takes a post out of the trash: signed in (401) → exists and in the trash (404) → the author or
+ * an admin (403). The only write that acts on a trashed post.
+ */
+export const restorePost = async (id: number | string): Promise<PostDetail> => {
+  const viewer = await requireUser()
+  const postId = parseInput(idSchema, id)
+  await requirePostChange(viewer, postId, 'restore')
+  const restored = await db.post.updateMany({
+    where: { id: postId, deletedAt: { not: null } },
+    data: { deletedAt: null },
+  })
+  if (restored.count === 0) {
+    throw new NotFoundError('Post not found')
+  }
+  await invalidateTags(POSTS_TAG, postTag(postId))
+  const row = await db.post
+    .findUniqueOrThrow({ where: { id: postId }, select: postDetailSelect })
+    .catch(mapMissingRecord)
+  return withPermissions(toPostBase(row), viewer)
 }

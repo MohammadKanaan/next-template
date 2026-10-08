@@ -63,6 +63,43 @@ export const deleteStalePendingUploads = async (batchSize = STALE_UPLOAD_BATCH) 
   return { uploads: deleted }
 }
 
+const TRASH_RETENTION_DAYS = 30
+const PURGE_BATCH = 20
+/** Batches per run, so a big trash cannot outlast the job's expiry. */
+const PURGE_MAX_BATCHES = 20
+
+/**
+ * Permanently deletes posts that have been in the trash for more than `olderThanDays` days, oldest
+ * first, in batches of `batch`, at most `PURGE_MAX_BATCHES` per run (the next run goes on). Comments
+ * and tag links cascade. Returns how many posts went.
+ */
+export const purgeDeletedPosts = async ({
+  olderThanDays = TRASH_RETENTION_DAYS,
+  batch = PURGE_BATCH,
+}: { olderThanDays?: number; batch?: number } = {}) => {
+  const cutoff = new Date(Date.now() - olderThanDays * 24 * 60 * 60 * 1000)
+  let purged = 0
+  for (let round = 0; round < PURGE_MAX_BATCHES; round += 1) {
+    const expired = await db.post.findMany({
+      where: { deletedAt: { not: null, lt: cutoff } },
+      select: { id: true },
+      orderBy: { deletedAt: 'asc' },
+      take: batch,
+    })
+    if (expired.length === 0) {
+      break
+    }
+    const result = await db.post.deleteMany({
+      where: { id: { in: expired.map((post) => post.id) }, deletedAt: { not: null, lt: cutoff } },
+    })
+    purged += result.count
+    if (expired.length < batch || result.count === 0) {
+      break
+    }
+  }
+  return { posts: purged }
+}
+
 /** A user's push targets, in the shape `web-push` takes. */
 export const listPushSubscriptions = async (userId: string): Promise<PushTarget[]> => {
   const rows = await db.pushSubscription.findMany({

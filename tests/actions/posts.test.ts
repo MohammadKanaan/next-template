@@ -4,6 +4,7 @@ import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   createPostAction,
   deletePostAction,
+  restorePostAction,
   setPostStatusAction,
   updatePostAction,
 } from '@/actions/posts'
@@ -94,8 +95,22 @@ describe('post actions', () => {
     const post = await db.post.create({ data: { userId: owner.id, title: 'T', body: 'B' } })
     await signInAs(owner)
     expect(await deletePostAction(post.id)).toEqual({ ok: true, data: null })
-    expect(await db.post.count()).toBe(0)
+    expect(await db.post.count({ where: { deletedAt: null } })).toBe(0)
     expect(await deletePostAction(post.id)).toMatchObject({ ok: false, code: 'NOT_FOUND' })
+  })
+
+  it('restores a trashed post, revalidates, and reports NOT_FOUND for a live one', async () => {
+    const owner = await createUser({})
+    const post = await db.post.create({ data: { userId: owner.id, title: 'T', body: 'B' } })
+    await signInAs(owner)
+    expect(await restorePostAction(post.id)).toMatchObject({ ok: false, code: 'NOT_FOUND' })
+    await deletePostAction(post.id)
+    vi.mocked(revalidatePath).mockClear()
+    expect(await restorePostAction(post.id)).toMatchObject({
+      ok: true,
+      data: { id: post.id, deletedAt: null },
+    })
+    expect(revalidatePath).toHaveBeenCalledWith('/posts', 'layout')
   })
 
   it('creates a draft with tags', async () => {

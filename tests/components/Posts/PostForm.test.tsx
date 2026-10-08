@@ -13,10 +13,11 @@ const post: PostDetail = {
   tags: ['news'],
   commentCount: 0,
   publishedAt: null,
+  deletedAt: null,
   createdAt: new Date('2026-01-01T00:00:00.000Z'),
   updatedAt: new Date('2026-01-01T00:00:00.000Z'),
   author: { id: 'u1', name: 'Leanne Graham', username: 'leanne', website: null },
-  permissions: { update: true, delete: true },
+  permissions: { update: true, delete: true, restore: false },
 }
 
 describe('PostForm', () => {

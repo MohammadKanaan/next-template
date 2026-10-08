@@ -174,6 +174,22 @@ describe('PostsFilters', () => {
       expect(onChange).toHaveBeenCalledWith({ status: 'draft' })
     })
 
+    it('offers the Trash toggle only with the status select, and reports it', async () => {
+      vi.useRealTimers()
+      const { rerender } = render(<Filters />)
+      expect(screen.queryByRole('checkbox', { name: 'Trash' })).not.toBeInTheDocument()
+
+      const onChange = vi.fn()
+      rerender(<Filters status="" onChange={onChange} />)
+      expect(screen.getByRole('checkbox', { name: 'Trash' })).not.toBeChecked()
+      await userEvent.click(screen.getByRole('checkbox', { name: 'Trash' }))
+      expect(onChange).toHaveBeenCalledWith({ trash: true })
+
+      rerender(<Filters status="" trash onChange={onChange} />)
+      expect(screen.getByRole('checkbox', { name: 'Trash' })).toBeChecked()
+      expect(screen.getByRole('button', { name: 'Clear filters' })).toBeInTheDocument()
+    })
+
     it('reports each date as soon as it changes, and an emptied one as empty', () => {
       const onChange = vi.fn()
       render(<Filters from="2026-10-01" onChange={onChange} />)
@@ -211,7 +227,14 @@ describe('PostsFilters', () => {
       const onChange = vi.fn()
       render(<Filters status="draft" onChange={onChange} />)
       await userEvent.click(screen.getByRole('button', { name: 'Clear filters' }))
-      expect(onChange).toHaveBeenCalledWith({ q: '', tag: '', from: '', to: '', status: '' })
+      expect(onChange).toHaveBeenCalledWith({
+        q: '',
+        tag: '',
+        from: '',
+        to: '',
+        status: '',
+        trash: false,
+      })
     })
 
     it('drops a search that is still waiting for its debounce', () => {

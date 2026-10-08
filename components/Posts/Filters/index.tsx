@@ -11,6 +11,7 @@ import {
   SelectValue,
 } from '@/components/SCN/select'
 import { Button } from '@/components/SCN/button'
+import { Checkbox } from '@/components/SCN/checkbox'
 import {
   POST_SEARCH_MAX_LENGTH,
   hasActivePostFilters,
@@ -38,6 +39,7 @@ export type PostsFiltersPatch = {
   tag?: string
   from?: string
   to?: string
+  trash?: boolean
 }
 
 type PostsFiltersProps = {
@@ -50,6 +52,8 @@ type PostsFiltersProps = {
   tags: TagSummary[]
   /** The status filter; the status select appears only when this is passed (`/posts/mine`). */
   status?: PostStatus | ''
+  /** Whether the trash is listed; the toggle appears with the status select. */
+  trash?: boolean
   onChange: (patch: PostsFiltersPatch) => void
   disabled?: boolean
 }
@@ -62,10 +66,12 @@ export const PostsFilters = ({
   to,
   tags,
   status,
+  trash = false,
   onChange,
   disabled,
 }: PostsFiltersProps) => {
   const sortId = useId()
+  const trashId = useId()
   const tagId = useId()
   const statusId = useId()
   const [text, setText] = useState(q)
@@ -127,13 +133,19 @@ export const PostsFilters = ({
     clearTimeout(timer.current)
     setText('')
     setReported('')
-    onChange({ q: '', tag: '', from: '', to: '', ...(status === undefined ? {} : { status: '' }) })
+    onChange({
+      q: '',
+      tag: '',
+      from: '',
+      to: '',
+      ...(status === undefined ? {} : { status: '', trash: false }),
+    })
   }
 
   // A tag in the URL that no published post uses any more still has to show as selected.
   const tagOptions =
     tag && !tags.some((item) => item.name === tag) ? [...tags, { name: tag, postCount: 0 }] : tags
-  const filtering = hasActivePostFilters({ q, status: status ?? '', tag, from, to })
+  const filtering = hasActivePostFilters({ q, status: status ?? '', tag, from, to, trash })
 
   return (
     <div className={styles.filters}>
@@ -178,6 +190,17 @@ export const PostsFilters = ({
               <SelectItem value="archived">Archived</SelectItem>
             </SelectContent>
           </Select>
+        </div>
+      )}
+      {status !== undefined && (
+        <div className={styles.toggle}>
+          <Checkbox
+            id={trashId}
+            checked={trash}
+            onCheckedChange={(checked) => onChange({ trash: checked === true })}
+            disabled={disabled}
+          />
+          <Label htmlFor={trashId}>Trash</Label>
         </div>
       )}
       <div className={styles.date}>

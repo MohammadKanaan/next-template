@@ -59,5 +59,22 @@ The posts example carries the domain patterns an app needs (all in `lib/data/pos
   `(viewer, record)` tested per viewer. `requirePostChange(viewer, id, action)` picks the rule for the
   write (`update`, `delete` or `changeStatus`) and `authorize()`s it after the exists check, so the
   order stays 401 → 422 → 404 → 403. `permissions` on `PostDetail` and `Comment` come from
-  `permissionsFor(policy, ['update', 'delete'], viewer, record)`. `canViewPost` is re-exported from
-  `lib/data/posts.ts` for `createComment`.
+  `permissionsFor(policy, ['update', 'delete', 'restore'], viewer, record)`. The record carries
+  `deletedAt`, so every rule but `restore` is false for a trashed post.
+- **Soft delete (trash):** `Post.deletedAt` (indexed with `userId`). `deletePost` only sets it (conditional
+  on `deletedAt: null`); `restorePost` clears it (conditional on `deletedAt != null`) and returns the
+  `PostDetail`. A trashed post is invisible to every public read: `listPosts`, `listTags`, the stats
+  (`getSiteStats`, `getMyStats`, `getPostsPerDay`), `listComments` and `createComment` all skip it.
+  `getPost` answers not found for it unless `postPolicy.restore` allows the viewer (the author and
+  admins), who get `permissions` of `{ update: false, delete: false, restore: true }`. Every other
+  write on a trashed post (update, status change, delete) answers 404, and `restorePost` on a live
+  post answers 404 too; a stranger on a trashed post gets 403 (exists, then allowed). The trash list is
+  `listPosts({ trash: true })`: honoured only on the viewer's own list (`authorId` equals their id) or
+  for an admin, ignored otherwise (like `status`), never cached, and with no status filter unless one is
+  passed. `trash` is a real boolean or the strings `true` / `false` (never `z.coerce.boolean()`, which
+  reads `'false'` as true). Comments are kept with a trashed post and listed again after a restore.
+  `purgeDeletedPosts({ olderThanDays: 30, batch: 20 })` in `lib/data/maintenance.ts`, run by the hourly
+  `cleanup` job, deletes what has been in the trash longer than that (comments and tag links cascade).
+  UI: the Trash checkbox in `PostsFilters` (only where `status` is passed, so `/posts/mine`),
+  `RestorePostButton` on trashed rows and on the detail page, "Move to trash" on `DeletePostButton`.
+  REST `DELETE /posts/{id}` still answers 204 (it moves the post to the trash).

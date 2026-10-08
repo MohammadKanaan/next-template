@@ -170,7 +170,9 @@ describe('/api/v1/posts/[id]', () => {
       const response = await remove(post.id)
       expect(response.status).toBe(204)
       expect(await response.text()).toBe('')
-      expect(await db.post.count()).toBe(0)
+      // Moved to the trash, not removed.
+      expect(await db.post.count({ where: { deletedAt: null } })).toBe(0)
+      expect(await db.post.count({ where: { deletedAt: { not: null } } })).toBe(1)
     })
 
     it('answers 403 for another user, 404 for a missing post, 422 for a malformed id', async () => {

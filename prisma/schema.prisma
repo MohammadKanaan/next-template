@@ -95,6 +95,7 @@ model Post {
   body        String
   status      PostStatus @default(draft)
   publishedAt DateTime?  @map("published_at") @db.Timestamptz(3)
+  deletedAt   DateTime?  @map("deleted_at") @db.Timestamptz(3)
   userId      String     @map("user_id")
   user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   comments    Comment[]
@@ -104,6 +105,7 @@ model Post {
 
   @@index([userId])
   @@index([status])
+  @@index([userId, deletedAt])
   @@map("posts")
 }
 

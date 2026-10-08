@@ -79,6 +79,9 @@ export const postsSortSchema = z.enum(['newest', 'oldest'])
 
 export type PostsSort = z.infer<typeof postsSortSchema>
 
+/** `true` / `false` as a boolean or as the string a query string carries. */
+const trashFlagSchema = z.union([z.boolean(), z.stringbool()])
+
 /** A calendar day as `YYYY-MM-DD` (what a native date input produces); invalid days are rejected. */
 const isoDaySchema = z.iso.date()
 
@@ -94,12 +97,19 @@ export const listPostsQuery = pageQuerySchema.extend({
   from: isoDaySchema.optional(),
   /** Created on or before this day (UTC), inclusive. */
   to: isoDaySchema.optional(),
+  /**
+   * The trash instead of the live posts. Honoured only on the viewer's own list and for an admin
+   * (like `status`); ignored for everyone else. A real boolean or the strings `true` / `false`
+   * (a query string), never `z.coerce.boolean()`, which reads `'false'` as true.
+   */
+  trash: trashFlagSchema.default(false),
 })
 
 export type ListPostsQuery = z.infer<typeof listPostsQuery>
 
-/** What callers pass to `listPosts` / `fetchPosts`: `sort` has a schema default, so it may be omitted. */
-export type ListPostsParams = Omit<ListPostsQuery, 'sort'> & Partial<Pick<ListPostsQuery, 'sort'>>
+/** What callers pass to `listPosts` / `fetchPosts`: `sort` and `trash` have schema defaults, so they may be omitted. */
+export type ListPostsParams = Omit<ListPostsQuery, 'sort' | 'trash'> &
+  Partial<Pick<ListPostsQuery, 'sort' | 'trash'>>
 
 /**
  * The tolerant URL contract of the post lists: every field falls back to its default, so any
@@ -115,19 +125,23 @@ export const postsUrlQuery = z.object({
   tag: tagNameSchema.catch(''),
   from: isoDaySchema.catch(''),
   to: isoDaySchema.catch(''),
+  trash: trashFlagSchema.catch(false),
 })
 
 type PostsUrlQuery = z.infer<typeof postsUrlQuery>
 
 /** True when any filter (everything but `page` and `sort`) is set. */
 export const hasActivePostFilters = (
-  query: Pick<PostsUrlQuery, 'q' | 'status' | 'tag' | 'from' | 'to'>,
+  query: Pick<PostsUrlQuery, 'q' | 'status' | 'tag' | 'from' | 'to'> &
+    Partial<Pick<PostsUrlQuery, 'trash'>>,
 ) => {
-  return Boolean(query.q || query.status || query.tag || query.from || query.to)
+  return Boolean(query.q || query.status || query.tag || query.from || query.to || query.trash)
 }
 
 /** Turns the URL state into list params: `''` (no filter) becomes `undefined`. `perPage` is the caller's. */
-export const toListPostsParams = (query: PostsUrlQuery): Omit<ListPostsParams, 'perPage'> => {
+export const toListPostsParams = (
+  query: Omit<PostsUrlQuery, 'trash'> & Partial<Pick<PostsUrlQuery, 'trash'>>,
+): Omit<ListPostsParams, 'perPage'> => {
   return {
     page: query.page,
     sort: query.sort,
@@ -136,6 +150,7 @@ export const toListPostsParams = (query: PostsUrlQuery): Omit<ListPostsParams, '
     tag: query.tag || undefined,
     from: query.from || undefined,
     to: query.to || undefined,
+    trash: query.trash,
   }
 }
 
@@ -153,6 +168,9 @@ export const postSummarySchema = z.object({
 
 export type PostSummary = z.infer<typeof postSummarySchema>
 
+/** What the viewer may do with a post; `restore` is only true for a trashed post. */
+export const postPermissionsSchema = permissionsSchema.extend({ restore: z.boolean() })
+
 /** Detail variant: full body, timestamps, and what the viewer may do. */
 export const postDetailSchema = z.object({
   id: z.number().int(),
@@ -162,10 +180,12 @@ export const postDetailSchema = z.object({
   tags: z.array(z.string()),
   commentCount: z.number().int(),
   publishedAt: z.coerce.date().nullable(),
+  /** Set while the post is in the trash; only its author and admins can read such a post. */
+  deletedAt: z.coerce.date().nullable(),
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date(),
   author: userProfileSchema,
-  permissions: permissionsSchema,
+  permissions: postPermissionsSchema,
 })
 
 export type PostDetail = z.infer<typeof postDetailSchema>
