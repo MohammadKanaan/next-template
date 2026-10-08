@@ -273,7 +273,11 @@ const searchPosts = async (
   )
   const totalItems = Number(rows[0]?.total ?? 0)
   const ids = rows.flatMap((row) => (row.id === null ? [] : [row.id]))
-  const found = await db.post.findMany({ where: { id: { in: ids } }, select: postSummarySelect })
+  // The visibility filter again: a post trashed or unpublished since the query must not come back.
+  const found = await db.post.findMany({
+    where: { AND: [{ id: { in: ids } }, toPrismaWhere(filter)] },
+    select: postSummarySelect,
+  })
   const byId = new Map(found.map((row) => [row.id, row]))
   const items = ids.flatMap((id) => {
     const row = byId.get(id)
@@ -552,6 +556,14 @@ export const setPostStatus = async (id: number, status: PostStatus): Promise<Pos
     },
   })
   if (moved.count === 0) {
+    // Gone or trashed since the checks is a 404, as in `updatePost`; otherwise someone moved it first.
+    const live = await db.post.findFirst({
+      where: { id: postId, deletedAt: null },
+      select: { id: true },
+    })
+    if (!live) {
+      throw new NotFoundError('Post not found')
+    }
     throw new ConflictError('The post was changed meanwhile. Reload and try again.')
   }
   await invalidateTags(POSTS_TAG, postTag(postId))

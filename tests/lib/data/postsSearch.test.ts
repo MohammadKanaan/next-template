@@ -229,6 +229,21 @@ describe('post full-text search', () => {
     expect(await titlesOf('brand')).toEqual(['Fresh title'])
   })
 
+  it('leaves out a post that was trashed between the search and the read of its summary', async () => {
+    const author = await createUser({})
+    await seed(author.id, 'Zebra stays')
+    const leaving = await seed(author.id, 'Zebra leaves')
+    const realQuery = db.$queryRaw.bind(db)
+    vi.spyOn(db, '$queryRaw').mockImplementationOnce(((...args: Parameters<typeof realQuery>) => {
+      // The ids are read; then the post goes to the trash before the summaries are.
+      return realQuery(...args).then(async (rows) => {
+        await db.post.update({ where: { id: leaving.id }, data: { deletedAt: new Date() } })
+        return rows
+      })
+    }) as never)
+    expect(await titlesOf('zebra')).toEqual(['Zebra stays'])
+  })
+
   it('treats SQL and operator characters in a search as plain text', async () => {
     const author = await createUser({})
     await seed(author.id, 'Normal post')

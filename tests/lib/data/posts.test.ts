@@ -1029,15 +1029,31 @@ describe('posts DAL', () => {
       expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1)
     })
 
-    it('refuses the move when the conditional write matches nothing', async () => {
+    it('answers a conflict when another move got there first', async () => {
       const owner = await createUser({})
       const post = await seedPost(owner.id, 'T', 'B', 'draft')
       await signInAs(owner)
       vi.spyOn(db.post, 'updateMany').mockImplementation(
-        () => db.post.delete({ where: { id: post.id } }).then(() => ({ count: 0 })) as never,
+        () =>
+          db.post
+            .update({ where: { id: post.id }, data: { status: 'archived' } })
+            .then(() => ({ count: 0 })) as never,
       )
-      // The row changed (here: was deleted) after the checks, so the guarded write matches nothing.
+      // The status changed after the checks, so the guarded write matches nothing.
       await expect(setPostStatus(post.id, 'published')).rejects.toBeInstanceOf(ConflictError)
+    })
+
+    it('answers not found, as an update does, when the post was trashed after the checks', async () => {
+      const owner = await createUser({})
+      const post = await seedPost(owner.id, 'T', 'B', 'draft')
+      await signInAs(owner)
+      vi.spyOn(db.post, 'updateMany').mockImplementation(
+        () =>
+          db.post
+            .update({ where: { id: post.id }, data: { deletedAt: new Date() } })
+            .then(() => ({ count: 0 })) as never,
+      )
+      await expect(setPostStatus(post.id, 'published')).rejects.toBeInstanceOf(NotFoundError)
     })
   })
 
