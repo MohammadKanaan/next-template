@@ -5,7 +5,10 @@ import styles from './styles.module.scss'
 
 type CommentItemProps = {
   comment: Comment
-  /** Called after the viewer deleted the comment, for a list that keeps its own copy. */
+  /**
+   * Called after the viewer deleted the comment, for a list that keeps its own copy. Only a Client
+   * Component can pass it: a Server Component cannot hand a function to the delete button.
+   */
   onDeleted?: (comment: Comment) => void
 }
 
@@ -19,7 +22,10 @@ export const CommentItem = ({ comment, onDeleted }: CommentItemProps) => {
           {formatDateTime(comment.createdAt)}
         </time>
         {comment.permissions.delete && (
-          <DeleteCommentButton commentId={comment.id} onDeleted={() => onDeleted?.(comment)} />
+          <DeleteCommentButton
+            commentId={comment.id}
+            onDeleted={onDeleted && (() => onDeleted(comment))}
+          />
         )}
       </div>
       <p className={styles.body}>{comment.body}</p>
