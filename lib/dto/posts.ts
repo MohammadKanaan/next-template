@@ -59,6 +59,12 @@ const postFieldsSchema = z.object({
   tags: postTagsSchema,
 })
 
+/**
+ * The version of the post the caller read (`PostDetail.version`). A title, body or tags edit
+ * carries it, and the DAL applies the edit only if the post still has it (optimistic locking).
+ */
+export const postVersionSchema = z.number().int().positive()
+
 /** New posts always start as drafts; `tags` may be omitted (no tags). */
 export const createPostInput = postFieldsSchema.extend({ tags: postTagsSchema.default([]) })
 
@@ -68,10 +74,27 @@ export type CreatePostParams = z.input<typeof createPostInput>
 /** The parsed values: `tags` is always present. The form works with this shape. */
 export type CreatePostInput = z.output<typeof createPostInput>
 
-/** Every field is optional; omitting `tags` leaves the post's tags as they are, `[]` clears them. */
+/**
+ * What the post form holds: the new-post fields, plus the `version` of the post being edited (set
+ * when an existing post is hydrated, absent for a new one).
+ */
+export const postFormInput = createPostInput.extend({ version: postVersionSchema.optional() })
+
+export type PostFormParams = z.input<typeof postFormInput>
+
+export type PostFormInput = z.output<typeof postFormInput>
+
+/**
+ * `version` is required; every other field is optional. Omitting `tags` leaves the post's tags as
+ * they are, `[]` clears them. At least one of title, body or tags must be present.
+ */
 export const updatePostInput = postFieldsSchema
   .partial()
-  .refine((value) => Object.keys(value).length > 0, 'Provide at least one attribute')
+  .extend({ version: postVersionSchema })
+  .refine(
+    ({ version: _version, ...fields }) => Object.keys(fields).length > 0,
+    'Provide at least one attribute',
+  )
 
 export type UpdatePostInput = z.input<typeof updatePostInput>
 
@@ -177,6 +200,8 @@ export const postDetailSchema = z.object({
   title: z.string(),
   body: z.string(),
   status: postStatusSchema,
+  /** Bumped by every title, body or tags edit; send it back with the next edit. */
+  version: postVersionSchema,
   tags: z.array(z.string()),
   commentCount: z.number().int(),
   publishedAt: z.coerce.date().nullable(),

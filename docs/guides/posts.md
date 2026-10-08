@@ -32,7 +32,7 @@ The posts example carries the domain patterns an app needs (all in `lib/data/pos
   → published; published → archived | draft; archived → published). `setPostStatus` enforces it
   (signed in → exists → author or admin → transition allowed, else `ValidationError` on `status`),
   stamps `publishedAt` on the first publication, and writes conditionally on the checked status so
-  concurrent moves cannot both win. The UI (`components/Posts/StatusActions`) only offers the moves
+  concurrent moves cannot both win (the loser gets `ConflictError`). The UI (`components/Posts/StatusActions`) only offers the moves
   the map allows. `createPost` always creates a draft.
 - **Transaction:** `createPost` / `updatePost` write the post and its tags in one `db.$transaction`
   (`replacePostTags`: upsert tag rows in sorted order, drop the links no longer wanted). On update,
@@ -78,3 +78,13 @@ The posts example carries the domain patterns an app needs (all in `lib/data/pos
   UI: the Trash checkbox in `PostsFilters` (only where `status` is passed, so `/posts/mine`),
   `RestorePostButton` on trashed rows and on the detail page, "Move to trash" on `DeletePostButton`.
   REST `DELETE /posts/{id}` still answers 204 (it moves the post to the trash).
+- **Optimistic locking:** `Post.version` (starts at 1) guards title, body and tags edits only. Status
+  changes, trash and restore do not bump it. `PostDetail.version` is what the caller read;
+  `updatePostInput.version` is required (a positive integer), so a REST `PATCH` without it answers 422.
+  `updatePost` checks existence and permission as before, then
+  `updateMany({ where: { id, version, deletedAt: null }, data: { ..., version: { increment: 1 } } })`
+  inside the tag transaction; zero rows is `ConflictError` (409, code `CONFLICT`), or `NotFoundError` if
+  the post is gone or trashed meanwhile. `setPostStatus`'s concurrent-move failure is a `ConflictError`
+  too. `hydratePostForm` carries `version`, `PostForm` holds it as a non-rendered value
+  (`postFormInput`), and the edit view shows a `CONFLICT` failure as the form alert with a Reload
+  button (`router.refresh()`). `toActionFailure`, `toErrorResponse` and `applyActionErrors` needed no change.

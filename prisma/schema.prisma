@@ -94,6 +94,7 @@ model Post {
   title       String
   body        String
   status      PostStatus @default(draft)
+  version     Int        @default(1)
   publishedAt DateTime?  @map("published_at") @db.Timestamptz(3)
   deletedAt   DateTime?  @map("deleted_at") @db.Timestamptz(3)
   userId      String     @map("user_id")

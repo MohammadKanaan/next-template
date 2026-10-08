@@ -245,11 +245,11 @@ catch (error) { return toActionFailure(error) }`. Return `ActionResult<T>`; neve
 
 ## Errors
 
-- The DAL throws `UnauthorizedError`, `ForbiddenError`, `NotFoundError`, and `ValidationError`
-  (all `DataError`s with a `code`). Anything else is a bug and propagates.
+- The DAL throws `UnauthorizedError`, `ForbiddenError`, `NotFoundError`, `ValidationError`, and
+  `ConflictError` (a stale `version`, 409), all `DataError`s with a `code`. Anything else is a bug and propagates.
 - Each caller translates once: Server Action → `toActionFailure` (`ActionResult` with `code`,
   `message`, optional `fieldErrors`; Next redirect/not-found errors are rethrown); Route Handler →
-  `toErrorResponse` (401 / 403 / 404 / 422 with `ErrorBody`); page → `loadPage` (redirect to login, or
+  `toErrorResponse` (401 / 403 / 404 / 409 / 422 with `ErrorBody`); page → `loadPage` (redirect to login, or
   `notFound()` for missing or forbidden).
 - Forms map failures with `applyActionErrors` (`lib/formErrors.ts`): field errors land on their
   fields, anything else on `root.server`.

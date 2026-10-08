@@ -75,14 +75,14 @@ describe('/api/v1/posts/[id]', () => {
     it('answers 401 without a session', async () => {
       const author = await createUser({})
       const post = await seedPost(author.id)
-      expect((await patch(post.id, { title: 'New' })).status).toBe(401)
+      expect((await patch(post.id, { version: 1, title: 'New' })).status).toBe(401)
       expect((await db.post.findUniqueOrThrow({ where: { id: post.id } })).title).toBe('Title')
     })
 
     it('answers 401, not 422, to an anonymous caller whatever the body or content type', async () => {
       const author = await createUser({})
       const post = await seedPost(author.id)
-      expect((await patch(post.id, {})).status).toBe(401)
+      expect((await patch(post.id, { version: 1 })).status).toBe(401)
       expect((await patch(post.id, 'title=T', 'application/x-www-form-urlencoded')).status).toBe(
         401,
       )
@@ -93,7 +93,12 @@ describe('/api/v1/posts/[id]', () => {
       const author = await createUser({})
       const post = await seedPost(author.id)
       await signInAs(author)
-      const response = await patch(post.id, { title: ' New ', body: 'Changed', tags: ['Tips'] })
+      const response = await patch(post.id, {
+        version: 1,
+        title: ' New ',
+        body: 'Changed',
+        tags: ['Tips'],
+      })
       expect(response.status).toBe(200)
       expect(await response.json()).toMatchObject({
         id: post.id,
@@ -109,7 +114,23 @@ describe('/api/v1/posts/[id]', () => {
       const admin = await createUser({ role: 'admin' })
       const post = await seedPost(author.id)
       await signInAs(admin)
-      expect((await patch(post.id, { title: 'By admin' })).status).toBe(200)
+      expect((await patch(post.id, { version: 1, title: 'By admin' })).status).toBe(200)
+    })
+
+    it('answers 422 without a version and 409 for a stale one, changing nothing', async () => {
+      const author = await createUser({})
+      const post = await seedPost(author.id)
+      await signInAs(author)
+      const missing = await patch(post.id, { title: 'No version' })
+      expect(missing.status).toBe(422)
+      expect((await missing.json()).fieldErrors.version).toHaveLength(1)
+
+      expect((await patch(post.id, { version: 1, title: 'First' })).status).toBe(200)
+      const stale = await patch(post.id, { version: 1, title: 'Second' })
+      expect(stale.status).toBe(409)
+      expect(await stale.json()).toMatchObject({ code: 'CONFLICT' })
+      expect((await db.post.findUniqueOrThrow({ where: { id: post.id } })).title).toBe('First')
+      expect((await patch(post.id, { version: 2, title: 'Second' })).status).toBe(200)
     })
 
     it('answers 403 for another user and changes nothing', async () => {
@@ -117,24 +138,24 @@ describe('/api/v1/posts/[id]', () => {
       const other = await createUser({})
       const post = await seedPost(author.id)
       await signInAs(other)
-      expect((await patch(post.id, { title: 'Hijacked' })).status).toBe(403)
+      expect((await patch(post.id, { version: 1, title: 'Hijacked' })).status).toBe(403)
       expect((await db.post.findUniqueOrThrow({ where: { id: post.id } })).title).toBe('Title')
     })
 
     it('answers 404 for a missing post', async () => {
       await signInAs(await createUser({}))
-      expect((await patch(999, { title: 'x' })).status).toBe(404)
+      expect((await patch(999, { version: 1, title: 'x' })).status).toBe(404)
     })
 
     it('answers 422 for an empty or invalid body, and for a malformed id', async () => {
       const author = await createUser({})
       const post = await seedPost(author.id)
       await signInAs(author)
-      expect((await patch(post.id, {})).status).toBe(422)
-      const invalid = await patch(post.id, { title: '' })
+      expect((await patch(post.id, { version: 1 })).status).toBe(422)
+      const invalid = await patch(post.id, { version: 1, title: '' })
       expect(invalid.status).toBe(422)
       expect((await invalid.json()).fieldErrors.title).toHaveLength(1)
-      expect((await patch('abc', { title: 'x' })).status).toBe(422)
+      expect((await patch('abc', { version: 1, title: 'x' })).status).toBe(422)
     })
 
     it('answers 422 for a content type other than JSON and for malformed JSON', async () => {
@@ -149,7 +170,7 @@ describe('/api/v1/posts/[id]', () => {
       const author = await createUser({})
       const post = await seedPost(author.id)
       await signInAs(author)
-      const response = await patch(post.id, { title: 'Kept', status: 'archived' })
+      const response = await patch(post.id, { version: 1, title: 'Kept', status: 'archived' })
       expect(response.status).toBe(200)
       expect(await response.json()).toMatchObject({ status: 'published' })
     })

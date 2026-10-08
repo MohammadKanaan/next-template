@@ -1,13 +1,15 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
+import { useState } from 'react'
 import { toast } from 'sonner'
 import { updatePostAction } from '@/actions/posts'
 import { PageHeader } from '@/components/PageHeader'
 import { PostForm } from '@/components/Posts/Form'
 import { buildPostAttributes } from '@/components/Posts/Form/utils'
+import { Button } from '@/components/SCN/button'
 import { ROUTE_POST_DETAILS } from '@/lib/constants-routes'
-import type { CreatePostInput, PostDetail } from '@/lib/dto/posts'
+import type { PostDetail, PostFormInput } from '@/lib/dto/posts'
 import styles from '../styles.module.scss'
 
 type PostEditViewProps = {
@@ -16,8 +18,10 @@ type PostEditViewProps = {
 
 export const PostEditView = ({ post }: PostEditViewProps) => {
   const router = useRouter()
+  const [conflict, setConflict] = useState(false)
 
-  const handleSubmit = async (values: CreatePostInput) => {
+  const handleSubmit = async (values: PostFormInput) => {
+    setConflict(false)
     const attributes = buildPostAttributes(values, post)
 
     if (Object.keys(attributes).length === 0) {
@@ -25,7 +29,13 @@ export const PostEditView = ({ post }: PostEditViewProps) => {
       return { ok: true, data: null } as const
     }
 
-    const result = await updatePostAction(post.id, attributes)
+    const result = await updatePostAction(post.id, {
+      ...attributes,
+      version: values.version ?? post.version,
+    })
+    if (!result.ok) {
+      setConflict(result.code === 'CONFLICT')
+    }
     if (result.ok) {
       toast.success('Post updated')
       router.push(ROUTE_POST_DETAILS(result.data.author.id, result.data.id))
@@ -41,6 +51,22 @@ export const PostEditView = ({ post }: PostEditViewProps) => {
         submitLabel="Save changes"
         onCancel={() => router.push(ROUTE_POST_DETAILS(post.author.id, post.id))}
         onSubmit={handleSubmit}
+        errorAction={
+          conflict && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                // Reloads the post: the form then shows the saved version with its new `version`.
+                setConflict(false)
+                router.refresh()
+              }}
+            >
+              Reload
+            </Button>
+          )
+        }
       />
     </div>
   )

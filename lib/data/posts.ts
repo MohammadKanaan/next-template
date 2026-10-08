@@ -27,7 +27,7 @@ import { getSessionUser, requireUser, type SessionUser } from './auth'
 import { POSTS_TAG, postTag } from './cacheTags'
 import { db } from './db'
 import { escapeLike } from './escapeLike'
-import { NotFoundError, parseInput, ValidationError } from './errors'
+import { ConflictError, NotFoundError, parseInput, ValidationError } from './errors'
 import { postPolicy } from './policies/posts'
 import { authorize, permissionsFor } from './policy'
 import { consumeRateLimit } from './rateLimit'
@@ -59,6 +59,7 @@ const postDetailSelect = {
   title: true,
   body: true,
   status: true,
+  version: true,
   publishedAt: true,
   deletedAt: true,
   createdAt: true,
@@ -92,6 +93,7 @@ const toPostBase = (row: PostDetailRow): PostDetailBase => {
     title: row.title,
     body: row.body,
     status: row.status,
+    version: row.version,
     tags: row.tags.map(({ tag }) => tag.name),
     commentCount: row._count.comments,
     publishedAt: row.publishedAt,
@@ -355,15 +357,27 @@ export const updatePost = async (
 ): Promise<PostDetail> => {
   const viewer = await requireUser()
   const postId = parseInput(idSchema, id)
-  const { tags, ...data } = parseInput(updatePostInput, input)
+  const { tags, version, ...data } = parseInput(updatePostInput, input)
   await requirePostChange(viewer, postId, 'update')
   const row = await db
     .$transaction(async (tx) => {
+      // Optimistic locking: the edit applies only to the version the caller read, and bumps it.
       // Prisma skips `@updatedAt` for an empty `data`, so it is set here: a tags-only edit is an edit.
-      await tx.post.update({
-        where: { id: postId, deletedAt: null },
-        data: { ...data, updatedAt: new Date() },
+      const updated = await tx.post.updateMany({
+        where: { id: postId, version, deletedAt: null },
+        data: { ...data, version: { increment: 1 }, updatedAt: new Date() },
       })
+      if (updated.count === 0) {
+        // Gone or trashed since the checks is a 404; otherwise someone else saved first.
+        const live = await tx.post.findFirst({
+          where: { id: postId, deletedAt: null },
+          select: { id: true },
+        })
+        if (!live) {
+          throw new NotFoundError('Post not found')
+        }
+        throw new ConflictError('The post was changed meanwhile. Reload and try again.')
+      }
       if (tags !== undefined) {
         await replacePostTags(tx, postId, tags)
       }
@@ -398,7 +412,7 @@ export const setPostStatus = async (id: number, status: PostStatus): Promise<Pos
     },
   })
   if (moved.count === 0) {
-    throw new ValidationError({ status: ['The post was changed meanwhile. Reload and try again.'] })
+    throw new ConflictError('The post was changed meanwhile. Reload and try again.')
   }
   await invalidateTags(POSTS_TAG, postTag(postId))
   const row = await db.post

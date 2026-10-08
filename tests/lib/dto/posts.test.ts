@@ -29,7 +29,20 @@ describe('post inputs', () => {
 
   it('requires at least one attribute to update', () => {
     expect(updatePostInput.safeParse({}).success).toBe(false)
-    expect(updatePostInput.parse({ title: 'New' })).toEqual({ title: 'New' })
+    expect(updatePostInput.safeParse({ version: 1 }).success).toBe(false)
+    expect(updatePostInput.parse({ title: 'New', version: 1 })).toEqual({
+      title: 'New',
+      version: 1,
+    })
+  })
+
+  it('requires the version of the post being edited, as a positive integer', () => {
+    expect(updatePostInput.safeParse({ title: 'New' }).success).toBe(false)
+    for (const version of [0, -1, 1.5, '1', null]) {
+      expect(updatePostInput.safeParse({ title: 'New', version }).success, String(version)).toBe(
+        false,
+      )
+    }
   })
 })
 
@@ -56,8 +69,8 @@ describe('tags', () => {
   })
 
   it('leaves the tags out of an update that does not mention them', () => {
-    expect(updatePostInput.parse({ title: 'New' })).not.toHaveProperty('tags')
-    expect(updatePostInput.parse({ tags: [] })).toEqual({ tags: [] })
+    expect(updatePostInput.parse({ title: 'New', version: 1 })).not.toHaveProperty('tags')
+    expect(updatePostInput.parse({ tags: [], version: 1 })).toEqual({ tags: [], version: 1 })
   })
 })
 

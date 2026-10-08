@@ -10,6 +10,7 @@ const post: PostDetail = {
   title: 'Hello',
   body: 'World',
   status: 'draft',
+  version: 3,
   tags: ['news'],
   commentCount: 0,
   publishedAt: null,
@@ -38,6 +39,36 @@ describe('PostForm', () => {
     await userEvent.type(screen.getByLabelText(/Body/), 'World')
     await userEvent.click(screen.getByRole('button', { name: 'Create post' }))
     expect(onSubmit).toHaveBeenCalledWith({ title: 'Hello', body: 'World', tags: [] })
+  })
+
+  it('sends the version of an existing post back with the values, and none for a new post', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(success)
+    render(<PostForm post={post} submitLabel="Save" onSubmit={onSubmit} />)
+    await userEvent.type(screen.getByLabelText(/Body/), '!')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(onSubmit).toHaveBeenCalledWith({
+      title: 'Hello',
+      body: 'World!',
+      tags: ['news'],
+      version: 3,
+    })
+  })
+
+  it('renders the error action beside the form-level error only', async () => {
+    const onSubmit = vi.fn().mockResolvedValue({ ok: false, code: 'CONFLICT', message: 'Changed' })
+    render(
+      <PostForm
+        post={post}
+        submitLabel="Save"
+        onSubmit={onSubmit}
+        errorAction={<button type="button">Reload</button>}
+      />,
+    )
+    expect(screen.queryByRole('button', { name: 'Reload' })).not.toBeInTheDocument()
+    await userEvent.type(screen.getByLabelText(/Body/), '!')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Changed')
+    expect(screen.getByRole('button', { name: 'Reload' })).toBeInTheDocument()
   })
 
   it('submits the tags entered in the tags field', async () => {

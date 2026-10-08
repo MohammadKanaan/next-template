@@ -59,7 +59,7 @@ describe('post actions', () => {
 
   it('rejects an empty update', async () => {
     await signInAs(await createUser({}))
-    const result = await updatePostAction(1, {})
+    const result = await updatePostAction(1, { version: 1 })
     expect(result).toMatchObject({
       ok: false,
       code: 'VALIDATION',
@@ -69,14 +69,17 @@ describe('post actions', () => {
 
   it('rejects a bad id', async () => {
     await signInAs(await createUser({}))
-    expect(await updatePostAction(0, { title: 'x' })).toMatchObject({
+    expect(await updatePostAction(0, { version: 1, title: 'x' })).toMatchObject({
       ok: false,
       code: 'VALIDATION',
     })
   })
 
   it('answers UNAUTHORIZED before looking at the input when signed out', async () => {
-    expect(await updatePostAction(0, {})).toMatchObject({ ok: false, code: 'UNAUTHORIZED' })
+    expect(await updatePostAction(0, { version: 1 })).toMatchObject({
+      ok: false,
+      code: 'UNAUTHORIZED',
+    })
   })
 
   it('forbids an intruder from updating', async () => {
@@ -84,7 +87,7 @@ describe('post actions', () => {
     const intruder = await createUser({})
     const post = await db.post.create({ data: { userId: owner.id, title: 'T', body: 'B' } })
     await signInAs(intruder)
-    expect(await updatePostAction(post.id, { title: 'x' })).toMatchObject({
+    expect(await updatePostAction(post.id, { version: 1, title: 'x' })).toMatchObject({
       ok: false,
       code: 'FORBIDDEN',
     })
@@ -111,6 +114,20 @@ describe('post actions', () => {
       data: { id: post.id, deletedAt: null },
     })
     expect(revalidatePath).toHaveBeenCalledWith('/posts', 'layout')
+  })
+
+  it('answers CONFLICT for an edit made from a stale version', async () => {
+    const owner = await createUser({})
+    const post = await db.post.create({ data: { userId: owner.id, title: 'T', body: 'B' } })
+    await signInAs(owner)
+    expect(await updatePostAction(post.id, { version: 1, title: 'One' })).toMatchObject({
+      ok: true,
+      data: { version: 2 },
+    })
+    expect(await updatePostAction(post.id, { version: 1, title: 'Two' })).toMatchObject({
+      ok: false,
+      code: 'CONFLICT',
+    })
   })
 
   it('creates a draft with tags', async () => {

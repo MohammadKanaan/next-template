@@ -3,6 +3,7 @@
 'use no memo'
 
 import { zodResolver } from '@hookform/resolvers/zod'
+import type { ReactNode } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { Input } from '@/components/Form/Input'
 import { TagsInput } from '@/components/Form/TagsInput'
@@ -10,13 +11,13 @@ import { Textarea } from '@/components/Form/Textarea'
 import { LoadingButton } from '@/components/LoadingButton'
 import { Button } from '@/components/SCN/button'
 import {
-  createPostInput,
   normalizeTagName,
   POST_TAGS_MAX,
+  postFormInput,
   TAG_NAME_MAX_LENGTH,
-  type CreatePostInput,
-  type CreatePostParams,
   type PostDetail,
+  type PostFormInput,
+  type PostFormParams,
 } from '@/lib/dto/posts'
 import { applyActionErrors } from '@/lib/formErrors'
 import type { ActionResult } from '@/types/api'
@@ -27,19 +28,21 @@ export type PostFormProps = {
   /** The post being edited, or `null` for a new one. */
   post: PostDetail | null
   submitLabel: string
-  onSubmit: (values: CreatePostInput) => Promise<ActionResult<unknown>>
+  onSubmit: (values: PostFormInput) => Promise<ActionResult<unknown>>
   onCancel?: () => void
+  /** Shown beside the form-level error (the edit view offers "Reload" for a conflict). */
+  errorAction?: ReactNode
 }
 
-export const PostForm = ({ post, submitLabel, onSubmit, onCancel }: PostFormProps) => {
+export const PostForm = ({ post, submitLabel, onSubmit, onCancel, errorAction }: PostFormProps) => {
   const {
     register,
     control,
     handleSubmit,
     setError,
     formState: { errors, isDirty, isSubmitting },
-  } = useForm<CreatePostParams, unknown, CreatePostInput>({
-    resolver: zodResolver(createPostInput),
+  } = useForm<PostFormParams, unknown, PostFormInput>({
+    resolver: zodResolver(postFormInput),
     defaultValues: hydratePostForm(post),
     // An existing post follows the `post` prop, so the form shows what a save returned.
     values: post ? hydratePostForm(post) : undefined,
@@ -76,9 +79,10 @@ export const PostForm = ({ post, submitLabel, onSubmit, onCancel }: PostFormProp
         )}
       />
       {errors.root?.server && (
-        <p className={styles.formError} role="alert">
-          {errors.root.server.message}
-        </p>
+        <div className={styles.formError} role="alert">
+          <p>{errors.root.server.message}</p>
+          {errorAction}
+        </div>
       )}
       <div className={styles.actions}>
         {onCancel && (

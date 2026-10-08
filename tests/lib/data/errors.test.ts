@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import {
+  ConflictError,
   ForbiddenError,
   NotFoundError,
   parseInput,
@@ -43,6 +44,14 @@ describe('toActionFailure', () => {
     })
   })
 
+  it('maps a conflict to the CONFLICT code', () => {
+    expect(toActionFailure(new ConflictError('Reload'))).toEqual({
+      ok: false,
+      code: 'CONFLICT',
+      message: 'Reload',
+    })
+  })
+
   it('rethrows unknown errors and Next redirects', () => {
     expect(() => toActionFailure(new Error('boom'))).toThrow('boom')
     let redirectError: unknown
@@ -69,6 +78,7 @@ describe('toErrorResponse', () => {
       [new ForbiddenError(), 403],
       [new NotFoundError(), 404],
       [new ValidationError({}), 422],
+      [new ConflictError(), 409],
       [new RateLimitedError(), 429],
     ] as const
     for (const [error, status] of cases) {

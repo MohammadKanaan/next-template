@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildPostAttributes } from '@/components/Posts/Form/utils'
+import { buildPostAttributes, hydratePostForm } from '@/components/Posts/Form/utils'
 import type { PostDetail } from '@/lib/dto/posts'
 
 const post: PostDetail = {
@@ -7,6 +7,7 @@ const post: PostDetail = {
   title: 'Hello',
   body: 'World',
   status: 'draft',
+  version: 3,
   tags: ['news'],
   commentCount: 0,
   publishedAt: null,
@@ -18,6 +19,16 @@ const post: PostDetail = {
 }
 
 describe('post form utils', () => {
+  it('carries the version of an existing post, and none for a new one', () => {
+    expect(hydratePostForm(post)).toEqual({
+      title: 'Hello',
+      body: 'World',
+      tags: ['news'],
+      version: 3,
+    })
+    expect(hydratePostForm(null)).toEqual({ title: '', body: '', tags: [] })
+  })
+
   it('sends only changed fields when updating', () => {
     expect(buildPostAttributes({ title: 'Hello', body: 'Changed', tags: ['news'] }, post)).toEqual({
       body: 'Changed',

@@ -20,7 +20,7 @@
   await `params`, decode the body with the DTO schema (`parseInput(updatePostInput, …)`, as the
   GET handler decodes its query) and pass it, with the raw `id` string, to the DAL, which validates
   both again. Status codes: 201 for a create (with the created DTO), 200 for reads and updates,
-  204 with an empty body for a delete, errors through `toErrorResponse` (401/403/404/422/429).
+  204 with an empty body for a delete, errors through `toErrorResponse` (401/403/404/409/422/429).
   There is deliberately no status endpoint: transitions stay in `setPostStatusAction`. There are no
   client facades for these endpoints because no UI calls them; their tests call the handlers
   directly (`tests/app/api/v1/`). API keys and OpenAPI stay deferred.

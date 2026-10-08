@@ -2,6 +2,7 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/data/db'
 import {
+  ConflictError,
   ForbiddenError,
   NotFoundError,
   RateLimitedError,
@@ -166,11 +167,11 @@ describe('posts DAL', () => {
     await signInAs(author)
     vi.stubEnv('NODE_ENV', 'production')
     for (let n = 1; n <= 60; n++) {
-      await updatePost(post.id, { title: `Title ${n}` })
+      await updatePost(post.id, { version: n, title: `Title ${n}` })
     }
-    await expect(updatePost(post.id, { title: 'One too many' })).rejects.toBeInstanceOf(
-      RateLimitedError,
-    )
+    await expect(
+      updatePost(post.id, { version: 61, title: 'One too many' }),
+    ).rejects.toBeInstanceOf(RateLimitedError)
     expect((await db.post.findUniqueOrThrow({ where: { id: post.id } })).title).toBe('Title 60')
   })
 
@@ -217,9 +218,13 @@ describe('posts DAL', () => {
       const author = await createUser({})
       const post = await seedPost(author.id)
       await signInAs(author)
-      await expect(updatePost(post.id, {})).rejects.toBeInstanceOf(ValidationError)
-      await expect(updatePost(post.id, { title: '' })).rejects.toBeInstanceOf(ValidationError)
-      await expect(updatePost(0, { title: 'x' })).rejects.toBeInstanceOf(ValidationError)
+      await expect(updatePost(post.id, { version: 1 })).rejects.toBeInstanceOf(ValidationError)
+      await expect(updatePost(post.id, { version: 1, title: '' })).rejects.toBeInstanceOf(
+        ValidationError,
+      )
+      await expect(updatePost(0, { version: 1, title: 'x' })).rejects.toBeInstanceOf(
+        ValidationError,
+      )
       await expect(deletePost(1.5)).rejects.toBeInstanceOf(ValidationError)
     })
 
@@ -283,12 +288,16 @@ describe('posts DAL', () => {
     const post = await seedPost(owner.id)
 
     signOut()
-    await expect(updatePost(999, { title: 'x' })).rejects.toBeInstanceOf(UnauthorizedError)
+    await expect(updatePost(999, { version: 1, title: 'x' })).rejects.toBeInstanceOf(
+      UnauthorizedError,
+    )
     await signInAs(intruder)
-    await expect(updatePost(999, { title: 'x' })).rejects.toBeInstanceOf(NotFoundError)
-    await expect(updatePost(post.id, { title: 'x' })).rejects.toBeInstanceOf(ForbiddenError)
+    await expect(updatePost(999, { version: 1, title: 'x' })).rejects.toBeInstanceOf(NotFoundError)
+    await expect(updatePost(post.id, { version: 1, title: 'x' })).rejects.toBeInstanceOf(
+      ForbiddenError,
+    )
     await signInAs(owner)
-    expect(await updatePost(post.id, { title: 'Renamed' })).toMatchObject({
+    expect(await updatePost(post.id, { version: 1, title: 'Renamed' })).toMatchObject({
       title: 'Renamed',
       body: 'Body',
     })
@@ -299,7 +308,7 @@ describe('posts DAL', () => {
     const admin = await createUser({ role: 'admin' })
     const post = await seedPost(owner.id)
     await signInAs(admin)
-    expect((await updatePost(post.id, { body: 'Moderated' })).body).toBe('Moderated')
+    expect((await updatePost(post.id, { version: 1, body: 'Moderated' })).body).toBe('Moderated')
     await deletePost(post.id)
     expect(await db.post.count({ where: { deletedAt: null } })).toBe(0)
   })
@@ -355,7 +364,7 @@ describe('posts DAL', () => {
       await listPosts({ page: 1, perPage: 10 })
       await getPost(post.id)
       await signInAs(author)
-      await updatePost(post.id, { title: 'After' })
+      await updatePost(post.id, { version: 1, title: 'After' })
       expect((await listPosts({ page: 1, perPage: 10 })).items[0].title).toBe('After')
       expect((await getPost(post.id)).title).toBe('After')
     })
@@ -419,7 +428,9 @@ describe('posts DAL', () => {
     // `updatePost` writes inside a transaction, so that is where the failure surfaces.
     vi.spyOn(db, '$transaction').mockImplementation(() => Promise.reject(vanished) as never)
     vi.spyOn(db.post, 'updateMany').mockImplementation(() => Promise.resolve({ count: 0 }) as never)
-    await expect(updatePost(post.id, { title: 'x' })).rejects.toBeInstanceOf(NotFoundError)
+    await expect(updatePost(post.id, { version: 1, title: 'x' })).rejects.toBeInstanceOf(
+      NotFoundError,
+    )
     await expect(deletePost(post.id)).rejects.toBeInstanceOf(NotFoundError)
   })
 
@@ -727,7 +738,7 @@ describe('posts DAL', () => {
         await tagPost(post.id, 'news')
         await signInAs(author)
         expect(await titles({ tag: 'news' })).toEqual(['Tagged'])
-        await updatePost(post.id, { tags: [] })
+        await updatePost(post.id, { version: 1, tags: [] })
         expect(await titles({ tag: 'news' })).toEqual([])
       })
 
@@ -857,9 +868,15 @@ describe('posts DAL', () => {
       await signInAs(author)
       const post = await createPost({ title: 'T', body: 'B', tags: ['one', 'two'] })
 
-      expect((await updatePost(post.id, { tags: ['two', 'three'] })).tags).toEqual(['three', 'two'])
-      expect((await updatePost(post.id, { title: 'Renamed' })).tags).toEqual(['three', 'two'])
-      expect((await updatePost(post.id, { tags: [] })).tags).toEqual([])
+      expect((await updatePost(post.id, { version: 1, tags: ['two', 'three'] })).tags).toEqual([
+        'three',
+        'two',
+      ])
+      expect((await updatePost(post.id, { version: 2, title: 'Renamed' })).tags).toEqual([
+        'three',
+        'two',
+      ])
+      expect((await updatePost(post.id, { version: 3, tags: [] })).tags).toEqual([])
       expect(await db.postTag.count()).toBe(0)
     })
 
@@ -867,7 +884,7 @@ describe('posts DAL', () => {
       await signInAs(await createUser({}))
       const post = await createPost({ title: 'T', body: 'B' })
       await new Promise((resolve) => setTimeout(resolve, 15))
-      const updated = await updatePost(post.id, { tags: ['new'] })
+      const updated = await updatePost(post.id, { version: 1, tags: ['new'] })
       expect(updated.updatedAt.getTime()).toBeGreaterThan(post.updatedAt.getTime())
     })
 
@@ -875,7 +892,7 @@ describe('posts DAL', () => {
       await signInAs(await createUser({}))
       const post = await createPost({ title: 'Before', body: 'B', tags: ['keep'] })
       await expect(
-        updatePost(post.id, { title: 'After', tags: ['bad\u0000tag'] }),
+        updatePost(post.id, { version: 1, title: 'After', tags: ['bad\u0000tag'] }),
       ).rejects.toThrow()
       expect((await getPost(post.id)).title).toBe('Before')
       expect((await getPost(post.id)).tags).toEqual(['keep'])
@@ -888,7 +905,7 @@ describe('posts DAL', () => {
       await setPostStatus(post.id, 'published')
       expect((await listPosts({ page: 1, perPage: 10 })).items[0].tags).toEqual([])
       await getPost(post.id)
-      await updatePost(post.id, { tags: ['fresh'] })
+      await updatePost(post.id, { version: 1, tags: ['fresh'] })
       expect((await listPosts({ page: 1, perPage: 10 })).items[0].tags).toEqual(['fresh'])
       expect((await getPost(post.id)).tags).toEqual(['fresh'])
     })
@@ -1022,7 +1039,7 @@ describe('posts DAL', () => {
         () => db.post.delete({ where: { id: post.id } }).then(() => ({ count: 0 })) as never,
       )
       // The row changed (here: was deleted) after the checks, so the guarded write matches nothing.
-      await expect(setPostStatus(post.id, 'published')).rejects.toBeInstanceOf(ValidationError)
+      await expect(setPostStatus(post.id, 'published')).rejects.toBeInstanceOf(ConflictError)
     })
   })
 
@@ -1086,7 +1103,9 @@ describe('posts DAL', () => {
       await trashedNow(post.id)
       for (const viewer of [author, admin]) {
         await signInAs(viewer)
-        await expect(updatePost(post.id, { title: 'x' })).rejects.toBeInstanceOf(NotFoundError)
+        await expect(updatePost(post.id, { version: 1, title: 'x' })).rejects.toBeInstanceOf(
+          NotFoundError,
+        )
         await expect(setPostStatus(post.id, 'published')).rejects.toBeInstanceOf(NotFoundError)
         await expect(deletePost(post.id)).rejects.toBeInstanceOf(NotFoundError)
       }
@@ -1206,6 +1225,84 @@ describe('posts DAL', () => {
           (await db.post.findUniqueOrThrow({ where: { id: post.id } })).deletedAt,
         ).not.toBeNull()
       })
+    })
+  })
+
+  describe('optimistic locking', () => {
+    it('starts at version 1 and bumps it on every title, body or tags edit', async () => {
+      const author = await createUser({})
+      await signInAs(author)
+      const post = await createPost({ title: 'T', body: 'B' })
+      expect(post.version).toBe(1)
+      expect((await updatePost(post.id, { version: 1, title: 'A' })).version).toBe(2)
+      expect((await updatePost(post.id, { version: 2, tags: ['x'] })).version).toBe(3)
+      expect((await getPost(post.id)).version).toBe(3)
+    })
+
+    it('lets the first of two edits from the same version win and the second conflict', async () => {
+      const author = await createUser({})
+      const admin = await createUser({ role: 'admin' })
+      const post = await seedPost(author.id, 'T')
+      await signInAs(author)
+      await updatePost(post.id, { version: 1, title: 'Author edit' })
+      await signInAs(admin)
+      await expect(updatePost(post.id, { version: 1, title: 'Admin edit' })).rejects.toBeInstanceOf(
+        ConflictError,
+      )
+      const row = await db.post.findUniqueOrThrow({ where: { id: post.id } })
+      expect(row.title).toBe('Author edit')
+      expect(row.version).toBe(2)
+    })
+
+    it('does not touch the tags of a conflicting edit', async () => {
+      const author = await createUser({})
+      await signInAs(author)
+      const post = await createPost({ title: 'T', body: 'B', tags: ['keep'] })
+      await updatePost(post.id, { version: 1, title: 'New' })
+      await expect(updatePost(post.id, { version: 1, tags: ['other'] })).rejects.toBeInstanceOf(
+        ConflictError,
+      )
+      expect((await getPost(post.id)).tags).toEqual(['keep'])
+    })
+
+    it('rejects a missing or malformed version before anything else', async () => {
+      const author = await createUser({})
+      const post = await seedPost(author.id)
+      await signInAs(author)
+      for (const input of [
+        { title: 'x' },
+        { title: 'x', version: 0 },
+        { title: 'x', version: '1' },
+      ]) {
+        await expect(updatePost(post.id, input as never)).rejects.toBeInstanceOf(ValidationError)
+      }
+    })
+
+    it('does not bump the version on status changes, trash or restore (R5)', async () => {
+      const author = await createUser({})
+      await signInAs(author)
+      const post = await createPost({ title: 'T', body: 'B' })
+      expect((await setPostStatus(post.id, 'published')).version).toBe(1)
+      await deletePost(post.id)
+      expect((await restorePost(post.id)).version).toBe(1)
+      expect((await updatePost(post.id, { version: 1, title: 'N' })).version).toBe(2)
+    })
+
+    it('answers 404, not a conflict, when the post was trashed after the checks', async () => {
+      const author = await createUser({})
+      const post = await seedPost(author.id)
+      await signInAs(author)
+      const realFindUnique = db.post.findUnique.bind(db.post)
+      // The checks see a live post; by the time of the write it is in the trash.
+      vi.spyOn(db.post, 'findUnique').mockImplementation(((args: never) => {
+        return db.post
+          .update({ where: { id: post.id }, data: { deletedAt: new Date() } })
+          .then(() => realFindUnique(args))
+          .then((row) => row && { ...row, deletedAt: null })
+      }) as never)
+      await expect(updatePost(post.id, { version: 1, title: 'x' })).rejects.toBeInstanceOf(
+        NotFoundError,
+      )
     })
   })
 

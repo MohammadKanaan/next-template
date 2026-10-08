@@ -311,20 +311,20 @@ cookie is the CSRF guard).
 | `GET`    | `/api/v1/posts`               | none (drafts: own list, or admin with `status`) | 200 `Page<PostSummary>`; filters `q`, `sort`, `tag`, `status`, `from`, `to`, `trash`, `authorId`, `page`, `perPage` |
 | `POST`   | `/api/v1/posts`               | signed in                                       | 201 `PostDetail` (a draft)                                                                                          |
 | `GET`    | `/api/v1/posts/{id}`          | none for published; author or admin otherwise   | 200 `PostDetail`                                                                                                    |
-| `PATCH`  | `/api/v1/posts/{id}`          | author or admin                                 | 200 `PostDetail` (`title`, `body`, `tags`; no status)                                                               |
+| `PATCH`  | `/api/v1/posts/{id}`          | author or admin                                 | 200 `PostDetail` (`version` required, plus `title`, `body`, `tags`; no status); 409 when `version` is stale         |
 | `DELETE` | `/api/v1/posts/{id}`          | author or admin                                 | 204, empty body (moves the post to the trash)                                                                       |
 | `GET`    | `/api/v1/posts/{id}/comments` | none for published; author or admin otherwise   | 200 `Comment[]`, oldest first                                                                                       |
 | `POST`   | `/api/v1/posts/{id}/comments` | signed in; post must be published               | 201 `Comment`                                                                                                       |
 | `GET`    | `/api/v1/events`              | signed in                                       | 200 `text/event-stream` of `RealtimeEvent`; first message is the unread count                                       |
 | `GET`    | `/api/v1/notifications`       | signed in                                       | 200 `Page<Notification>`; `page`, `perPage`                                                                         |
 
-Errors are `{ code, message, fieldErrors? }` with 401, 403, 404, 422 (validation, including a
+Errors are `{ code, message, fieldErrors? }` with 401, 403, 404, 409 (a stale `version`), 422 (validation, including a
 non-JSON content type or malformed JSON) or 429. Status transitions (publish, archive) are
 Server-Action-only.
 
-**Errors.** The DAL throws `UnauthorizedError`, `ForbiddenError`, `NotFoundError` and
-`ValidationError`. Actions turn them into `ActionResult` failures, the Route Handler into
-401/403/404/422 JSON, and `loadPage` into a login redirect or `notFound()`.
+**Errors.** The DAL throws `UnauthorizedError`, `ForbiddenError`, `NotFoundError`,
+`ValidationError` and `ConflictError`. Actions turn them into `ActionResult` failures, the Route Handler into
+401/403/404/409/422 JSON, and `loadPage` into a login redirect or `notFound()`.
 
 **Presenters.** Types are the source of truth; presenters exist only for overrides. A presenter is
 a plain function that spreads the DTO and replaces just the fields a view needs reshaped
@@ -428,6 +428,7 @@ Where to look to see each pattern done once, properly.
 | Status workflow                       | `POST_STATUS_TRANSITIONS` in `lib/dto/posts.ts`; `setPostStatus` in `lib/data/posts.ts`; `components/Posts/StatusActions`; `app/(site)/posts/mine`                                         |
 | Record-level authorization policies   | `lib/data/policy.ts` (`authorize`, `permissionsFor`); `lib/data/policies/posts.ts` (`postPolicy`, `commentPolicy`); used by `requirePostChange` in `lib/data/posts.ts` and `deleteComment` |
 | Soft delete (trash) and restore       | `deletedAt` on `Post`; `deletePost` / `restorePost` and `buildPostWhere` in `lib/data/posts.ts`; `purgeDeletedPosts` in `lib/data/maintenance.ts`; `components/Posts/RestoreButton`        |
+| Optimistic locking (409)              | `version` on `Post`; `updatePost` in `lib/data/posts.ts`; `ConflictError` in `lib/data/errors.ts`; `components/Posts/Form`, `app/(site)/posts/[userId]/[id]/edit/view.tsx`                 |
 | Viewer-dependent visibility           | `canViewPost`, `getPost` and `listPosts` in `lib/data/posts.ts` (cache the shared part, check the viewer after)                                                                            |
 | Redis caching and invalidation        | `remember` / `invalidateTags` in `lib/server/cache.ts`; tags in `lib/data/cacheTags.ts`; used throughout `lib/data/posts.ts` and `lib/data/comments.ts`                                    |
 | Multi-filter `where` builder          | `buildPostWhere` in `lib/data/posts.ts`; `listPostsQuery` in `lib/dto/posts.ts`                                                                                                            |
