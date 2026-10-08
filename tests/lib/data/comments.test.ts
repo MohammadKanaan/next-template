@@ -10,6 +10,7 @@ import {
   UnauthorizedError,
   ValidationError,
 } from '@/lib/data/errors'
+import { createNotification } from '@/lib/data/notifications'
 import { getPost, listPosts, setPostStatus } from '@/lib/data/posts'
 import { updateProfile } from '@/lib/data/users'
 import { NOTIFICATION_TITLE_MAX_LENGTH } from '@/lib/dto/notifications'
@@ -25,6 +26,11 @@ vi.mock('next/headers', () => ({
   headers: async () => requestHeaders(),
 }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn(), refresh: vi.fn() }))
+// The real function by default; one case makes it reject.
+vi.mock('@/lib/data/notifications', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/data/notifications')>()
+  return { ...actual, createNotification: vi.fn(actual.createNotification) }
+})
 
 const seedPost = (userId: string, status: 'draft' | 'published' | 'archived' = 'published') => {
   return db.post.create({ data: { userId, title: 'Post', body: 'Body', status } })
@@ -130,6 +136,20 @@ describe('comments DAL', () => {
       const [notification] = await db.notification.findMany({ where: { userId: author.id } })
       expect(notification.title).toHaveLength(NOTIFICATION_TITLE_MAX_LENGTH)
       expect(notification.title.endsWith('…')).toBe(true)
+    })
+
+    it('still saves and returns the comment when the notification fails', async () => {
+      const author = await createUser({})
+      const commenter = await createUser({})
+      const post = await seedPost(author.id)
+      await signInAs(commenter)
+      vi.mocked(createNotification).mockRejectedValueOnce(new Error('database down'))
+
+      await expect(createComment(post.id, { body: 'Still here' })).resolves.toMatchObject({
+        body: 'Still here',
+      })
+      expect(await db.comment.count({ where: { postId: post.id } })).toBe(1)
+      expect(await db.notification.count()).toBe(0)
     })
 
     it('bounds the body', async () => {

@@ -11,6 +11,7 @@ import {
 } from '@/lib/dto/comments'
 import { NOTIFICATION_TITLE_MAX_LENGTH } from '@/lib/dto/notifications'
 import { invalidateTags, remember } from '@/lib/server/cache'
+import { logger } from '@/lib/server/logger'
 import { getSessionUser, requireUser, type SessionUser } from './auth'
 import { commentsTag, POSTS_TAG, postTag } from './cacheTags'
 import { db } from './db'
@@ -19,6 +20,8 @@ import { createNotification } from './notifications'
 import { canViewPost, getPost } from './posts'
 import { consumeRateLimit } from './rateLimit'
 import { userProfileSelect } from './users'
+
+const log = logger.child({ module: 'comments' })
 
 const COMMENTS_CACHE_TTL = 300
 /** A post's comments are listed oldest first, up to this many. */
@@ -125,17 +128,22 @@ export const createComment = async (
   await invalidateComments(id)
   // The author hears about other people's comments; their own need no notification. A post title
   // plus a name can outgrow the notification title limit, so the title is cut rather than rejected.
+  // The comment is already saved, so a failed notification is logged, never surfaced.
   if (post.userId !== viewer.id) {
-    await createNotification({
-      userId: post.userId,
-      type: 'comment',
-      title: truncate(
-        `${row.user.name} commented on "${post.title}"`,
-        NOTIFICATION_TITLE_MAX_LENGTH,
-      ),
-      body: truncate(body, NOTIFICATION_EXCERPT_LENGTH),
-      url: ROUTE_POST_DETAILS(post.userId, id),
-    })
+    try {
+      await createNotification({
+        userId: post.userId,
+        type: 'comment',
+        title: truncate(
+          `${row.user.name} commented on "${post.title}"`,
+          NOTIFICATION_TITLE_MAX_LENGTH,
+        ),
+        body: truncate(body, NOTIFICATION_EXCERPT_LENGTH),
+        url: ROUTE_POST_DETAILS(post.userId, id),
+      })
+    } catch (error) {
+      log.error({ err: error, postId: id }, 'author not notified')
+    }
   }
   return {
     ...toCommentBase(row),
