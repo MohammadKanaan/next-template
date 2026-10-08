@@ -42,7 +42,7 @@ worker: handleSendPush ──► maintenance.listPushSubscriptions(userId) → s
                             404 / 410 → maintenance.deletePushSubscriptionByEndpoint(endpoint)
 
 browser: useRealtime(onEvent) → NotificationBell (badge, popover, toast)
-         public/sw.js: 'push' → showNotification unless a window is focused; 'notificationclick' → open url
+         public/sw.js: 'push' → always showNotification; 'notificationclick' → focus the window at url, else open it
          PushSettings card on /settings: register the SW, subscribe, subscribePushAction / unsubscribePushAction
 ```
 
@@ -68,8 +68,12 @@ Two models, one migration (`add_notifications_push`), both cascading from `User`
 - Realtime events: a `notification` event carries the full DTO (the bell prepends it, no fetch); an
   `unread` event carries the authoritative count and is sent on every (re)connect and after every
   mark-as-read, so every tab self-heals.
-- Web Push payload: `{ title, body, url }`. The service worker skips the OS notification when any
-  window of the origin is focused (that tab's bell already showed it).
+- Web Push payload: `{ title, body, url }`. The service worker always shows the OS notification,
+  even when a window of the origin is focused: the subscription is `userVisibleOnly`, Chrome and
+  Safari require a visible notification per push, and Safari may revoke a subscription that skips
+  one. A focused tab therefore gets the bell's toast and the system notification. A payload that is
+  missing or not JSON shows a generic "New notification" (no url). On click the worker focuses a
+  window already at the url, otherwise opens one; it never navigates an existing tab.
 
 ## Error handling
 

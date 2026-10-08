@@ -618,8 +618,11 @@ tab open. The first event is "someone commented on your post".
   (`listPushSubscriptions`), deletes a subscription the push service reports gone (404 / 410,
   `PushGoneError`) and rethrows any other failure after the loop so pg-boss retries.
 - **Browser side:** `public/sw.js` (served with `Cache-Control: no-cache, no-store` from
-  `next.config.ts`) shows an OS notification unless a window of the origin is focused (that tab's bell
-  already showed it) and opens the `url` on click. The `PushSettings` card on `/settings` registers it
+  `next.config.ts`) always shows an OS notification, even in a focused tab (the subscription is
+  `userVisibleOnly`; Chrome and Safari require one per push and Safari may revoke the subscription
+  otherwise), so a focused tab gets the toast and the system notification. A payload that is not
+  JSON shows a generic one. On click it focuses a window already at the `url`, else opens one; it
+  never navigates an existing tab. The `PushSettings` card on `/settings` registers it
   and stores the subscription through `subscribePushAction` / `unsubscribePushAction`
   (`savePushSubscription` is rate limited per user in the DAL; an endpoint another user held is
   re-owned). The public key reaches the browser as a prop from `getPushConfig()` (page → view →

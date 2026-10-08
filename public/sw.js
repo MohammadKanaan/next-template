@@ -1,21 +1,28 @@
 // Web Push service worker. Registered by components/Settings/PushSettings; messages come from
 // jobs/sendPush.ts with the payload { title, body, url }.
 
-self.addEventListener('push', (event) => {
-  if (!event.data) {
-    return
+// Every push must end in a visible notification: the subscription is `userVisibleOnly`, and
+// Chrome and Safari both require it (Safari may revoke a subscription that skips one). A focused
+// tab therefore gets its toast and the system notification.
+const readPayload = (event) => {
+  try {
+    const payload = event.data?.json()
+    if (payload && typeof payload.title === 'string') {
+      return payload
+    }
+  } catch {
+    // Not JSON: fall through to the generic notification.
   }
-  const payload = event.data.json()
+  return { title: 'New notification' }
+}
+
+self.addEventListener('push', (event) => {
   event.waitUntil(
     (async () => {
-      const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
-      // A focused tab already showed it through the bell.
-      if (windows.some((client) => client.focused)) {
-        return
-      }
-      await self.registration.showNotification(payload.title, {
-        body: payload.body,
-        data: { url: payload.url },
+      const { title, body, url } = readPayload(event)
+      await self.registration.showNotification(title, {
+        ...(typeof body === 'string' ? { body } : {}),
+        data: typeof url === 'string' ? { url } : {},
       })
     })(),
   )
@@ -27,10 +34,10 @@ self.addEventListener('notificationclick', (event) => {
   event.waitUntil(
     (async () => {
       const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
-      const existing = windows.find((client) => 'navigate' in client)
+      // Never navigate an arbitrary tab (it may hold unsaved input): reuse one already there.
+      const existing = windows.find((client) => client.url === url)
       if (existing) {
         await existing.focus()
-        await existing.navigate(url)
         return
       }
       await self.clients.openWindow(url)
