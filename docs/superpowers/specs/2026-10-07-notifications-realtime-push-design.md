@@ -74,8 +74,10 @@ Two models, one migration (`add_notifications_push`), both cascading from `User`
 ## Error handling
 
 - `publish` never throws (logged, like the cache). A failed `SUBSCRIBE` propagates: the events
-  route answers 500, the browser's `EventSource` retries, and the next attempt succeeds when Redis
-  is back.
+  route answers 500. A non-200 response closes an `EventSource` for good (it only reconnects by
+  itself after a network drop or a clean close), so `useRealtime` listens for `onerror`, and when the
+  stream is `CLOSED` it opens a new one after a backoff (1 s, doubling to 30 s, reset on `onopen`),
+  which succeeds once Redis is back.
 - `send-push`: a `PushGoneError` (404 / 410 from the push service) deletes that subscription; any
   other failure is rethrown after the loop so pg-boss retries (`retryLimit: 2`; a retry may re-send
   to the other subscriptions — accepted).

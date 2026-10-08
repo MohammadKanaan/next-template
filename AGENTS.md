@@ -605,7 +605,10 @@ tab open. The first event is "someone commented on your post".
   record.
 - **Client:** `useRealtime(onEvent)` (`hooks/useRealtime.ts`) is the only consumer of the stream: one
   `EventSource`, events parsed with `realtimeEventSchema`, the latest handler through
-  `useEffectEvent`. `NotificationBell` (`components/Notifications/Bell`) mounts it for a signed-in
+  `useEffectEvent`. `EventSource` reconnects by itself only after a network drop or a clean close; a
+  non-200 answer (500 while Redis is down, 502 during a deploy) closes it for good, so the hook
+  reopens a closed stream with a backoff (1 s, doubling to 30 s, reset on open) and clears the timer
+  on unmount. `NotificationBell` (`components/Notifications/Bell`) mounts it for a signed-in
   viewer: badge, toast, and a popover that loads the latest ten through `fetchNotifications`. The
   `(site)` layout seeds the badge with `getUnreadNotificationCount()`.
 - **Web Push:** the VAPID trio is optional and all-or-none; without it push is off and
