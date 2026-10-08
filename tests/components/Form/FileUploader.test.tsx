@@ -45,14 +45,20 @@ describe('FileUploader', () => {
   })
 
   it('refuses the files beyond maxFiles without sending them, and counts only acceptable ones', async () => {
-    const { input, onUpload } = setup({ maxFiles: 2 })
+    const names: string[] = []
+    const { input } = setup({
+      maxFiles: 2,
+      onUpload: vi.fn(async (file: File) => {
+        names.push(file.name)
+      }),
+    })
     const bad = new File([new Uint8Array(10)], 'bad.txt', { type: 'text/plain' })
     await userEvent.upload(input, [bad, pdf('a.pdf'), pdf('b.pdf'), pdf('c.pdf')], {
       applyAccept: false,
     })
 
     await waitFor(() => expect(screen.getAllByText('Uploaded')).toHaveLength(2))
-    expect(onUpload.mock.calls.map(([file]) => file.name)).toEqual(['a.pdf', 'b.pdf'])
+    expect(names).toEqual(['a.pdf', 'b.pdf'])
     expect(screen.getByText('bad.txt is not an allowed file type')).toBeInTheDocument()
     expect(screen.getByText('c.pdf was not uploaded: no room left')).toBeInTheDocument()
   })

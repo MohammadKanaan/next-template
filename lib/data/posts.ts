@@ -430,17 +430,17 @@ export const createPost = async (input: CreatePostParams): Promise<PostDetail> =
   await consumeRateLimit(`create-post:user:${viewer.id}`, { max: 20, windowMs: 60_000 })
   const { tags, ...data } = parseInput(createPostInput, input)
   // One transaction: the post and its tag links appear together or not at all.
-  const row = await db.$transaction(async (tx) => {
-    const created = await tx.post.create({
+  const created = await db.$transaction(async (tx) => {
+    const { id } = await tx.post.create({
       data: { ...data, userId: viewer.id },
       select: { id: true },
     })
-    await replacePostTags(tx, created.id, tags)
-    return tx.post.findUniqueOrThrow({ where: { id: created.id }, select: postDetailSelect })
+    await replacePostTags(tx, id, tags)
+    return id
   })
   await invalidateTags(POSTS_TAG)
-  await recordAudit({ actorId: viewer.id, action: 'post.create', entityId: row.id })
-  const post = toPostBase(row)
+  await recordAudit({ actorId: viewer.id, action: 'post.create', entityId: created })
+  const post = toPostBase(await readPostDetail(created))
   return withPermissions(post, viewer)
 }
 
@@ -450,6 +450,18 @@ const mapMissingRecord = (error: unknown): never => {
     throw new NotFoundError('Post not found')
   }
   throw error
+}
+
+/**
+ * The detail row of a post, read on the pool and never inside an interactive transaction: Prisma
+ * loads the to-many relations of one read (tags, attachments) concurrently, and a transaction has
+ * a single connection, so `pg` warns that it is asked to run a query while one is in flight (an
+ * error from pg@9 on). Write transactions return the id and the caller reads this afterwards.
+ */
+const readPostDetail = (id: number) => {
+  return db.post
+    .findUniqueOrThrow({ where: { id }, select: postDetailSelect })
+    .catch(mapMissingRecord)
 }
 
 /**
@@ -488,31 +500,28 @@ export const updatePost = async (
   const postId = parseInput(idSchema, id)
   const { tags, version, ...data } = parseInput(updatePostInput, input)
   await requirePostChange(viewer, postId, 'update')
-  const row = await db
-    .$transaction(async (tx) => {
-      // Optimistic locking: the edit applies only to the version the caller read, and bumps it.
-      // Prisma skips `@updatedAt` for an empty `data`, so it is set here: a tags-only edit is an edit.
-      const updated = await tx.post.updateMany({
-        where: { id: postId, version, deletedAt: null },
-        data: { ...data, version: { increment: 1 }, updatedAt: new Date() },
-      })
-      if (updated.count === 0) {
-        // Gone or trashed since the checks is a 404; otherwise someone else saved first.
-        const live = await tx.post.findFirst({
-          where: { id: postId, deletedAt: null },
-          select: { id: true },
-        })
-        if (!live) {
-          throw new NotFoundError('Post not found')
-        }
-        throw new ConflictError('The post was changed meanwhile. Reload and try again.')
-      }
-      if (tags !== undefined) {
-        await replacePostTags(tx, postId, tags)
-      }
-      return tx.post.findUniqueOrThrow({ where: { id: postId }, select: postDetailSelect })
+  await db.$transaction(async (tx) => {
+    // Optimistic locking: the edit applies only to the version the caller read, and bumps it.
+    // Prisma skips `@updatedAt` for an empty `data`, so it is set here: a tags-only edit is an edit.
+    const updated = await tx.post.updateMany({
+      where: { id: postId, version, deletedAt: null },
+      data: { ...data, version: { increment: 1 }, updatedAt: new Date() },
     })
-    .catch(mapMissingRecord)
+    if (updated.count === 0) {
+      // Gone or trashed since the checks is a 404; otherwise someone else saved first.
+      const live = await tx.post.findFirst({
+        where: { id: postId, deletedAt: null },
+        select: { id: true },
+      })
+      if (!live) {
+        throw new NotFoundError('Post not found')
+      }
+      throw new ConflictError('The post was changed meanwhile. Reload and try again.')
+    }
+    if (tags !== undefined) {
+      await replacePostTags(tx, postId, tags)
+    }
+  })
   await invalidateTags(POSTS_TAG, postTag(postId))
   await recordAudit({
     actorId: viewer.id,
@@ -526,10 +535,11 @@ export const updatePost = async (
           .map(([key]) => key),
         ...(tags === undefined ? [] : ['tags']),
       ],
-      version: row.version,
+      // The version this edit wrote; a later edit may already have moved the post on.
+      version: version + 1,
     },
   })
-  const post = toPostBase(row)
+  const post = toPostBase(await readPostDetail(postId))
   return withPermissions(post, viewer)
 }
 
@@ -573,10 +583,7 @@ export const setPostStatus = async (id: number, status: PostStatus): Promise<Pos
     entityId: postId,
     metadata: { from: current.status, to: next },
   })
-  const row = await db.post
-    .findUniqueOrThrow({ where: { id: postId }, select: postDetailSelect })
-    .catch(mapMissingRecord)
-  const post = toPostBase(row)
+  const post = toPostBase(await readPostDetail(postId))
   return withPermissions(post, viewer)
 }
 
@@ -618,8 +625,5 @@ export const restorePost = async (id: number | string): Promise<PostDetail> => {
   }
   await invalidateTags(POSTS_TAG, postTag(postId))
   await recordAudit({ actorId: viewer.id, action: 'post.restore', entityId: postId })
-  const row = await db.post
-    .findUniqueOrThrow({ where: { id: postId }, select: postDetailSelect })
-    .catch(mapMissingRecord)
-  return withPermissions(toPostBase(row), viewer)
+  return withPermissions(toPostBase(await readPostDetail(postId)), viewer)
 }

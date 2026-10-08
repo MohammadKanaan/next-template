@@ -92,6 +92,10 @@ Rules that keep it correct:
   can deadlock each other.
 - Re-check what you need on the locked row (the `deleted_at IS NULL` in `attachPostUpload`'s lock is such a
   check), because the pre-transaction read is only advisory.
+- Do not read a row with several to-many relations (`postDetailSelect`: tags, attachments) through
+  `tx`: Prisma loads them concurrently and an interactive transaction has one connection, which `pg`
+  reports as "client.query() while already executing a query" (an error from pg@9). Return the id
+  from the transaction and read the detail afterwards (`readPostDetail`).
 - Postgres releases the lock at commit or rollback; there is no unlock call.
 
 **Live examples:**

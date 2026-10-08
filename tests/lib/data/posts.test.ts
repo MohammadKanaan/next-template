@@ -423,12 +423,15 @@ describe('posts DAL', () => {
     const vanished = await db.post
       .delete({ where: { id: 999_999 } })
       .catch((error: unknown) => error)
-    // `updatePost` writes inside a transaction, so that is where the failure surfaces.
-    vi.spyOn(db, '$transaction').mockImplementation(() => Promise.reject(vanished) as never)
-    vi.spyOn(db.post, 'updateMany').mockImplementation(() => Promise.resolve({ count: 0 }) as never)
+    // `updatePost` reads the detail back after its transaction, so that is where the failure
+    // surfaces (the post was purged in between).
+    vi.spyOn(db.post, 'findUniqueOrThrow').mockImplementation(
+      () => Promise.reject(vanished) as never,
+    )
     await expect(updatePost(post.id, { version: 1, title: 'x' })).rejects.toBeInstanceOf(
       NotFoundError,
     )
+    vi.spyOn(db.post, 'updateMany').mockImplementation(() => Promise.resolve({ count: 0 }) as never)
     await expect(deletePost(post.id)).rejects.toBeInstanceOf(NotFoundError)
   })
 
