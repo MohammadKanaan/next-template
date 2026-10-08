@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useEffectEvent, useState } from 'react'
 import { SignOutButton } from '@/components/Auth/SignOutButton'
+import { NotificationBell } from '@/components/Notifications/Bell'
 import { Button } from '@/components/SCN/button'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { UserAvatar } from '@/components/UserAvatar'
@@ -93,9 +94,11 @@ const AccountActions = ({ user }: AccountActionsProps) => {
 
 type NavBarProps = {
   user: CurrentUser | null
+  /** The signed-in viewer's unread notifications, rendered on the server. */
+  unreadCount: number
 }
 
-export const NavBar = ({ user }: NavBarProps) => {
+export const NavBar = ({ user, unreadCount }: NavBarProps) => {
   const { lockScroll, unlockScroll } = useScrollLock()
   const links = [
     ...NAV_LINKS,
@@ -154,6 +157,7 @@ export const NavBar = ({ user }: NavBarProps) => {
           <NavLinks links={links} />
           <div className={styles.accountArea}>
             <ThemeToggle />
+            {user && <NotificationBell initialUnreadCount={unreadCount} />}
             <AccountActions user={user} />
           </div>
         </div>
@@ -184,6 +188,7 @@ export const NavBar = ({ user }: NavBarProps) => {
           </div>
           <div className={styles.mobileAccountArea}>
             <ThemeToggle />
+            {user && <NotificationBell initialUnreadCount={unreadCount} />}
             {/* Account actions close the menu; theme choices keep it open. */}
             <div className={styles.accountArea} onClick={closeMobileMenu}>
               <AccountActions user={user} />
