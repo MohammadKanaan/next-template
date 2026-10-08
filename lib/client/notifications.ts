@@ -1,34 +1,15 @@
-import { z } from 'zod'
 import type { CursorPage } from '@/lib/dto/common'
 import {
   notificationsPageSchema,
   type ListNotificationsQuery,
   type Notification,
 } from '@/lib/dto/notifications'
-import { env } from '@/lib/env'
-import { RequestError } from './errors'
-
-const errorMessageSchema = z.object({ message: z.string() })
+import { getJson } from './getJson'
 
 /** Client facade for `GET /api/v1/notifications`; returns the same `CursorPage<Notification>` as the DAL. */
 export const fetchNotifications = async (
   query: Partial<ListNotificationsQuery>,
   signal?: AbortSignal,
 ): Promise<CursorPage<Notification>> => {
-  const params = new URLSearchParams()
-  for (const [key, value] of Object.entries(query)) {
-    if (value !== undefined && value !== null) {
-      params.set(key, String(value))
-    }
-  }
-  const response = await fetch(`${env.apiBaseUrl}/notifications?${params}`, { signal })
-  const body: unknown = await response.json().catch(() => null)
-  if (!response.ok) {
-    const parsed = errorMessageSchema.safeParse(body)
-    throw new RequestError(
-      parsed.success ? parsed.data.message : `Request failed (${response.status})`,
-      response.status,
-    )
-  }
-  return notificationsPageSchema.parse(body)
+  return getJson('/notifications', query, notificationsPageSchema, signal)
 }
