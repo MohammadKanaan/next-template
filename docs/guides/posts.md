@@ -21,9 +21,10 @@ The posts example carries the domain patterns an app needs (all in `lib/data/pos
   `published` is ignored. A result the viewer's identity changed skips `remember()`.
   `/posts/mine` (`ROUTE_POSTS_MINE`, private) is the author's own list with the filters (including
   the status select) and `PostStatusActions` per row.
-- **Multi-filter lists:** `listPostsQuery` takes `authorId`, `q`, `sort`, `status`, `tag` and
-  `from` / `to` (UTC `YYYY-MM-DD`, both days inclusive, on `createdAt`); `buildPostWhere` in the DAL
-  composes them. `postsUrlQuery` is the tolerant URL twin (every field `.catch()`es to `''` / its
+- **Multi-filter lists:** `listPostsQuery` takes `authorId`, `q` (full-text, see `docs/guides/search.md`), `sort`, `status`, `tag` and
+  `from` / `to` (UTC `YYYY-MM-DD`, both days inclusive, on `createdAt`); `resolvePostFilter` in the DAL
+  applies the visibility rules and `toPrismaWhere` / `toSqlConditions` render the result (see
+  `docs/guides/search.md`). `postsUrlQuery` is the tolerant URL twin (every field `.catch()`es to `''` / its
   default; `toListPostsParams` turns `''` into `undefined`) shared by the SSR pages and
   `useUrlState`. `components/Posts/Filters` is one component: tag select (from `listTags`), date
   inputs, sort, "Clear filters", and a status select only on the page that passes `status`. Any

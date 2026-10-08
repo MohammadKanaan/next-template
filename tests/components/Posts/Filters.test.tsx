@@ -111,6 +111,40 @@ describe('PostsFilters', () => {
     expect(onChange).toHaveBeenCalledWith({ sort: 'oldest' })
   })
 
+  describe('relevance', () => {
+    it('is the order shown while searching with the default sort, and can be chosen', async () => {
+      vi.useRealTimers()
+      const onChange = vi.fn()
+      render(<Filters q="cats" sort="" onChange={onChange} />)
+      const sort = screen.getByRole('combobox', { name: 'Sort' })
+      expect(sort).toHaveTextContent('Most relevant')
+      await userEvent.click(sort)
+      expect(await screen.findByRole('option', { name: 'Most relevant' })).toBeInTheDocument()
+      await userEvent.click(screen.getByRole('option', { name: 'Newest first' }))
+      expect(onChange).toHaveBeenCalledWith({ sort: 'newest' })
+    })
+
+    it('is offered only while searching; the default order is newest first otherwise', async () => {
+      vi.useRealTimers()
+      render(<Filters q="" sort="" />)
+      const sort = screen.getByRole('combobox', { name: 'Sort' })
+      expect(sort).toHaveTextContent('Newest first')
+      await userEvent.click(sort)
+      await screen.findByRole('option', { name: 'Oldest first' })
+      expect(screen.queryByRole('option', { name: 'Most relevant' })).not.toBeInTheDocument()
+    })
+
+    it('shows newest first for a stale relevance order once the search is gone', () => {
+      render(<Filters q="" sort="relevance" />)
+      expect(screen.getByRole('combobox', { name: 'Sort' })).toHaveTextContent('Newest first')
+    })
+
+    it('keeps an order chosen explicitly while searching', () => {
+      render(<Filters q="cats" sort="oldest" />)
+      expect(screen.getByRole('combobox', { name: 'Sort' })).toHaveTextContent('Oldest first')
+    })
+  })
+
   it('disables both controls', () => {
     render(<Filters q="" sort="newest" onChange={() => {}} disabled />)
     expect(screen.getByLabelText('Search')).toBeDisabled()

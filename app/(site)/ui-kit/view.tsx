@@ -517,7 +517,7 @@ export const UiKitView = () => {
         id="posts-filters"
         eyebrow="Application components"
         title="PostsFilters"
-        description="Debounced title search, tag, status and trash toggle (only where the page passes a status), date range, sort order and a clear button; the page decides where the values live (URL state on the post lists)."
+        description="Debounced full-text search (most relevant order only while searching), tag, status and trash toggle (only where the page passes a status), date range, sort order and a clear button; the page decides where the values live (URL state on the post lists)."
       >
         <PostsFilters
           q={filters.q}

@@ -1,4 +1,5 @@
 import 'server-only'
+import { z } from 'zod'
 import { Prisma } from '@/generated/prisma/client'
 import { idSchema, toPage, type Page } from '@/lib/dto/common'
 import {
@@ -11,11 +12,13 @@ import {
   type ListPostsQuery,
   postDetailBaseSchema,
   postsPageSchema,
+  resolvePostsSort,
   setPostStatusInput,
   tagSummariesSchema,
   type PostDetail,
   type PostDetailBase,
   type PostStatus,
+  type PostsSort,
   type PostSummary,
   type TagSummary,
   updatePostInput,
@@ -26,7 +29,6 @@ import { invalidateTags, remember } from '@/lib/server/cache'
 import { getSessionUser, requireUser, type SessionUser } from './auth'
 import { POSTS_TAG, postTag } from './cacheTags'
 import { db } from './db'
-import { escapeLike } from './escapeLike'
 import { ConflictError, NotFoundError, parseInput, ValidationError } from './errors'
 import { postPolicy } from './policies/posts'
 import { authorize, permissionsFor } from './policy'
@@ -134,48 +136,155 @@ const resolveStatusFilter = (
 }
 
 /**
- * Composes every list condition into one `where`, and returns the status it applied and whether it
- * is the trash, so the caller can tell whether the result depends on the viewer. `from` and `to`
- * are UTC days, both inclusive. The trash is listed only by an admin or by an author listing their
- * own posts (like `status`, a request from anyone else is ignored); there `status` is whatever was
- * asked, no filter by default.
+ * What a list asks for after the visibility rules were applied: the one description both query
+ * paths (Prisma, and raw SQL for a search) are built from, so they cannot drift apart. `status` is
+ * `undefined` for every status; `createdFrom` is inclusive and `createdBefore` exclusive.
  */
-const buildPostWhere = (
-  query: Pick<ListPostsQuery, 'authorId' | 'q' | 'status' | 'tag' | 'from' | 'to' | 'trash'>,
-  viewer: SessionUser | null,
-) => {
-  const mayListTrash = viewer !== null && (viewer.role === 'admin' || query.authorId === viewer.id)
-  const trashed = query.trash && mayListTrash
-  const status = trashed ? query.status : resolveStatusFilter(viewer, query.authorId, query.status)
-  const createdAt: Prisma.DateTimeFilter = {}
-  if (query.from) {
-    createdAt.gte = new Date(`${query.from}T00:00:00.000Z`)
-  }
-  if (query.to) {
-    createdAt.lt = new Date(Date.parse(`${query.to}T00:00:00.000Z`) + DAY_MS)
-  }
-  const where: Prisma.PostWhereInput = {
-    deletedAt: trashed ? { not: null } : null,
-    ...(query.authorId ? { userId: query.authorId } : {}),
-    ...(status ? { status } : {}),
-    ...(query.q ? { title: { contains: escapeLike(query.q), mode: 'insensitive' } } : {}),
-    ...(query.tag ? { tags: { some: { tag: { name: query.tag } } } } : {}),
-    ...(query.from || query.to ? { createdAt } : {}),
-  }
-  return { where, status, trashed }
+type PostFilter = {
+  authorId: string | undefined
+  status: PostStatus | undefined
+  trashed: boolean
+  tag: string | undefined
+  createdFrom: Date | undefined
+  createdBefore: Date | undefined
 }
 
 /**
- * Lists posts, newest first by default, filtered by author, title search, tag, status and a
- * creation date range. `published` is all anyone sees, except that an author listing their own
- * posts sees every status and may choose one, and so may an admin (see `resolveStatusFilter`).
+ * Applies the visibility rules to a list query. `from` and `to` are UTC days, both inclusive. The
+ * trash is listed only by an admin or by an author listing their own posts (like `status`, a
+ * request from anyone else is ignored); there `status` is whatever was asked, no filter by default.
+ * The free-text `q` is not part of the filter: only the search path reads it.
+ */
+const resolvePostFilter = (
+  query: Pick<ListPostsQuery, 'authorId' | 'status' | 'tag' | 'from' | 'to' | 'trash'>,
+  viewer: SessionUser | null,
+): PostFilter => {
+  const mayListTrash = viewer !== null && (viewer.role === 'admin' || query.authorId === viewer.id)
+  const trashed = query.trash && mayListTrash
+  return {
+    authorId: query.authorId,
+    status: trashed ? query.status : resolveStatusFilter(viewer, query.authorId, query.status),
+    trashed,
+    tag: query.tag,
+    createdFrom: query.from ? new Date(`${query.from}T00:00:00.000Z`) : undefined,
+    createdBefore: query.to
+      ? new Date(Date.parse(`${query.to}T00:00:00.000Z`) + DAY_MS)
+      : undefined,
+  }
+}
+
+/** The filter as a Prisma `where`. */
+const toPrismaWhere = (filter: PostFilter): Prisma.PostWhereInput => {
+  const createdAt: Prisma.DateTimeFilter = {}
+  if (filter.createdFrom) {
+    createdAt.gte = filter.createdFrom
+  }
+  if (filter.createdBefore) {
+    createdAt.lt = filter.createdBefore
+  }
+  return {
+    deletedAt: filter.trashed ? { not: null } : null,
+    ...(filter.authorId ? { userId: filter.authorId } : {}),
+    ...(filter.status ? { status: filter.status } : {}),
+    ...(filter.tag ? { tags: { some: { tag: { name: filter.tag } } } } : {}),
+    ...(filter.createdFrom || filter.createdBefore ? { createdAt } : {}),
+  }
+}
+
+/**
+ * The same filter as `WHERE` conditions on `posts p`, every value a bound parameter. Never empty
+ * (the first condition is the trash rule), so the caller can join them with `AND`.
+ */
+const toSqlConditions = (filter: PostFilter): Prisma.Sql[] => {
+  const conditions = [
+    filter.trashed ? Prisma.sql`p.deleted_at IS NOT NULL` : Prisma.sql`p.deleted_at IS NULL`,
+  ]
+  if (filter.authorId) {
+    conditions.push(Prisma.sql`p.user_id = ${filter.authorId}`)
+  }
+  if (filter.status) {
+    conditions.push(Prisma.sql`p.status = ${filter.status}::"PostStatus"`)
+  }
+  if (filter.tag) {
+    conditions.push(Prisma.sql`EXISTS (
+      SELECT 1 FROM post_tags pt JOIN tags t ON t.id = pt.tag_id
+      WHERE pt.post_id = p.id AND t.name = ${filter.tag}
+    )`)
+  }
+  if (filter.createdFrom) {
+    conditions.push(Prisma.sql`p.created_at >= ${filter.createdFrom}::timestamptz`)
+  }
+  if (filter.createdBefore) {
+    conditions.push(Prisma.sql`p.created_at < ${filter.createdBefore}::timestamptz`)
+  }
+  return conditions
+}
+
+/** One row per page item, or a single row with a null `id` when the page is empty; `total` is the same on all. */
+const searchRowSchema = z.object({ total: z.bigint(), id: z.number().int().nullable() })
+
+const SEARCH_ORDER = {
+  relevance: Prisma.sql`rank DESC, id DESC`,
+  newest: Prisma.sql`id DESC`,
+  oldest: Prisma.sql`id ASC`,
+} as const
+
+/**
+ * Full-text search: one query returns the page of ids and the total of matches. `q` is parsed by
+ * `websearch_to_tsquery` (quoted phrases, `or`, `-exclusion`; it never fails on odd input, and a
+ * query of stop words only matches nothing). Titles weigh more than bodies in the rank. The
+ * summaries are then read with Prisma by id and put back in the query's order.
+ */
+const searchPosts = async (
+  q: string,
+  filter: PostFilter,
+  { page, perPage, sort }: { page: number; perPage: number; sort: PostsSort },
+): Promise<Page<PostSummary>> => {
+  const order = SEARCH_ORDER[sort]
+  const rows = z.array(searchRowSchema).parse(
+    await db.$queryRaw<unknown[]>`
+      WITH matches AS (
+        SELECT p.id, ts_rank(p.search_vector, query.q) AS rank
+        FROM posts p CROSS JOIN websearch_to_tsquery('english', ${q}) AS query(q)
+        WHERE p.search_vector @@ query.q AND ${Prisma.join(toSqlConditions(filter), ' AND ')}
+      ),
+      page AS (
+        SELECT id, rank FROM matches ORDER BY ${order} LIMIT ${perPage} OFFSET ${(page - 1) * perPage}
+      )
+      SELECT totals.total, page.id
+      FROM (SELECT count(*) AS total FROM matches) AS totals
+      LEFT JOIN page ON true
+      ORDER BY ${order}`,
+  )
+  const totalItems = Number(rows[0]?.total ?? 0)
+  const ids = rows.flatMap((row) => (row.id === null ? [] : [row.id]))
+  const found = await db.post.findMany({ where: { id: { in: ids } }, select: postSummarySelect })
+  const byId = new Map(found.map((row) => [row.id, row]))
+  const items = ids.flatMap((id) => {
+    const row = byId.get(id)
+    return row ? [toPostSummary(row)] : []
+  })
+  return toPage(items, totalItems, { page, perPage })
+}
+
+/**
+ * Lists posts, newest first by default, filtered by author, free-text search (title and body),
+ * tag, status and a creation date range. A search is ranked by relevance unless `sort` says
+ * otherwise. `published` is all anyone sees, except that an author listing their own posts sees
+ * every status and may choose one, and so may an admin (see `resolveStatusFilter`).
  */
 export const listPosts = async (params: ListPostsParams): Promise<Page<PostSummary>> => {
   const query = parseInput(listPostsQuery, params)
-  const { page, perPage, authorId, tag, sort } = query
+  const { page, perPage, authorId, tag, q } = query
+  const sort = resolvePostsSort(query.sort, Boolean(q))
   const viewer = await getSessionUser()
-  const { where, status, trashed } = buildPostWhere(query, viewer)
+  const filter = resolvePostFilter(query, viewer)
+  const { status, trashed } = filter
   const load = async () => {
+    if (q) {
+      return searchPosts(q, filter, { page, perPage, sort })
+    }
+    const where = toPrismaWhere(filter)
     const [rows, totalItems] = await Promise.all([
       db.post.findMany({
         where,
@@ -194,7 +303,7 @@ export const listPosts = async (params: ListPostsParams): Promise<Page<PostSumma
   // anyway), a tag that no published post uses (not in `listTags`, itself cached and capped) is
   // free for a caller to invent, and any other status, or the trash, means the viewer's identity
   // chose the result, so those go straight to the database.
-  if (query.q || query.from || query.to || authorId || trashed || status !== 'published') {
+  if (q || query.from || query.to || authorId || trashed || status !== 'published') {
     return load()
   }
   if (tag && !(await listTags()).some((known) => known.name === tag)) {

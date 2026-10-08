@@ -114,16 +114,14 @@ describe('posts DAL', () => {
     expect(page.totalItems).toBe(2)
   })
 
-  it('treats LIKE wildcards in a search literally', async () => {
+  it('treats punctuation in a search as text, never as a pattern', async () => {
     const author = await createUser({})
     await seedPost(author.id, '100% done')
     await seedPost(author.id, 'Plain title')
-    await seedPost(author.id, 'snake_case')
-    await seedPost(author.id, 'snakeXcase')
-    const percent = await listPosts({ page: 1, perPage: 10, q: '%' })
+    expect((await listPosts({ page: 1, perPage: 10, q: '%' })).items).toEqual([])
+    expect((await listPosts({ page: 1, perPage: 10, q: '_' })).totalItems).toBe(0)
+    const percent = await listPosts({ page: 1, perPage: 10, q: '100%' })
     expect(percent.items.map((post) => post.title)).toEqual(['100% done'])
-    const underscore = await listPosts({ page: 1, perPage: 10, q: 'snake_case' })
-    expect(underscore.items.map((post) => post.title)).toEqual(['snake_case'])
   })
 
   it('combines search with sort and author filter', async () => {
@@ -145,7 +143,7 @@ describe('posts DAL', () => {
   it('caches unfiltered lists but never a search', async () => {
     const author = await createUser({})
     await seedPost(author.id, 'Findable')
-    await listPosts({ page: 1, perPage: 10, q: 'find' })
+    await listPosts({ page: 1, perPage: 10, q: 'findable' })
     expect(await getRedis().keys('cache:v:*')).toEqual([])
 
     await listPosts({ page: 1, perPage: 10 })
@@ -153,7 +151,7 @@ describe('posts DAL', () => {
 
     // A search sees a new post at once: nothing cached could hide it.
     await seedPost(author.id, 'Findable too')
-    const page = await listPosts({ page: 1, perPage: 10, q: 'find' })
+    const page = await listPosts({ page: 1, perPage: 10, q: 'findable' })
     expect(page.totalItems).toBe(2)
   })
 
@@ -745,7 +743,7 @@ describe('posts DAL', () => {
       it('never caches a search, a date range or either end of one', async () => {
         const author = await createUser({})
         await seedPost(author.id, 'Findable')
-        await titles({ q: 'find' })
+        await titles({ q: 'findable' })
         await titles({ from: '2020-01-01' })
         await titles({ to: '2099-01-01' })
         await titles({ from: '2020-01-01', to: '2099-01-01', tag: 'news' })

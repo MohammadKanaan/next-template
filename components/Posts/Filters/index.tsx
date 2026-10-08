@@ -17,6 +17,7 @@ import {
   hasActivePostFilters,
   postStatusSchema,
   postsSortSchema,
+  resolvePostsSort,
   type PostStatus,
   type PostsSort,
   type TagSummary,
@@ -44,7 +45,8 @@ export type PostsFiltersPatch = {
 
 type PostsFiltersProps = {
   q: string
-  sort: PostsSort
+  /** `''` is the list's default order: relevance while searching, newest otherwise. */
+  sort: PostsSort | ''
   tag: string
   from: string
   to: string
@@ -153,7 +155,7 @@ export const PostsFilters = ({
         <Input
           type="search"
           label="Search"
-          placeholder="Search by title"
+          placeholder="Search posts"
           value={text}
           maxLength={POST_SEARCH_MAX_LENGTH}
           disabled={disabled}
@@ -225,11 +227,16 @@ export const PostsFilters = ({
       </div>
       <div className={styles.control}>
         <Label htmlFor={sortId}>Sort</Label>
-        <Select value={sort} onValueChange={handleSort} disabled={disabled}>
+        <Select
+          value={resolvePostsSort(sort, q !== '')}
+          onValueChange={handleSort}
+          disabled={disabled}
+        >
           <SelectTrigger id={sortId}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
+            {q !== '' && <SelectItem value="relevance">Most relevant</SelectItem>}
             <SelectItem value="newest">Newest first</SelectItem>
             <SelectItem value="oldest">Oldest first</SelectItem>
           </SelectContent>

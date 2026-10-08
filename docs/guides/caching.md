@@ -25,7 +25,7 @@ How the DAL caches:
   `tag` is not among the published posts' tags (`listTags()`, itself cached and capped, so a caller
   cannot mint keys by inventing tags), and when a viewer-chosen status (anything but `published`)
   shaped the result. Unfiltered lists and lists of a known tag keep the cache (`sort` and the
-  validated `tag` are part of their key). Search input is escaped for LIKE wildcards in the DAL.
+  validated `tag` are part of their key). Search input reaches the database only as a bound parameter of `websearch_to_tsquery`.
 - Cache keys are built from unambiguous parts (`JSON.stringify([...])`, as `listPosts` does), never
   by joining user-controlled strings, and every input that reaches a key is bounded in its DTO
   (`page`, `perPage`, `tag`), so a caller cannot collide with another entry or mint unlimited keys. The key space is bounded but

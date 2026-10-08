@@ -98,7 +98,11 @@ export const updatePostInput = postFieldsSchema
 
 export type UpdatePostInput = z.input<typeof updatePostInput>
 
-export const postsSortSchema = z.enum(['newest', 'oldest'])
+/**
+ * `relevance` ranks the matches of a search and is the default while `q` is set; without a search
+ * it means `newest`.
+ */
+export const postsSortSchema = z.enum(['newest', 'oldest', 'relevance'])
 
 export type PostsSort = z.infer<typeof postsSortSchema>
 
@@ -110,9 +114,10 @@ const isoDaySchema = z.iso.date()
 
 export const listPostsQuery = pageQuerySchema.extend({
   authorId: userIdSchema.optional(),
-  /** Case-insensitive title search; bounded because it is free text. */
+  /** Full-text search over title and body (web search syntax); bounded because it is free text. */
   q: z.string().trim().max(POST_SEARCH_MAX_LENGTH).optional(),
-  sort: postsSortSchema.default('newest'),
+  /** Omitted means `relevance` while searching and `newest` otherwise; see `resolvePostsSort`. */
+  sort: postsSortSchema.optional(),
   /** Only an admin or an author listing their own posts may choose a status; see `listPosts`. */
   status: postStatusSchema.optional(),
   tag: tagNameSchema.optional(),
@@ -130,9 +135,19 @@ export const listPostsQuery = pageQuerySchema.extend({
 
 export type ListPostsQuery = z.infer<typeof listPostsQuery>
 
-/** What callers pass to `listPosts` / `fetchPosts`: `sort` and `trash` have schema defaults, so they may be omitted. */
-export type ListPostsParams = Omit<ListPostsQuery, 'sort' | 'trash'> &
-  Partial<Pick<ListPostsQuery, 'sort' | 'trash'>>
+/** What callers pass to `listPosts` / `fetchPosts`: `trash` has a schema default, so it may be omitted. */
+export type ListPostsParams = Omit<ListPostsQuery, 'trash'> & Partial<Pick<ListPostsQuery, 'trash'>>
+
+/** The order a list uses: the asked one, else relevance while searching, else newest first. */
+export const resolvePostsSort = (
+  sort: PostsSort | '' | undefined,
+  searching: boolean,
+): PostsSort => {
+  if (sort === 'newest' || sort === 'oldest') {
+    return sort
+  }
+  return searching ? 'relevance' : 'newest'
+}
 
 /**
  * The tolerant URL contract of the post lists: every field falls back to its default, so any
@@ -142,7 +157,8 @@ export type ListPostsParams = Omit<ListPostsQuery, 'sort' | 'trash'> &
 export const postsUrlQuery = z.object({
   page: pageQuerySchema.shape.page.catch(1),
   q: z.string().trim().max(POST_SEARCH_MAX_LENGTH).catch(''),
-  sort: postsSortSchema.catch('newest'),
+  /** `''` is the default for the list: relevance while searching, newest otherwise. */
+  sort: z.union([postsSortSchema, z.literal('')]).catch(''),
   /** `''` means no filter, so an absent or garbled param and "all" look the same in the URL. */
   status: z.union([postStatusSchema, z.literal('')]).catch(''),
   tag: tagNameSchema.catch(''),
@@ -167,7 +183,7 @@ export const toListPostsParams = (
 ): Omit<ListPostsParams, 'perPage'> => {
   return {
     page: query.page,
-    sort: query.sort,
+    sort: query.sort || undefined,
     q: query.q || undefined,
     status: query.status || undefined,
     tag: query.tag || undefined,

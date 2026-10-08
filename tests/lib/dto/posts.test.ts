@@ -4,6 +4,7 @@ import {
   canTransitionPostStatus,
   createPostInput,
   listPostsQuery,
+  resolvePostsSort,
   setPostStatusInput,
   tagNameSchema,
   postsUrlQuery,
@@ -113,9 +114,21 @@ describe('listPostsQuery', () => {
 })
 
 describe('listPostsQuery search and sort', () => {
-  it('defaults sort to newest and leaves q unset', () => {
-    expect(listPostsQuery.parse({})).toMatchObject({ page: 1, sort: 'newest' })
-    expect(listPostsQuery.parse({}).q).toBeUndefined()
+  it('leaves sort and q unset, so the DAL can default the order from the search', () => {
+    const query = listPostsQuery.parse({})
+    expect(query.sort).toBeUndefined()
+    expect(query.q).toBeUndefined()
+  })
+
+  it('resolves the order: relevance only while searching, an explicit order wins', () => {
+    expect(resolvePostsSort(undefined, false)).toBe('newest')
+    expect(resolvePostsSort('', false)).toBe('newest')
+    expect(resolvePostsSort(undefined, true)).toBe('relevance')
+    expect(resolvePostsSort('', true)).toBe('relevance')
+    expect(resolvePostsSort('relevance', false)).toBe('newest')
+    expect(resolvePostsSort('relevance', true)).toBe('relevance')
+    expect(resolvePostsSort('oldest', true)).toBe('oldest')
+    expect(resolvePostsSort('newest', true)).toBe('newest')
   })
 
   it('trims q and bounds it', () => {
@@ -126,6 +139,7 @@ describe('listPostsQuery search and sort', () => {
 
   it('accepts only known sort orders', () => {
     expect(listPostsQuery.parse({ sort: 'oldest' }).sort).toBe('oldest')
+    expect(listPostsQuery.parse({ sort: 'relevance' }).sort).toBe('relevance')
     expect(listPostsQuery.safeParse({ sort: 'garbage' }).success).toBe(false)
   })
 })
@@ -135,7 +149,7 @@ describe('postsUrlQuery', () => {
     expect(postsUrlQuery.parse({})).toEqual({
       page: 1,
       q: '',
-      sort: 'newest',
+      sort: '',
       status: '',
       tag: '',
       from: '',
@@ -161,7 +175,7 @@ describe('postsUrlQuery', () => {
     expect(postsUrlQuery.parse({ page: String(MAX_PAGE + 1) }).page).toBe(1)
     expect(postsUrlQuery.parse({ page: ['1', '2'], sort: ['oldest'] })).toMatchObject({
       page: 1,
-      sort: 'newest',
+      sort: '',
     })
   })
 
@@ -239,7 +253,7 @@ describe('toListPostsParams', () => {
   it('turns empty filters into undefined and keeps the rest', () => {
     expect(toListPostsParams(postsUrlQuery.parse({}))).toEqual({
       page: 1,
-      sort: 'newest',
+      sort: undefined,
       q: undefined,
       status: undefined,
       tag: undefined,
