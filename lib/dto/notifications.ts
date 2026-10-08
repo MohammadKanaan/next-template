@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { safeRedirectPath } from '@/lib/constants-routes'
 import { pageQuerySchema, pageSchema } from './common'
 import { userIdSchema } from './users'
 
@@ -34,11 +35,17 @@ export const notificationsUrlQuery = z.object({
   page: pageQuerySchema.shape.page.catch(1),
 })
 
-/** A same-origin path: starts with one slash, so a notification can never link off-site. */
+/**
+ * A same-origin app path, in the form a browser resolves to itself: it round-trips through
+ * `safeRedirectPath`, so `/\evil.example`, `/<TAB>/evil.example` and `/.//evil.example` (which
+ * browsers read as protocol-relative) are rejected, not just `//evil.example`.
+ */
 const appPathSchema = z
   .string()
   .max(NOTIFICATION_URL_MAX_LENGTH)
-  .regex(/^\/(?!\/)/, 'Must be an app path')
+  .refine((value) => value.startsWith('/') && safeRedirectPath(value, '') === value, {
+    message: 'Must be an app path',
+  })
 
 /** Internal input of `createNotification`: what a DAL function knows after its own checks. */
 export const createNotificationInput = z.object({

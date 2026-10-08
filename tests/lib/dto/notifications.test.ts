@@ -48,6 +48,22 @@ describe('notification DTOs', () => {
     expect(createNotificationInput.safeParse({ ...valid, type: 'other' }).success).toBe(false)
   })
 
+  it('rejects urls a browser would resolve off-site, and keeps ordinary app paths', () => {
+    const valid = { userId: 'u1', type: 'comment', title: 'T', body: 'b' }
+    const accepts = (url: string) => createNotificationInput.safeParse({ ...valid, url }).success
+    for (const url of [
+      '/\\evil.example',
+      '/\t/evil.example',
+      '/.//evil.example',
+      'javascript:alert(1)',
+      '',
+    ]) {
+      expect(accepts(url), url).toBe(false)
+    }
+    expect(accepts('/posts/u/1?x=1#c')).toBe(true)
+    expect(accepts('/')).toBe(true)
+  })
+
   it('parses realtime events by type', () => {
     expect(realtimeEventSchema.parse({ type: 'unread', count: 2 })).toEqual({
       type: 'unread',
