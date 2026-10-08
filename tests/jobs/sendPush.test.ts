@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { handleSendPush } from '@/jobs/sendPush'
 import { deletePushSubscriptionByEndpoint, listPushSubscriptions } from '@/lib/data/maintenance'
-import { PushGoneError, sendPush } from '@/lib/server/push'
+import { PushGoneError, PushSendError, sendPush } from '@/lib/server/push'
 
 vi.mock('@/lib/data/maintenance', () => ({
   listPushSubscriptions: vi.fn(async () => []),
@@ -66,5 +66,18 @@ describe('send-push job', () => {
     await expect(handleSendPush(payload)).rejects.toThrow('push service down')
     expect(sendPush).toHaveBeenCalledTimes(2)
     expect(deletePushSubscriptionByEndpoint).not.toHaveBeenCalled()
+  })
+
+  it('deletes the gone subscription and still rejects when another send failed', async () => {
+    vi.mocked(listPushSubscriptions).mockResolvedValue([target(1), target(2)])
+    vi.mocked(sendPush).mockImplementation(async (t) => {
+      if (t.endpoint.endsWith('/1')) {
+        throw new PushGoneError(t.endpoint)
+      }
+      throw new PushSendError(500)
+    })
+    await expect(handleSendPush(payload)).rejects.toThrow('Push failed (500)')
+    expect(deletePushSubscriptionByEndpoint).toHaveBeenCalledTimes(1)
+    expect(deletePushSubscriptionByEndpoint).toHaveBeenCalledWith('https://push.example/1')
   })
 })

@@ -3,7 +3,11 @@ import { z } from 'zod'
 export const PUSH_ENDPOINT_MAX_LENGTH = 2048
 const PUSH_KEY_MAX_LENGTH = 512
 
-export const pushEndpointSchema = z.url().max(PUSH_ENDPOINT_MAX_LENGTH)
+/** Browsers a user can have push enabled on at once; the oldest subscriptions beyond it are dropped. */
+export const MAX_PUSH_SUBSCRIPTIONS_PER_USER = 10
+
+/** `https:` only: the worker posts to this URL, and every push service uses TLS. */
+export const pushEndpointSchema = z.url({ protocol: /^https$/ }).max(PUSH_ENDPOINT_MAX_LENGTH)
 
 /** The relevant part of `PushSubscription.toJSON()`; unknown keys (`expirationTime`) are dropped. */
 export const pushSubscriptionInput = z.object({

@@ -6,6 +6,7 @@ import {
   getPushPublicKey,
   isPushConfigured,
   PushGoneError,
+  PushSendError,
   resetPushConfig,
   sendPush,
 } from '@/lib/server/push'
@@ -61,6 +62,7 @@ describe('push', () => {
     expect(webpush.setVapidDetails).toHaveBeenCalledWith('mailto:a@b.co', 'pub', 'priv')
     expect(webpush.sendNotification).toHaveBeenCalledWith(target, JSON.stringify(payload), {
       TTL: 3600,
+      timeout: 10_000,
     })
   })
 
@@ -71,6 +73,22 @@ describe('push', () => {
     await expect(sendPush(target, payload)).rejects.toMatchObject({ endpoint: target.endpoint })
     vi.mocked(webpush.sendNotification).mockRejectedValueOnce(pushError('busy', 500))
     await expect(sendPush(target, payload)).rejects.not.toBeInstanceOf(PushGoneError)
+  })
+
+  it('hides the endpoint, headers and body of a failed send behind a PushSendError', async () => {
+    const failure = pushError('Received unexpected response code', 500)
+    vi.mocked(webpush.sendNotification).mockRejectedValueOnce(failure)
+    const error = await sendPush(target, payload).catch((caught: unknown) => caught)
+    expect(error).toBeInstanceOf(PushSendError)
+    expect(error).toMatchObject({ statusCode: 500, message: 'Push failed (500)' })
+    expect(JSON.stringify(error)).not.toContain(target.endpoint)
+    expect((error as Error).cause).toBeUndefined()
+  })
+
+  it('lets an error that is not a WebPushError propagate as it is', async () => {
+    const failure = new Error('socket hang up')
+    vi.mocked(webpush.sendNotification).mockRejectedValueOnce(failure)
+    await expect(sendPush(target, payload)).rejects.toBe(failure)
   })
 
   it('refuses to send when push is not configured', async () => {

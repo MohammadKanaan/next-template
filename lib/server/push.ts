@@ -18,6 +18,20 @@ export class PushGoneError extends Error {
   }
 }
 
+/**
+ * The push service answered with an error status. Deliberately carries only the status: a raw
+ * `WebPushError` holds the endpoint, headers and body, which would end up in the worker log.
+ */
+export class PushSendError extends Error {
+  constructor(readonly statusCode: number) {
+    super(`Push failed (${statusCode})`)
+    this.name = 'PushSendError'
+  }
+}
+
+/** Per-request socket timeout, so a tarpit endpoint cannot hold a worker socket open. */
+const PUSH_TIMEOUT_MS = 10_000
+
 /** Web Push is on only when the VAPID trio is set (`serverEnv()` rejects a partial trio). */
 export const isPushConfigured = (): boolean => serverEnv().VAPID_PRIVATE_KEY !== undefined
 
@@ -48,13 +62,16 @@ const configure = () => {
 export const sendPush = async (target: PushTarget, payload: PushPayload): Promise<void> => {
   configure()
   try {
-    await webpush.sendNotification(target, JSON.stringify(payload), { TTL: PUSH_TTL_SECONDS })
+    await webpush.sendNotification(target, JSON.stringify(payload), {
+      TTL: PUSH_TTL_SECONDS,
+      timeout: PUSH_TIMEOUT_MS,
+    })
   } catch (error) {
-    if (
-      error instanceof webpush.WebPushError &&
-      (error.statusCode === 404 || error.statusCode === 410)
-    ) {
-      throw new PushGoneError(target.endpoint)
+    if (error instanceof webpush.WebPushError) {
+      if (error.statusCode === 404 || error.statusCode === 410) {
+        throw new PushGoneError(target.endpoint)
+      }
+      throw new PushSendError(error.statusCode)
     }
     throw error
   }

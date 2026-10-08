@@ -28,4 +28,12 @@ describe('push DTOs', () => {
     expect(pushEndpointSchema.safeParse('https://p.example/x').success).toBe(true)
     expect(pushEndpointSchema.safeParse('x').success).toBe(false)
   })
+
+  it('accepts https endpoints only and bounds their length', () => {
+    expect(pushEndpointSchema.safeParse('http://push.example/x').success).toBe(false)
+    expect(pushEndpointSchema.safeParse('ftp://push.example/x').success).toBe(false)
+    expect(pushEndpointSchema.safeParse('https://push.example/' + 'a'.repeat(2048)).success).toBe(
+      false,
+    )
+  })
 })

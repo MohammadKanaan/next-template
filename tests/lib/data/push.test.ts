@@ -61,6 +61,30 @@ describe('push DAL', () => {
     expect(rows[0]).toMatchObject({ userId: second.id, p256dh: 'p2' })
   })
 
+  it('keeps at most ten subscriptions per user, evicting the oldest', async () => {
+    const user = await createUser({})
+    const other = await createUser({})
+    await signInAs(other)
+    await savePushSubscription(subscription('https://push.example/other'))
+    await signInAs(user)
+    for (let n = 0; n < 10; n++) {
+      await savePushSubscription(subscription(`https://push.example/${n}`))
+      await db.pushSubscription.update({
+        where: { endpoint: `https://push.example/${n}` },
+        data: { createdAt: new Date(Date.UTC(2026, 0, 1, 0, 0, n)) },
+      })
+    }
+    await savePushSubscription(subscription('https://push.example/10'))
+
+    const endpoints = (await db.pushSubscription.findMany({ where: { userId: user.id } })).map(
+      (row) => row.endpoint,
+    )
+    expect(endpoints).toHaveLength(10)
+    expect(endpoints).not.toContain('https://push.example/0')
+    expect(endpoints).toContain('https://push.example/10')
+    expect(await db.pushSubscription.count({ where: { userId: other.id } })).toBe(1)
+  })
+
   it('rate limits saving a subscription per user in production', async () => {
     const [first, second] = [await createUser({}), await createUser({})]
     await signInAs(first)

@@ -1,5 +1,6 @@
 import 'server-only'
 import {
+  MAX_PUSH_SUBSCRIPTIONS_PER_USER,
   pushEndpointSchema,
   pushSubscriptionInput,
   type PushConfig,
@@ -20,7 +21,8 @@ export const getPushConfig = (): PushConfig | null => {
 /**
  * Stores the viewer's browser subscription. The endpoint is unique per browser profile, so a
  * second sign-in on the same browser re-owns the row instead of failing. Rate limited per user
- * because it creates rows.
+ * because it creates rows, and capped at `MAX_PUSH_SUBSCRIPTIONS_PER_USER` rows (the oldest go),
+ * because the worker sends to every row.
  */
 export const savePushSubscription = async (input: PushSubscriptionInput): Promise<void> => {
   const viewer = await requireUser()
@@ -32,6 +34,15 @@ export const savePushSubscription = async (input: PushSubscriptionInput): Promis
     create: { endpoint, ...data },
     update: data,
   })
+  const surplus = await db.pushSubscription.findMany({
+    where: { userId: viewer.id },
+    orderBy: { createdAt: 'desc' },
+    skip: MAX_PUSH_SUBSCRIPTIONS_PER_USER,
+    select: { id: true },
+  })
+  if (surplus.length > 0) {
+    await db.pushSubscription.deleteMany({ where: { id: { in: surplus.map((row) => row.id) } } })
+  }
 }
 
 /** Removes the viewer's own subscription for `endpoint`; a missing one is fine. */
