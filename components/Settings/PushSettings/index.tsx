@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useEffect, useEffectEvent, useState, useSyncExternalStore } from 'react'
 import { LoadingButton } from '@/components/LoadingButton'
 import { pushSubscriptionInput, type PushSubscriptionInput } from '@/lib/dto/push'
 import { urlBase64ToUint8Array } from '@/lib/push'
@@ -24,6 +24,15 @@ const canPush = () => 'serviceWorker' in navigator && 'PushManager' in window
 
 const subscribeToNothing = () => () => {}
 
+/** Best effort: drops a browser subscription the server did not keep, so both sides agree. */
+const forget = async (subscription: PushSubscription | undefined) => {
+  try {
+    await subscription?.unsubscribe()
+  } catch {
+    // Nothing more to do; the next enable or disable repairs it.
+  }
+}
+
 /** The browser APIs exist, or null while rendering on the server (and on the first client render). */
 const useCanPush = () => useSyncExternalStore(subscribeToNothing, canPush, () => null)
 
@@ -33,6 +42,21 @@ export const PushSettings = ({ publicKey, onSubscribe, onUnsubscribe }: PushSett
   const [subscription, setSubscription] = useState<PushSubscription | null>(null)
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // The browser is the source of truth for "enabled", so a subscription it already holds is sent
+  // again once (the upsert is idempotent and re-owns) in case the server row was lost or belongs
+  // to someone else. A failure is ignored: the next enable or disable repairs it.
+  const resync = useEffectEvent(async (current: PushSubscription) => {
+    const input = pushSubscriptionInput.safeParse(current.toJSON())
+    if (!input.success) {
+      return
+    }
+    try {
+      await onSubscribe(input.data)
+    } catch {
+      // Ignored on purpose.
+    }
+  })
 
   useEffect(() => {
     if (!supported) {
@@ -46,6 +70,9 @@ export const PushSettings = ({ publicKey, onSubscribe, onUnsubscribe }: PushSett
         if (!cancelled) {
           setSubscription(current)
           setRegistration('ready')
+          if (current) {
+            void resync(current)
+          }
         }
       } catch {
         if (!cancelled) {
@@ -62,24 +89,28 @@ export const PushSettings = ({ publicKey, onSubscribe, onUnsubscribe }: PushSett
   const enable = async () => {
     setError(null)
     setPending(true)
+    let next: PushSubscription | undefined
     try {
       const worker = await navigator.serviceWorker.ready
-      const next = await worker.pushManager.subscribe({
+      next = await worker.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(publicKey),
       })
       const input = pushSubscriptionInput.safeParse(next.toJSON())
       if (!input.success) {
+        await forget(next)
         setError('This browser returned an unusable subscription.')
         return
       }
       const result = await onSubscribe(input.data)
       if (!result.ok) {
+        await forget(next)
         setError(result.message)
         return
       }
       setSubscription(next)
     } catch {
+      await forget(next)
       setError('Notifications were not enabled. Check the browser permission and try again.')
     } finally {
       setPending(false)

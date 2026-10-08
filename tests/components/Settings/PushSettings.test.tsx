@@ -87,12 +87,72 @@ describe('PushSettings', () => {
     ).toBeInTheDocument()
   })
 
-  it('shows an action failure', async () => {
+  it('drops the browser subscription when the server did not store it', async () => {
     const { onSubscribe } = setup()
     onSubscribe.mockResolvedValue({ ok: false, code: 'RATE_LIMITED', message: 'Too many attempts' })
     await userEvent.click(
       await screen.findByRole('button', { name: 'Enable browser notifications' }),
     )
     expect(await screen.findByRole('alert')).toHaveTextContent('Too many attempts')
+    expect(fakeSubscription.unsubscribe).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('button', { name: 'Enable browser notifications' })).toBeInTheDocument()
+  })
+
+  it('drops the browser subscription when saving it throws', async () => {
+    const { onSubscribe } = setup()
+    onSubscribe.mockRejectedValue(new Error('network'))
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Enable browser notifications' }),
+    )
+    expect(await screen.findByRole('alert')).toHaveTextContent(/not enabled/i)
+    expect(fakeSubscription.unsubscribe).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('button', { name: 'Enable browser notifications' })).toBeInTheDocument()
+  })
+
+  it('shows a message and stores nothing when the browser refuses to subscribe', async () => {
+    const { onSubscribe } = setup()
+    pushManager.subscribe.mockRejectedValueOnce(new Error('NotAllowedError'))
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Enable browser notifications' }),
+    )
+    expect(await screen.findByRole('alert')).toHaveTextContent(/not enabled/i)
+    expect(onSubscribe).not.toHaveBeenCalled()
+    expect(fakeSubscription.unsubscribe).not.toHaveBeenCalled()
+  })
+
+  it('re-sends an existing browser subscription once on mount to repair the server row', async () => {
+    pushManager.getSubscription.mockResolvedValue(fakeSubscription)
+    const { onSubscribe } = setup()
+    await screen.findByRole('button', { name: 'Disable browser notifications' })
+    expect(onSubscribe).toHaveBeenCalledTimes(1)
+    expect(onSubscribe).toHaveBeenCalledWith({
+      endpoint: 'https://push.example/a',
+      keys: { p256dh: 'p', auth: 'a' },
+    })
+  })
+
+  it('ignores a failed re-sync on mount', async () => {
+    pushManager.getSubscription.mockResolvedValue(fakeSubscription)
+    const onSubscribe = vi.fn().mockRejectedValue(new Error('network'))
+    render(
+      <PushSettings publicKey={PUBLIC_KEY} onSubscribe={onSubscribe} onUnsubscribe={vi.fn()} />,
+    )
+    await screen.findByRole('button', { name: 'Disable browser notifications' })
+    await waitFor(() => expect(onSubscribe).toHaveBeenCalledTimes(1))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('keeps the browser subscribed and shows the error when the server cannot forget it', async () => {
+    pushManager.getSubscription.mockResolvedValue(fakeSubscription)
+    const { onUnsubscribe } = setup()
+    onUnsubscribe.mockResolvedValue({ ok: false, code: 'RATE_LIMITED', message: 'Try later' })
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Disable browser notifications' }),
+    )
+    expect(await screen.findByRole('alert')).toHaveTextContent('Try later')
+    expect(fakeSubscription.unsubscribe).not.toHaveBeenCalled()
+    expect(
+      screen.getByRole('button', { name: 'Disable browser notifications' }),
+    ).toBeInTheDocument()
   })
 })
