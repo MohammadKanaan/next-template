@@ -69,6 +69,13 @@ describe('MyPostsView', () => {
     expect(screen.getByRole('link', { name: 'Write a post' })).toHaveAttribute('href', '/posts/new')
   })
 
+  it('keeps the Trash toggle reachable when the author has no live post', () => {
+    // Every post of this author may be in the trash: the toggle is the only way to restore them.
+    render(<MyPostsView posts={page([])} tags={[]} />)
+    expect(screen.getByText('No posts yet')).toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: 'Trash' })).toBeInTheDocument()
+  })
+
   it('does not say "No posts yet" on a page past the end when posts exist', () => {
     search.value = 'page=2'
     render(

@@ -38,21 +38,6 @@ export const MyPostsView = ({ posts, tags }: MyPostsViewProps) => {
   const { state, setState, isPending } = useUrlState(postsUrlQuery)
   const filtering = hasActivePostFilters(state)
 
-  // `totalItems`, not the page's items: a page past the end is empty while posts exist.
-  if (posts.totalItems === 0 && !filtering) {
-    return (
-      <Empty
-        title="No posts yet"
-        description="Write your first post. It starts as a draft until you publish it."
-        action={
-          <Button asChild>
-            <Link href={ROUTE_POST_NEW}>Write a post</Link>
-          </Button>
-        }
-      />
-    )
-  }
-
   return (
     <div className={styles.view}>
       <PostsFilters
@@ -67,7 +52,19 @@ export const MyPostsView = ({ posts, tags }: MyPostsViewProps) => {
         onChange={(patch) => setState({ ...patch, page: 1 })}
       />
       {posts.items.length === 0 ? (
-        posts.totalItems === 0 ? (
+        posts.totalItems === 0 && !filtering ? (
+          // The filters stay above: the Trash toggle is the only way to the posts in the trash,
+          // and a user whose posts are all trashed has no live post.
+          <Empty
+            title="No posts yet"
+            description="Write your first post. It starts as a draft until you publish it."
+            action={
+              <Button asChild>
+                <Link href={ROUTE_POST_NEW}>Write a post</Link>
+              </Button>
+            }
+          />
+        ) : posts.totalItems === 0 ? (
           <Empty
             title={state.trash ? 'The trash is empty' : 'No matching posts'}
             description={
