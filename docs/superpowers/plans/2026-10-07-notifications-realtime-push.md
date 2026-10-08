@@ -3492,6 +3492,47 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 ---
 
+## Amendments (2026-10-08, after the security-review batch landed on this branch)
+
+The security-review plan (`7f71dff..a9e8eb0`) changed files this plan touches. These amendments
+override the task text above where they conflict; everything else stands.
+
+1. **Task 11 Step 7 — `next.config.ts` already has `headers()`.** It now exports `SECURITY_HEADERS`
+   and returns `[{ source: '/(.*)', headers: SECURITY_HEADERS }]`. Keep that export and entry, and
+   **append** a second entry to the returned array:
+   `{ source: '/sw.js', headers: [{ key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' }] }`
+   (with the comment from Step 7). Then update `tests/next.config.test.ts` — the case
+   "serves the security headers on every path" must expect both entries, in that order; do not
+   weaken the other cases. `poweredByHeader: false` stays.
+2. **Task 7 — rate limit lives in the DAL, not the action.** The branch's convention is now that
+   content-creation limits sit in the DAL function right after `requireUser()` (see
+   `createComment` in `lib/data/comments.ts:91`). So: in `lib/data/push.ts` (Task 6)
+   `savePushSubscription` calls
+   `await consumeRateLimit(\`push-subscribe:user:${viewer.id}\`, { max: 10, windowMs: 60_000 })`
+   immediately after `requireUser()` (import from `./rateLimit`), and `actions/push.ts`
+   `subscribePushAction` becomes the plain `try { await savePushSubscription(input); return { ok: true, data: null } } catch { toActionFailure }`
+   shape — no `getSessionUser`, no `consumeRateLimit` in the action. In `tests/actions/push.test.ts`
+   drop the `@/lib/data/rateLimit` mock and the `consumeRateLimit` assertion. In
+   `tests/lib/data/push.test.ts` add one case that proves the limit, written the same way
+   `tests/lib/data/comments.test.ts` proves the `create-comment` limit (copy its approach:
+   `vi.stubEnv('NODE_ENV', 'production')` + `vi.unstubAllEnvs()`, or its mock — whichever that
+   file uses). Update the Task 7 **Interfaces** line accordingly.
+3. **Task 3 — `lib/server/env.ts` gained `TRUSTED_PROXY_HOPS` and `assertAuthEnv`.** Add the VAPID
+   trio after the Google pair as written; leave the new code alone. `tests/lib/server/env.test.ts`
+   now also imports `assertAuthEnv`; add the VAPID case as written and the VAPID keys to `stubEnv`'s
+   defaults.
+4. **Task 5 — `createComment` now starts with `consumeRateLimit` (line 91).** Keep it; add the
+   notification after `invalidateComments(id)` as written. `tests/lib/data/comments.test.ts` grew
+   rate-limit cases; append the two new cases inside `describe('createComment')` as written.
+5. **Task 4 Step 3 — `jobs/definitions.ts`:** `'send-email'` gained `deleteAfterSeconds: 3600`
+   because its payload carries live links. `send-push` carries only a title, an excerpt and an app
+   path, so the plan's options stand unchanged.
+6. **Task 12 — `AGENTS.md`, `README.md`, `.env.example`, `docker-compose.yml` were reorganised.**
+   Read their current text before editing; the plan's bullet lists say what to add, not where the
+   old line numbers were. Compose now binds infrastructure ports to loopback — leave that alone.
+7. **Task 1** starts from scratch: the earlier schema edit and migration folder were discarded with
+   the tree; re-create them exactly as Steps 1–2 say (`bun run db:test:prepare` included).
+
 ## Self-review notes
 
 - **Spec coverage:** data (Task 1), DTOs (Task 1), realtime (Task 2), env + push sender (Task 3), notifications DAL + comment hook (Tasks 4–5), push DAL + job (Task 6), routes/facade/actions (Task 7), hook (Task 8), bell/list (Task 9), nav/layout/page (Task 10), browser push + SW + headers (Task 11), docs (Task 12). Error-handling rules from the spec are implemented in Tasks 2 (`publish` never throws, `subscribe` propagates), 4 (404 for someone else's notification), 6 (`PushGoneError` deletes, others rethrow).
