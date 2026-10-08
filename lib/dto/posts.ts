@@ -93,7 +93,9 @@ export const updatePostInput = postFieldsSchema
   .partial()
   .extend({ version: postVersionSchema })
   .refine(
-    ({ version: _version, ...fields }) => Object.keys(fields).length > 0,
+    // Defined values, not keys: an explicit `undefined` carries no change.
+    ({ version: _version, ...fields }) =>
+      Object.values(fields).some((value) => value !== undefined),
     'Provide at least one attribute',
   )
 

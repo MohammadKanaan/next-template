@@ -31,6 +31,11 @@ describe('post inputs', () => {
   it('requires at least one attribute to update', () => {
     expect(updatePostInput.safeParse({}).success).toBe(false)
     expect(updatePostInput.safeParse({ version: 1 }).success).toBe(false)
+    // An explicit `undefined` (e.g. from a Server Action payload) carries no change either.
+    expect(updatePostInput.safeParse({ title: undefined, version: 1 }).success).toBe(false)
+    expect(
+      updatePostInput.safeParse({ title: undefined, tags: undefined, version: 1 }).success,
+    ).toBe(false)
     expect(updatePostInput.parse({ title: 'New', version: 1 })).toEqual({
       title: 'New',
       version: 1,
