@@ -14,22 +14,24 @@ enum Role {
 }
 
 model User {
-  id            String    @id
-  name          String
-  email         String    @unique
-  emailVerified Boolean   @default(false) @map("email_verified")
-  image         String?
-  username      String    @unique
-  phone         String?
-  website       String?
-  role          Role      @default(user)
-  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
-  sessions      Session[]
-  accounts      Account[]
-  posts         Post[]
-  uploads       Upload[]
-  comments      Comment[]
+  id                String             @id
+  name              String
+  email             String             @unique
+  emailVerified     Boolean            @default(false) @map("email_verified")
+  image             String?
+  username          String             @unique
+  phone             String?
+  website           String?
+  role              Role               @default(user)
+  createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
+  sessions          Session[]
+  accounts          Account[]
+  posts             Post[]
+  uploads           Upload[]
+  comments          Comment[]
+  notifications     Notification[]
+  pushSubscriptions PushSubscription[]
 
   @@map("users")
 }
@@ -119,6 +121,38 @@ model Comment {
   @@map("comments")
 }
 
+model Notification {
+  id        Int              @id @default(autoincrement())
+  /// The recipient.
+  userId    String           @map("user_id")
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  title     String
+  body      String
+  /// An app path (`/posts/...`), never an absolute URL.
+  url       String
+  readAt    DateTime?        @map("read_at") @db.Timestamptz(3)
+  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([userId, readAt])
+  @@index([userId, createdAt])
+  @@map("notifications")
+}
+
+model PushSubscription {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// One browser profile has one endpoint; re-subscribing re-owns the row.
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([userId])
+  @@map("push_subscriptions")
+}
+
 model Tag {
   id    Int       @id @default(autoincrement())
   name  String    @unique
@@ -146,6 +180,10 @@ enum UploadPurpose {
 enum UploadStatus {
   pending
   attached
+}
+
+enum NotificationType {
+  comment
 }
 
 model Upload {
