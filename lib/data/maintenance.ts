@@ -1,9 +1,11 @@
 import 'server-only'
 import { Prisma } from '@/generated/prisma/client'
+import { invalidateTags } from '@/lib/server/cache'
 import { logger } from '@/lib/server/logger'
 import { enqueue } from '@/lib/server/queue'
 import type { PushTarget } from '@/lib/server/push'
 import { deleteObject } from '@/lib/server/storage'
+import { commentsTag, postTag } from './cacheTags'
 import { db } from './db'
 
 const log = logger.child({ module: 'maintenance' })
@@ -80,7 +82,16 @@ const PURGE_TRANSACTION_TIMEOUT_MS = 30_000
  * while that happens (and re-checked against the cut-off), so a restore that races with the purge
  * either lands first, and the post is left alone, or waits and finds it gone. If a job cannot be
  * queued the batch is rolled back and the run fails; nothing is deleted without its objects being
- * queued. Returns how many posts went.
+ * queued. After each batch commits, the cached detail and comments of the purged posts are dropped
+ * (an author or admin could otherwise open a purged post from the cache for a few minutes); no
+ * cached list holds a trashed post, so `POSTS_TAG` stays. Returns how many posts went.
+ *
+ * The jobs are queued inside the transaction on purpose, unlike the usual rule in
+ * `docs/guides/money-and-concurrency.md` (queue after commit). Queued after the commit, a crash
+ * between the two would leave objects nobody knows about: their upload rows are gone, so no
+ * cleanup could find them. Queued inside, the failure that remains is a commit that fails after
+ * the sends, and its cost is that attachments of posts already past retention lose their files
+ * one run early; the rows survive and the next run purges them for good.
  */
 export const purgeDeletedPosts = async ({
   olderThanDays = TRASH_RETENTION_DAYS,
@@ -98,7 +109,7 @@ export const purgeDeletedPosts = async ({
     if (expired.length === 0) {
       break
     }
-    const removed = await db.$transaction(
+    const removedIds = await db.$transaction(
       async (tx) => {
         const locked = await tx.$queryRaw<{ id: number }[]>`
           SELECT id FROM posts
@@ -112,11 +123,13 @@ export const purgeDeletedPosts = async ({
         })
         await Promise.all(files.map(({ key }) => enqueue('delete-object', { key })))
         await tx.upload.deleteMany({ where: { id: { in: files.map((file) => file.id) } } })
-        const result = await tx.post.deleteMany({ where: { id: { in: ids } } })
-        return result.count
+        await tx.post.deleteMany({ where: { id: { in: ids } } })
+        return ids
       },
       { timeout: PURGE_TRANSACTION_TIMEOUT_MS },
     )
+    const removed = removedIds.length
+    await invalidateTags(...removedIds.flatMap((id) => [postTag(id), commentsTag(id)]))
     purged += removed
     if (expired.length < batch || removed === 0) {
       break

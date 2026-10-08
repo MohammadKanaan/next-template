@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/data/db'
+import { getPost } from '@/lib/data/posts'
 import {
   deleteExpiredAuthRows,
   deleteStalePendingUploads,
@@ -8,7 +9,7 @@ import {
 } from '@/lib/data/maintenance'
 import { enqueue } from '@/lib/server/queue'
 import { deleteObject } from '@/lib/server/storage'
-import { createUser, resetDatabase } from '../../helpers/server'
+import { createUser, resetDatabase, signInAs } from '../../helpers/server'
 
 const { cookieStore, requestHeaders } = await vi.hoisted(
   async () => import('../../helpers/cookies'),
@@ -173,6 +174,20 @@ describe('maintenance DAL', () => {
       ).toEqual(['live', 'recent'])
       expect(await db.comment.count()).toBe(0)
       expect(await db.postTag.count()).toBe(0)
+    })
+
+    it('drops the cached detail of a purged post, so its author cannot open it afterwards', async () => {
+      const author = await createUser({})
+      const post = await db.post.create({
+        data: { userId: author.id, title: 'Gone', body: 'B', deletedAt: daysAgo(31) },
+      })
+      await signInAs(author)
+      // The author may read their trashed post, which puts it in the cache.
+      expect((await getPost(post.id)).title).toBe('Gone')
+
+      await purgeDeletedPosts({ olderThanDays: 30 })
+
+      await expect(getPost(post.id)).rejects.toThrow('Post not found')
     })
 
     it('works through several batches, oldest first', async () => {
