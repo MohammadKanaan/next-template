@@ -4,11 +4,13 @@
 about the list (visibility, author, status, tag, dates, the trash, paging) works as it does without
 a search.
 
-- **Schema:** `posts.search_vector tsvector GENERATED ALWAYS AS (setweight(to_tsvector('english',
-title), 'A') || setweight(to_tsvector('english', body), 'B')) STORED`, with a GIN index
-  (`posts_search_vector_idx`). The database maintains it, so no write path can leave it stale
-  (`updatePost` needs no extra code). Prisma sees it as `searchVector Unsupported("tsvector")?`,
-  never selects or writes it, and it is only read in raw SQL. The `english` configuration stems words
+- **Schema:** `posts.search_vector` is a plain nullable `tsvector` column with a GIN index
+  (`posts_search_vector_idx`), kept up to date by a trigger: `posts_search_vector_update()` sets it
+  to `setweight(to_tsvector('english', title), 'A') || setweight(to_tsvector('english', body), 'B')`
+  in a `BEFORE INSERT OR UPDATE OF title, body` trigger. The database maintains it, so no write path
+  can leave it stale (`updatePost` needs no extra code, and a write that does not touch title or
+  body does not recompute it). Prisma sees it as `searchVector Unsupported("tsvector")?`, never
+  selects or writes it, and it is only read in raw SQL. The `english` configuration stems words
   (`running` finds `run`) and drops stop words.
 - **Query syntax:** `q` goes through `websearch_to_tsquery('english', q)`: plain words are AND-ed,
   `"quoted phrase"`, `or`, and `-excluded`. It never raises a syntax error on odd input, and a query
@@ -35,9 +37,14 @@ title), 'A') || setweight(to_tsvector('english', body), 'B')) STORED`, with a GI
 - **Caching:** a search is never cached (free text is unbounded), as before.
 - **Escaping:** `lib/data/escapeLike.ts` stays, for `listUsers` (`contains` with `ILIKE`); post
   search does not use `LIKE`.
-- **Migrations:** the column and the index are hand-written SQL in
-  `prisma/migrations/*_add_post_search_vector`. Prisma cannot express a generated column, so a later
-  `prisma migrate dev` proposes `ALTER COLUMN "search_vector" DROP DEFAULT`, which Postgres rejects
-  ("is a generated column"): delete that line from the new migration (and never let it be applied).
+- **Migrations:** the column, the trigger function, the trigger and the index are hand-written SQL
+  in `prisma/migrations/*_add_post_search_vector` and `*_post_search_vector_trigger`. The first
+  version was a `GENERATED ALWAYS AS ... STORED` column, but Prisma cannot model a generated column
+  and every later `prisma migrate dev` proposed `ALTER COLUMN "search_vector" DROP DEFAULT`, which
+  Postgres rejects. A plain column plus a trigger matches the schema exactly (Prisma ignores
+  triggers and functions), so `prisma migrate diff --from-config-datasource --to-schema
+prisma/schema.prisma --script` prints an empty migration. Changing the weights or the text search
+  configuration means a new migration that replaces the function and backfills with
+  `UPDATE posts SET title = title`.
 - **Limits:** the search is an unauthenticated read like the list, bounded by `q` <= 100
   characters and `MAX_PAGE`. A rate limit on it and non-English configurations are not done.
