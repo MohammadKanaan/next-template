@@ -587,19 +587,24 @@ tab open. The first event is "someone commented on your post".
   row, publishes it, and when Web Push is configured queues a `send-push` job without awaiting it.
 - **Adding an event type:** one value in the Prisma `NotificationType` enum (and a migration), the same
   value in `notificationTypeSchema`, and one `createNotification({ userId, type, title, body, url })`
-  call where the event happens. `url` must be an app path (`/…`, never absolute).
+  call where the event happens. `url` must be an app path in the form a browser resolves to itself: the DTO accepts a value only when `safeRedirectPath(value, '') === value`, so `//x`, `/\x`, `/<TAB>/x`, `/.//x` and absolute URLs are rejected.
 - **Transport:** `lib/server/realtime.ts` is the seam. `publish(channel, event)` never throws (best
-  effort, logged); `subscribe(channel, listener)` awaits the Redis `SUBSCRIBE` and returns the
-  unsubscribe function, and a failed `SUBSCRIBE` propagates. One subscriber connection per process
-  (`getRedisSubscriber()`, separate from `getRedis()` and without a command timeout), a
-  `Map<channel, Set<listener>>` for the in-memory fan-out, `UNSUBSCRIBE` when the last listener leaves.
+  effort, logged); `subscribe(channel, listener)` returns the unsubscribe function once the channel's
+  `SUBSCRIBE` is acknowledged, for every caller (a per-channel entry holds the listener set and the
+  shared `SUBSCRIBE` promise); a failed `SUBSCRIBE` rejects every waiting caller and leaves no entry.
+  One subscriber connection per process (`getRedisSubscriber()`, separate from `getRedis()`, without a
+  command timeout and with `maxRetriesPerRequest: 1`, so a `SUBSCRIBE` against a down Redis fails in
+  about a second), `UNSUBSCRIBE` when the last listener leaves.
   Channel names live in `lib/data/channels.ts` (`userChannel(id)` = `realtime:user:<id>`).
 - **`GET /api/v1/events`:** `subscribeToNotifications` checks the session (401 JSON before any stream
   exists) and returns the unread count, which is the first message; then every event on the viewer's
   channel is forwarded as `data: <json>`, with a `: ping` comment every 25 s. Headers:
   `Content-Type: text/event-stream`, `Cache-Control: no-cache, no-transform` (Next's gzip skips
   `no-transform`, so events are not buffered), `X-Accel-Buffering: no`. It ends, and unsubscribes, when
-  the request aborts. Route Handlers cannot host WebSockets (see `docs/DECISIONS.md`).
+  the request aborts (including an abort that happened while the subscribe was still pending), and
+  after 10 minutes at most (`STREAM_MAX_MS`): the session is checked only when a stream opens, and a
+  clean end makes `EventSource` reconnect and authenticate again, so a revoked or expired session
+  stops receiving within 10 minutes. Route Handlers cannot host WebSockets (see `docs/DECISIONS.md`).
 - **Events:** `{ type: 'unread', count }` is authoritative (sent on every connect and after every
   mark-as-read, so every tab self-heals); `{ type: 'notification', notification }` carries the full
   record.
@@ -616,7 +621,11 @@ tab open. The first event is "someone commented on your post".
   `isPushConfigured`) is only used by the worker's `send-push` job (`jobs/sendPush.ts`) and by the DAL
   to decide whether to queue it. The handler sends to every `PushSubscription` row of the user
   (`listPushSubscriptions`), deletes a subscription the push service reports gone (404 / 410,
-  `PushGoneError`) and rethrows any other failure after the loop so pg-boss retries.
+  `PushGoneError`) and rethrows any other failure after the loop so pg-boss retries. A failed send is rethrown as
+  `PushSendError(statusCode)`, never the raw `WebPushError` (its endpoint, headers and body would reach
+  the worker log). Each request has a 10 s timeout. Endpoints are `https:` only (max 2048 characters),
+  and a user keeps at most `MAX_PUSH_SUBSCRIPTIONS_PER_USER` (10) rows: saving an 11th deletes the
+  oldest, because the worker sends to every row.
 - **Browser side:** `public/sw.js` (served with `Cache-Control: no-cache, no-store` from
   `next.config.ts`) always shows an OS notification, even in a focused tab (the subscription is
   `userVisibleOnly`; Chrome and Safari require one per push and Safari may revoke the subscription
@@ -625,7 +634,12 @@ tab open. The first event is "someone commented on your post".
   never navigates an existing tab. The `PushSettings` card on `/settings` registers it
   and stores the subscription through `subscribePushAction` / `unsubscribePushAction`
   (`savePushSubscription` is rate limited per user in the DAL; an endpoint another user held is
-  re-owned). The public key reaches the browser as a prop from `getPushConfig()` (page → view →
+  re-owned). The card treats the browser as the source of truth for "enabled": a save that fails
+  after the browser subscribed unsubscribes the browser again, and a subscription the browser already
+  holds is re-sent once on mount to repair a lost row. `SignOutButton` calls
+  `unsubscribeBrowserPush()` (`lib/client/push.ts`) and `unsubscribePushAction(endpoint)` before
+  `signOutAction()`, so the next person at that browser does not receive the previous user's
+  notifications (session revocation elsewhere does not remove it). The public key reaches the browser as a prop from `getPushConfig()` (page → view →
   card), never as a `NEXT_PUBLIC_` variable.
 
 ## Infrastructure (`lib/server`)

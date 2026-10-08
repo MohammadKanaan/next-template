@@ -288,11 +288,15 @@ and the avatars of a deleted account, stay readable at their public URL for abou
 `createNotification`, never for your own comment). It is published on your Redis channel and streamed to
 every open tab over `GET /api/v1/events` (server-sent events), so the bell in the navigation updates its
 badge and shows a toast without a reload; `/notifications` lists them all and marks them read. For
-a system notification when no tab is open, enable browser notifications on `/settings`: generate VAPID
+a system notification (shown even while a tab is open, because browsers require one per push), enable
+browser notifications on `/settings`: generate VAPID
 keys with `bunx web-push generate-vapid-keys`, set `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` and
 `VAPID_SUBJECT` (a `mailto:` or `https:` contact) in `.env`, and run the worker, which sends the push.
 Chrome treats `localhost` as a secure context, so push works in `bun run dev` without HTTPS. Without
-the keys push is simply off and everything else works.
+the keys push is simply off and everything else works. Push endpoints must be `https:`, a user keeps
+at most ten browsers, and signing out removes the current browser's subscription. An event stream is
+ended after ten minutes and the page reconnects on its own (so a revoked session stops receiving),
+and a failed connection is retried with a backoff.
 
 **Route Handlers and facade.** `GET /api/v1/posts` is called by a client component (`/posts/csr`)
 through `lib/client/posts.ts`, which parses the response with the shared schema. The write endpoints

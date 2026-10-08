@@ -35,8 +35,8 @@ createComment ──► createNotification (lib/data/notifications.ts)
 
 GET /api/v1/events ──► subscribeToNotifications(listener)  (DAL: requireUser → channel + unread count)
    text/event-stream    lib/server/realtime.ts: one subscriber Redis connection per process,
-   first event: unread   Map<channel, Set<listener>>, SUBSCRIBE on first / UNSUBSCRIBE on last
-   `: ping` every 25 s
+   first event: unread   Map<channel, { listeners, ready }>, SUBSCRIBE on first / UNSUBSCRIBE on last
+   `: ping` every 25 s; ends after 10 min (EventSource reconnects and re-authenticates)
 
 worker: handleSendPush ──► maintenance.listPushSubscriptions(userId) → sendPush (web-push)
                             404 / 410 → maintenance.deletePushSubscriptionByEndpoint(endpoint)
@@ -63,7 +63,10 @@ Two models, one migration (`add_notifications_push`), both cascading from `User`
   `createNotificationInput`, `realtimeEventSchema` / `RealtimeEvent` =
   `{ type: 'unread', count } | { type: 'notification', notification }`.
 - `lib/dto/push.ts`: `pushSubscriptionInput` (the shape of `PushSubscription.toJSON()`),
-  `pushEndpointSchema`, `pushConfigSchema` / `PushConfig`.
+  `pushEndpointSchema` (`https:` only, at most 2048 characters), `MAX_PUSH_SUBSCRIPTIONS_PER_USER`
+  (10; saving another deletes the user's oldest), `pushConfigSchema` / `PushConfig`.
+- A notification `url` is an app path that round-trips through `safeRedirectPath`, so values a
+  browser would resolve off-site (`/\x`, `/<TAB>/x`, `/.//x`) are rejected along with `//x`.
 - `lib/data/channels.ts`: `userChannel(id)` = `realtime:user:<id>`.
 - Realtime events: a `notification` event carries the full DTO (the bell prepends it, no fetch); an
   `unread` event carries the authoritative count and is sent on every (re)connect and after every
@@ -82,9 +85,15 @@ Two models, one migration (`add_notifications_push`), both cascading from `User`
   itself after a network drop or a clean close), so `useRealtime` listens for `onerror`, and when the
   stream is `CLOSED` it opens a new one after a backoff (1 s, doubling to 30 s, reset on `onopen`),
   which succeeds once Redis is back.
-- `send-push`: a `PushGoneError` (404 / 410 from the push service) deletes that subscription; any
-  other failure is rethrown after the loop so pg-boss retries (`retryLimit: 2`; a retry may re-send
+- `send-push`: every request has a 10 s timeout. A `PushGoneError` (404 / 410 from the push service)
+  deletes that subscription; any other failure is rethrown after the loop as `PushSendError(status)`
+  (never the raw `WebPushError`, which carries the endpoint, headers and body into the log) so pg-boss retries (`retryLimit: 2`; a retry may re-send
   to the other subscriptions — accepted).
+- Streams live at most 10 minutes (the session is checked when a stream opens); the client reconnects
+  and so re-authenticates. Signing out first unsubscribes this browser (`unsubscribeBrowserPush()`,
+  then `unsubscribePushAction(endpoint)`), and the `PushSettings` card keeps the browser and the
+  server row in agreement (it unsubscribes after a failed save and re-sends an existing
+  subscription once on mount).
 - `markNotificationRead` on a notification that is not the viewer's answers `NotFoundError` (it is a
   read of the viewer's own inbox, so 404 rather than 403).
 
