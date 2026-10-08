@@ -79,9 +79,10 @@ forgets a check cannot bypass it.
 ## Project Structure
 
 ```
-app/                     # App Router: route groups (site), (minimal); api/auth, api/v1, api/health
+app/                     # App Router: route groups (site), (minimal); api/auth, api/v1 (posts, events,
+                         # notifications), api/health
   (site)/<route>/        # page.tsx (Server Component) + optional view.tsx ('use client') + styles.module.scss
-actions/                 # 'use server' Server Actions (posts, comments, auth, uploads, users)
+actions/                 # 'use server' Server Actions (posts, comments, auth, uploads, users, notifications, push)
 components/              # React components (ComponentName/index.tsx + styles.module.scss)
 components/SCN/          # shadcn/ui primitives (the only place Tailwind is allowed)
 hooks/                   # Reusable React hooks (useXxx)
@@ -90,9 +91,10 @@ types/                   # Cross-cutting types (types/api.ts: ActionResult, Erro
 lib/                     # Pure helpers, constants, env, formErrors, username derivation
 lib/dto/                 # Zod schemas + inferred types (inputs and outputs); client- and server-safe
 lib/data/                # Server-only DAL: db client, auth, errors, users, sessions, posts, comments, stats,
-                         # uploads, health, rateLimit, page loader; maintenance is the system DAL (jobs only)
+                         # notifications, push, uploads, health, rateLimit, page loader; maintenance is the
+                         # system DAL (jobs only)
 lib/server/              # Server-only infrastructure that is not the database: env, redis, cache,
-                         # queue, mailer, storage
+                         # queue, mailer, storage, realtime, push
 jobs/                    # Job definitions (name + Zod payload + options) and handlers
 worker/                  # Background worker entry (pg-boss), tsconfig, test-DB migrate script
 emails/                  # React Email templates
@@ -431,6 +433,10 @@ catch (error) { return toActionFailure(error) }`. Return `ActionResult<T>`; neve
   There is deliberately no status endpoint: transitions stay in `setPostStatusAction`. There are no
   client facades for these endpoints because no UI calls them; their tests call the handlers
   directly (`tests/app/api/v1/`). API keys and OpenAPI stay deferred.
+- **Realtime and notifications:** `GET /api/v1/events` (the SSE stream, see **Realtime and
+  notifications**) and `GET /api/v1/notifications?page&perPage` (the bell's popover reads the latest
+  ten through `lib/client/notifications.ts`; the `/notifications` page reads the DAL directly). Both
+  need a session (401 JSON otherwise) and are per viewer, so neither is cached.
 - `GET /api/health` is the other Route Handler. It is for load balancers and container probes,
   not for the client facade: it awaits `connection()`, calls `checkHealth()` (database `SELECT 1`
   and Redis `PING`, each with a 2 s timeout) and returns 200 `{ status: 'ok', checks }` or 503
@@ -493,7 +499,7 @@ Background work runs on pg-boss (the same PostgreSQL, `pgboss` schema) in a sepa
 
 - **Definitions** (`jobs/definitions.ts`): one entry per job with its name, Zod payload schema,
   queue `options` (retries, backoff, expiry) and an optional `cron`. Payload types come from
-  `z.infer` (`JobPayload<'send-email'>`). Today: `send-email`, `delete-object`, `cleanup` (hourly). `delete-object` is also queued, delayed, when an
+  `z.infer` (`JobPayload<'send-email'>`). Today: `send-email`, `delete-object`, `send-push`, `cleanup` (hourly). `delete-object` is also queued, delayed, when an
   account is deleted or an avatar replaced. `send-email` sets `deleteAfterSeconds: 3600`: its payloads carry live links
   that expire after an hour, so finished jobs must not keep them for pg-boss's 7-day default.
 - **Enqueue** (`lib/server/queue.ts`): `enqueue(name, payload)` validates the payload with the job's
@@ -564,10 +570,62 @@ records the result.
 - Avatars render through `UserAvatar` (shadcn `Avatar`) with a plain `<img>`, so no `next/image`
   `remotePatterns` are needed.
 
+## Realtime and notifications
+
+In-app notifications are delivered live over server-sent events, with Web Push for browsers with no
+tab open. The first event is "someone commented on your post".
+
+- **Contract:** `lib/data/notifications.ts` (`createNotification`, `listNotifications`,
+  `getUnreadNotificationCount`, `markNotificationRead`, `markAllNotificationsRead`,
+  `subscribeToNotifications`) with DTOs in `lib/dto/notifications.ts` (`Notification`,
+  `createNotificationInput`, `realtimeEventSchema`). Reads are per viewer and never go through
+  `remember()`. `markNotificationRead` on someone else's notification answers `NotFoundError` (a read
+  of the viewer's own inbox). `ROUTE_NOTIFICATIONS` (`/notifications`) is private by default.
+- **`createNotification` is internal:** it has no `requireUser()` because it is called by DAL functions
+  after their own checks (`createComment`, once the comment is written, for someone else's post),
+  like `maintenance.ts` is for jobs. Never call it from a page, action or Route Handler. It writes the
+  row, publishes it, and when Web Push is configured queues a `send-push` job without awaiting it.
+- **Adding an event type:** one value in the Prisma `NotificationType` enum (and a migration), the same
+  value in `notificationTypeSchema`, and one `createNotification({ userId, type, title, body, url })`
+  call where the event happens. `url` must be an app path (`/…`, never absolute).
+- **Transport:** `lib/server/realtime.ts` is the seam. `publish(channel, event)` never throws (best
+  effort, logged); `subscribe(channel, listener)` awaits the Redis `SUBSCRIBE` and returns the
+  unsubscribe function, and a failed `SUBSCRIBE` propagates. One subscriber connection per process
+  (`getRedisSubscriber()`, separate from `getRedis()` and without a command timeout), a
+  `Map<channel, Set<listener>>` for the in-memory fan-out, `UNSUBSCRIBE` when the last listener leaves.
+  Channel names live in `lib/data/channels.ts` (`userChannel(id)` = `realtime:user:<id>`).
+- **`GET /api/v1/events`:** `subscribeToNotifications` checks the session (401 JSON before any stream
+  exists) and returns the unread count, which is the first message; then every event on the viewer's
+  channel is forwarded as `data: <json>`, with a `: ping` comment every 25 s. Headers:
+  `Content-Type: text/event-stream`, `Cache-Control: no-cache, no-transform` (Next's gzip skips
+  `no-transform`, so events are not buffered), `X-Accel-Buffering: no`. It ends, and unsubscribes, when
+  the request aborts. Route Handlers cannot host WebSockets (see `docs/DECISIONS.md`).
+- **Events:** `{ type: 'unread', count }` is authoritative (sent on every connect and after every
+  mark-as-read, so every tab self-heals); `{ type: 'notification', notification }` carries the full
+  record.
+- **Client:** `useRealtime(onEvent)` (`hooks/useRealtime.ts`) is the only consumer of the stream: one
+  `EventSource`, events parsed with `realtimeEventSchema`, the latest handler through
+  `useEffectEvent`. `NotificationBell` (`components/Notifications/Bell`) mounts it for a signed-in
+  viewer: badge, toast, and a popover that loads the latest ten through `fetchNotifications`. The
+  `(site)` layout seeds the badge with `getUnreadNotificationCount()`.
+- **Web Push:** the VAPID trio is optional and all-or-none; without it push is off and
+  `getPushConfig()` returns `null`. `lib/server/push.ts` (`sendPush`, `PushGoneError`,
+  `isPushConfigured`) is only used by the worker's `send-push` job (`jobs/sendPush.ts`) and by the DAL
+  to decide whether to queue it. The handler sends to every `PushSubscription` row of the user
+  (`listPushSubscriptions`), deletes a subscription the push service reports gone (404 / 410,
+  `PushGoneError`) and rethrows any other failure after the loop so pg-boss retries.
+- **Browser side:** `public/sw.js` (served with `Cache-Control: no-cache, no-store` from
+  `next.config.ts`) shows an OS notification unless a window of the origin is focused (that tab's bell
+  already showed it) and opens the `url` on click. The `PushSettings` card on `/settings` registers it
+  and stores the subscription through `subscribePushAction` / `unsubscribePushAction`
+  (`savePushSubscription` is rate limited per user in the DAL; an endpoint another user held is
+  re-owned). The public key reaches the browser as a prop from `getPushConfig()` (page → view →
+  card), never as a `NEXT_PUBLIC_` variable.
+
 ## Infrastructure (`lib/server`)
 
 - Server-only code that is not the database: `env.ts`, `redis.ts`, `cache.ts`, `queue.ts`,
-  `mailer.ts`, `storage.ts`, `logger.ts`. Every file starts with `import 'server-only'`.
+  `mailer.ts`, `storage.ts`, `realtime.ts`, `push.ts`, `logger.ts`. Every file starts with `import 'server-only'`.
 - **Only `lib/data` (including the Better Auth config), `jobs/`, `worker/` and tests import
   `@/lib/server/*`.** ESLint forbids it from `app/`, `actions/`, `components/`, `hooks/`, `presenters/`, `lib/client` and
   `lib/dto`. A page or action that needs infrastructure asks the DAL.
@@ -681,7 +739,10 @@ records the result.
   exercise the same memoized code that ships.
 - Server tests also need Redis (database 15 via `.env.test`); `resetDatabase()` flushes it. Tests that
   reach storage or Resend mock them, and `@/lib/server/queue` is mocked globally in `tests/setup.ts`. Tests
-  never need MinIO or Resend.
+  never need MinIO or Resend. A server test that touches realtime also quits the subscriber
+  connection (`getRedisSubscriber().quit()`) in `afterAll`. Fakes, never the real thing: `web-push`
+  (`vi.mock('web-push')`), `EventSource` (`vi.stubGlobal`) and `navigator.serviceWorker` /
+  `PushManager` (`Object.defineProperty` and `vi.stubGlobal`).
 
 ## Test Pages
 
@@ -719,7 +780,8 @@ records the result.
 
 - The root `app/layout.tsx` owns fonts, global styles, and `Providers` (theme, tooltips, toaster).
 - The `(site)` layout is async: it reads the session once (`getViewer()`) and passes the viewer
-  to `NavBar` and `VerifyEmailBanner`. Every `(site)` route is therefore rendered per request.
+  to `NavBar` and `VerifyEmailBanner`, plus the unread notification count to `NavBar` for a signed-in
+  viewer. Every `(site)` route is therefore rendered per request.
 
 ## Environment & Config
 
@@ -740,7 +802,9 @@ records the result.
   `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_PUBLIC_URL`,
   `S3_PUBLIC_ENDPOINT` (optional: the endpoint as the browser reaches it, for presigned uploads;
   defaults to `S3_ENDPOINT`), `TRUSTED_PROXY_HOPS` (optional, default 1: how many proxies append to
-  `x-forwarded-for`, read by `getClientIp`), `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` (optional pair)) is read through `serverEnv()` in `lib/server/env.ts`: Zod-validated,
+  `x-forwarded-for`, read by `getClientIp`), `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` (optional pair), `VAPID_PUBLIC_KEY` /
+  `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` (optional trio: all or none, `bunx web-push generate-vapid-keys`;
+  the subject is a `mailto:` or `https:` contact)) is read through `serverEnv()` in `lib/server/env.ts`: Zod-validated,
   parsed on first use (so `next build` works without it), one error listing every bad variable. An
   empty optional variable counts as unset. In production `instrumentation.ts` and the worker's
   start call it at boot, so a bad config fails loudly instead of degrading the rate limiter or

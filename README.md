@@ -128,8 +128,8 @@ them):
 The containers get every variable the app validates at boot. Hosts are the compose service names
 (`db`, `redis`, `minio`); `S3_PUBLIC_ENDPOINT=http://localhost:9000` is what the browser uses for
 avatar uploads. Compose reads `.env` from the project directory for `BETTER_AUTH_SECRET`,
-`BETTER_AUTH_URL`, `RESEND_API_KEY`, `EMAIL_FROM`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and
-the `NEXT_PUBLIC_*` build args. `BETTER_AUTH_SECRET` is required: compose refuses to start the `app`
+`BETTER_AUTH_URL`, `RESEND_API_KEY`, `EMAIL_FROM`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`,
+`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` and the `NEXT_PUBLIC_*` build args. `BETTER_AUTH_SECRET` is required: compose refuses to start the `app`
 profile without it (it interpolates the whole file, so even `docker compose up -d` needs it set). Production boot
 (`instrumentation.ts`) also refuses a missing, short or placeholder secret and a missing
 `BETTER_AUTH_URL`.
@@ -284,6 +284,16 @@ deletion of the replaced avatar (after its ticket can no longer be used). Abando
 Because those deletions are delayed by the ticket lifetime plus a grace period, a replaced avatar,
 and the avatars of a deleted account, stay readable at their public URL for about 15 minutes.
 
+**Notifications.** Someone commenting on your post creates a `Notification` row (`createComment` calls
+`createNotification`, never for your own comment). It is published on your Redis channel and streamed to
+every open tab over `GET /api/v1/events` (server-sent events), so the bell in the navigation updates its
+badge and shows a toast without a reload; `/notifications` lists them all and marks them read. For
+a system notification when no tab is open, enable browser notifications on `/settings`: generate VAPID
+keys with `bunx web-push generate-vapid-keys`, set `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` and
+`VAPID_SUBJECT` (a `mailto:` or `https:` contact) in `.env`, and run the worker, which sends the push.
+Chrome treats `localhost` as a secure context, so push works in `bun run dev` without HTTPS. Without
+the keys push is simply off and everything else works.
+
 **Route Handlers and facade.** `GET /api/v1/posts` is called by a client component (`/posts/csr`)
 through `lib/client/posts.ts`, which parses the response with the shared schema. The write endpoints
 below exist for HTTP API clients; no UI calls them, so they have no facade. Each handler reads the
@@ -301,6 +311,8 @@ cookie is the CSRF guard).
 | `DELETE` | `/api/v1/posts/{id}`          | author or admin                                 | 204, empty body                                                                                            |
 | `GET`    | `/api/v1/posts/{id}/comments` | none for published; author or admin otherwise   | 200 `Comment[]`, oldest first                                                                              |
 | `POST`   | `/api/v1/posts/{id}/comments` | signed in; post must be published               | 201 `Comment`                                                                                              |
+| `GET`    | `/api/v1/events`              | signed in                                       | 200 `text/event-stream` of `RealtimeEvent`; first message is the unread count                              |
+| `GET`    | `/api/v1/notifications`       | signed in                                       | 200 `Page<Notification>`; `page`, `perPage`                                                                |
 
 Errors are `{ code, message, fieldErrors? }` with 401, 403, 404, 422 (validation, including a
 non-JSON content type or malformed JSON) or 429. Status transitions (publish, archive) are
