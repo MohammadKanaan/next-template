@@ -32,6 +32,7 @@ model User {
   comments          Comment[]
   notifications     Notification[]
   pushSubscriptions PushSubscription[]
+  auditLogs         AuditLog[]
 
   @@map("users")
 }
@@ -214,4 +215,24 @@ model Upload {
   @@index([postId])
   @@index([status, createdAt])
   @@map("uploads")
+}
+
+/// Who changed what and when. The row outlives its actor (`SetNull`); `metadata` holds ids and
+/// changed field names only, never bodies or emails.
+model AuditLog {
+  id         Int      @id @default(autoincrement())
+  actorId    String?  @map("actor_id")
+  actor      User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  /// One of `auditActionSchema` (`lib/dto/audit.ts`).
+  action     String
+  /// `post`, `comment` or `user`.
+  entityType String   @map("entity_type")
+  entityId   String   @map("entity_id")
+  metadata   Json?
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@index([actorId])
+  @@map("audit_logs")
 }

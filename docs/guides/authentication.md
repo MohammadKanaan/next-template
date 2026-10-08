@@ -71,7 +71,8 @@
   next request. `setUserRoleAction` is the write; `page.tsx` reads `searchParams` with
   `usersUrlQuery` and `view.tsx` (table, role `Select`, search, `Pagination`)
   writes through `useUrlState`. `NavBar` shows an "Admin" link to admins only (cosmetic; the DAL is
-  the guard). Better Auth's `admin` plugin is deliberately not used (see `docs/DECISIONS.md`).
+  the guard). `/admin` links to `/admin/audit` (see `docs/guides/audit.md`); `setUserRole` records a
+  `user.role` audit entry. Better Auth's `admin` plugin is deliberately not used (see `docs/DECISIONS.md`).
 - **Dashboard** (`/dashboard`, `ROUTE_DASHBOARD`, private; the default target after sign-in): the
   worked example of aggregate queries, in `lib/data/stats.ts` with DTOs in `lib/dto/stats.ts`.
   `getSiteStats()` (published posts, comments on them, tags in use) is public and cached under

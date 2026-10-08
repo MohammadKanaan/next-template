@@ -27,6 +27,7 @@ import {
 import { toExcerpt } from '@/lib/excerpt'
 import { invalidateTags, remember } from '@/lib/server/cache'
 import { publicUrl } from '@/lib/server/storage'
+import { recordAudit } from './audit'
 import { getSessionUser, requireUser, type SessionUser } from './auth'
 import { POSTS_TAG, postTag } from './cacheTags'
 import { db } from './db'
@@ -434,6 +435,7 @@ export const createPost = async (input: CreatePostParams): Promise<PostDetail> =
     return tx.post.findUniqueOrThrow({ where: { id: created.id }, select: postDetailSelect })
   })
   await invalidateTags(POSTS_TAG)
+  await recordAudit({ actorId: viewer.id, action: 'post.create', entityId: row.id })
   const post = toPostBase(row)
   return withPermissions(post, viewer)
 }
@@ -508,6 +510,21 @@ export const updatePost = async (
     })
     .catch(mapMissingRecord)
   await invalidateTags(POSTS_TAG, postTag(postId))
+  await recordAudit({
+    actorId: viewer.id,
+    action: 'post.update',
+    entityId: postId,
+    // Which fields the edit carried, never what they said.
+    metadata: {
+      fields: [
+        ...Object.entries(data)
+          .filter(([, value]) => value !== undefined)
+          .map(([key]) => key),
+        ...(tags === undefined ? [] : ['tags']),
+      ],
+      version: row.version,
+    },
+  })
   const post = toPostBase(row)
   return withPermissions(post, viewer)
 }
@@ -538,6 +555,12 @@ export const setPostStatus = async (id: number, status: PostStatus): Promise<Pos
     throw new ConflictError('The post was changed meanwhile. Reload and try again.')
   }
   await invalidateTags(POSTS_TAG, postTag(postId))
+  await recordAudit({
+    actorId: viewer.id,
+    action: 'post.status',
+    entityId: postId,
+    metadata: { from: current.status, to: next },
+  })
   const row = await db.post
     .findUniqueOrThrow({ where: { id: postId }, select: postDetailSelect })
     .catch(mapMissingRecord)
@@ -563,6 +586,7 @@ export const deletePost = async (id: number | string): Promise<void> => {
     throw new NotFoundError('Post not found')
   }
   await invalidateTags(POSTS_TAG, postTag(postId))
+  await recordAudit({ actorId: viewer.id, action: 'post.delete', entityId: postId })
 }
 
 /**
@@ -581,6 +605,7 @@ export const restorePost = async (id: number | string): Promise<PostDetail> => {
     throw new NotFoundError('Post not found')
   }
   await invalidateTags(POSTS_TAG, postTag(postId))
+  await recordAudit({ actorId: viewer.id, action: 'post.restore', entityId: postId })
   const row = await db.post
     .findUniqueOrThrow({ where: { id: postId }, select: postDetailSelect })
     .catch(mapMissingRecord)

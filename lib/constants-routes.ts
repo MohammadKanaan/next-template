@@ -10,6 +10,7 @@ export const ROUTE_RESET_PASSWORD = '/reset-password'
 export const ROUTE_DASHBOARD = '/dashboard'
 export const ROUTE_SETTINGS = '/settings'
 export const ROUTE_ADMIN = '/admin'
+export const ROUTE_ADMIN_AUDIT = `${ROUTE_ADMIN}/audit`
 export const ROUTE_NOTIFICATIONS = '/notifications'
 export const ROUTE_POSTS = '/posts'
 export const ROUTE_POSTS_SSR = `${ROUTE_POSTS}/ssr`

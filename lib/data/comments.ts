@@ -20,6 +20,7 @@ import { NOTIFICATION_TITLE_MAX_LENGTH } from '@/lib/dto/notifications'
 import { toExcerpt } from '@/lib/excerpt'
 import { invalidateTags, remember } from '@/lib/server/cache'
 import { logger } from '@/lib/server/logger'
+import { recordAudit } from './audit'
 import { getSessionUser, requireUser } from './auth'
 import { commentsTag, POSTS_TAG, postTag } from './cacheTags'
 import { db } from './db'
@@ -201,4 +202,10 @@ export const deleteComment = async (id: number | string): Promise<void> => {
     throw error
   })
   await invalidateComments(comment.postId)
+  await recordAudit({
+    actorId: viewer.id,
+    action: 'comment.delete',
+    entityId: commentId,
+    metadata: { postId: comment.postId, authorId: comment.userId },
+  })
 }

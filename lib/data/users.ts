@@ -14,6 +14,7 @@ import {
   type UpdateProfileInput,
 } from '@/lib/dto/users'
 import { invalidateTags, remember } from '@/lib/server/cache'
+import { recordAudit } from './audit'
 import { getSessionUser, requireAdmin, requireUser } from './auth'
 import { POSTS_TAG, userTag } from './cacheTags'
 import { db } from './db'
@@ -171,7 +172,7 @@ export const listUsers = async (query: ListUsersQuery): Promise<Page<AdminUser>>
 export const setUserRole = async (input: SetUserRoleInput): Promise<AdminUser> => {
   const viewer = await requireAdmin()
   const { id, role } = parseInput(setUserRoleInput, input)
-  const target = await db.user.findUnique({ where: { id }, select: { id: true } })
+  const target = await db.user.findUnique({ where: { id }, select: { id: true, role: true } })
   if (!target) {
     throw new NotFoundError('User not found')
   }
@@ -188,5 +189,11 @@ export const setUserRole = async (input: SetUserRoleInput): Promise<AdminUser> =
       throw error
     })
   await invalidateTags(userTag(id))
+  await recordAudit({
+    actorId: viewer.id,
+    action: 'user.role',
+    entityId: id,
+    metadata: { from: target.role, to: role },
+  })
   return toAdminUser(row)
 }

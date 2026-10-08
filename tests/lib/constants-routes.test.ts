@@ -39,6 +39,7 @@ describe('route helpers', () => {
       '/dashboard',
       '/admin',
       '/admin/users',
+      '/admin/audit',
       '/anything',
     ]) {
       expect(isPrivateRoute(path)).toBe(true)
