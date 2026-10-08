@@ -26,6 +26,10 @@ x-app-env: &app-env
   # Google sign-in is on only when both are set (redirect URI: <BETTER_AUTH_URL>/api/auth/callback/google).
   GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
   GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+  # Web Push is on only when all three are set (see .env.example).
+  VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+  VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+  VAPID_SUBJECT: ${VAPID_SUBJECT:-}
 
 x-app-build: &app-build
   context: .

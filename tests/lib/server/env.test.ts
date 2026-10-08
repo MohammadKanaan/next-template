@@ -18,6 +18,9 @@ const stubEnv = (values: Record<string, string | undefined>) => {
     RESEND_API_KEY: undefined,
     GOOGLE_CLIENT_ID: undefined,
     GOOGLE_CLIENT_SECRET: undefined,
+    VAPID_PUBLIC_KEY: undefined,
+    VAPID_PRIVATE_KEY: undefined,
+    VAPID_SUBJECT: undefined,
     ...values,
   })) {
     vi.stubEnv(name, value)
@@ -96,6 +99,30 @@ describe('serverEnv', () => {
     resetServerEnv()
     stubEnv({ ...valid, GOOGLE_CLIENT_SECRET: 'secret', GOOGLE_CLIENT_ID: '' })
     expect(() => serverEnv()).toThrow(/Set both GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET/)
+  })
+
+  it('treats the VAPID trio as optional, all or none', () => {
+    stubEnv(valid)
+    expect(serverEnv().VAPID_PUBLIC_KEY).toBeUndefined()
+    resetServerEnv()
+    stubEnv({
+      ...valid,
+      VAPID_PUBLIC_KEY: 'pub',
+      VAPID_PRIVATE_KEY: 'priv',
+      VAPID_SUBJECT: 'mailto:a@b.co',
+    })
+    expect(serverEnv().VAPID_SUBJECT).toBe('mailto:a@b.co')
+    resetServerEnv()
+    stubEnv({ ...valid, VAPID_PUBLIC_KEY: 'pub' })
+    expect(() => serverEnv()).toThrow(/VAPID_PUBLIC_KEY/)
+    resetServerEnv()
+    stubEnv({
+      ...valid,
+      VAPID_PUBLIC_KEY: 'pub',
+      VAPID_PRIVATE_KEY: 'priv',
+      VAPID_SUBJECT: 'a@b.co',
+    })
+    expect(() => serverEnv()).toThrow(/VAPID_SUBJECT/)
   })
 })
 

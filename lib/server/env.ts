@@ -33,11 +33,32 @@ const serverEnvSchema = z
     // half-configured provider fails at boot in production.
     GOOGLE_CLIENT_ID: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
     GOOGLE_CLIENT_SECRET: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
+    // Optional trio: Web Push is on only when all three are set (`bunx web-push generate-vapid-keys`).
+    // `VAPID_SUBJECT` is the contact the push services may use: a mailto: or https: URL.
+    VAPID_PUBLIC_KEY: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
+    VAPID_PRIVATE_KEY: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
+    VAPID_SUBJECT: z.preprocess(
+      emptyToUndefined,
+      z
+        .string()
+        .regex(/^(mailto:|https:)/, 'Must start with mailto: or https:')
+        .optional(),
+    ),
   })
   .refine((env) => Boolean(env.GOOGLE_CLIENT_ID) === Boolean(env.GOOGLE_CLIENT_SECRET), {
     message: 'Set both GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET, or neither',
     path: ['GOOGLE_CLIENT_ID'],
   })
+  .refine(
+    (env) => {
+      const set = [env.VAPID_PUBLIC_KEY, env.VAPID_PRIVATE_KEY, env.VAPID_SUBJECT].filter(Boolean)
+      return set.length === 0 || set.length === 3
+    },
+    {
+      message: 'Set VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY and VAPID_SUBJECT together, or none',
+      path: ['VAPID_PUBLIC_KEY'],
+    },
+  )
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>
 

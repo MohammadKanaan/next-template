@@ -17,6 +17,9 @@ export const SECURITY_HEADERS = [
 const nextConfig: NextConfig = {
   reactCompiler: true,
   poweredByHeader: false,
+  // web-push is a Node package with its own HTTP client; it is loaded by the web process only to
+  // read `isPushConfigured()`.
+  serverExternalPackages: ['web-push'],
   sassOptions: {
     additionalData: scssBreakpoints,
   },
