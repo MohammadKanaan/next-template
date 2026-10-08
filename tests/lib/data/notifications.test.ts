@@ -27,6 +27,11 @@ vi.mock('next/headers', () => ({
 }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn(), refresh: vi.fn() }))
 vi.mock('@/lib/server/push', () => ({ isPushConfigured: vi.fn(() => false) }))
+vi.mock('@/lib/server/realtime', async () => {
+  const actual =
+    await vi.importActual<typeof import('@/lib/server/realtime')>('@/lib/server/realtime')
+  return { ...actual, publish: vi.fn(actual.publish) }
+})
 
 const input = (userId: string, overrides: Partial<{ title: string; body: string }> = {}) => ({
   userId,
@@ -131,6 +136,7 @@ describe('notifications DAL', () => {
       const received: RealtimeEvent[] = []
       const unsubscribe = await subscribe(userChannel(me.id), (event) => received.push(event))
 
+      vi.mocked(publish).mockClear()
       const updated = await markNotificationRead(mine.id)
       expect(updated.readAt).toBeInstanceOf(Date)
       expect(await getUnreadNotificationCount()).toBe(1)
@@ -139,6 +145,10 @@ describe('notifications DAL', () => {
       // Already read: idempotent, no second publish.
       const again = await markNotificationRead(mine.id)
       expect(again.readAt).toEqual(updated.readAt)
+      const unreadPublishes = vi
+        .mocked(publish)
+        .mock.calls.filter(([, event]) => event.type === 'unread')
+      expect(unreadPublishes).toEqual([[userChannel(me.id), { type: 'unread', count: 1 }]])
 
       // Someone else’s, a missing id and a malformed id are all "not found".
       await expect(markNotificationRead(theirs.id)).rejects.toBeInstanceOf(NotFoundError)
