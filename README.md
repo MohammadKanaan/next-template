@@ -416,25 +416,26 @@ status write invalidates the tags those entries were cached under. New posts sta
 
 Where to look to see each pattern done once, properly.
 
-| Pattern                               | Where it is shown                                                                                                                                                                       |
-| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Server-rendered list with URL filters | `app/(site)/posts/ssr/page.tsx` + `view.tsx`; `hooks/useUrlState.ts`; `postsUrlQuery` in `lib/dto/posts.ts`; `components/Posts/Filters`                                                 |
-| Client-fetched list                   | `app/(site)/posts/csr/page.tsx` + `view.tsx`; facade `lib/client/posts.ts`; handler `app/api/v1/posts/route.ts`                                                                         |
-| Create / edit form with field errors  | `components/Posts/Form/index.tsx` (+ `utils.ts`); `lib/formErrors.ts` (`applyActionErrors`); `actions/posts.ts`; pages `app/(site)/posts/new` and `app/(site)/posts/[userId]/[id]/edit` |
-| Controlled form field                 | `components/Form/TagsInput/index.tsx`, wired through RHF's `Controller` in `components/Posts/Form/index.tsx`                                                                            |
-| Nested resource (comments)            | `lib/data/comments.ts`; `actions/comments.ts`; `components/Comments/Thread`, `Form`, `DeleteButton`; `app/api/v1/posts/[id]/comments/route.ts`                                          |
-| Many-to-many (tags)                   | `Tag` + `PostTag` in `prisma/schema.prisma`; `replacePostTags` and `listTags` in `lib/data/posts.ts`; `tagNameSchema` in `lib/dto/posts.ts`                                             |
-| Multi-table transaction               | `createPost` / `updatePost` with `db.$transaction` and `replacePostTags` in `lib/data/posts.ts`                                                                                         |
-| Status workflow                       | `POST_STATUS_TRANSITIONS` in `lib/dto/posts.ts`; `setPostStatus` in `lib/data/posts.ts`; `components/Posts/StatusActions`; `app/(site)/posts/mine`                                      |
-| Viewer-dependent visibility           | `canViewPost`, `getPost` and `listPosts` in `lib/data/posts.ts` (cache the shared part, check the viewer after)                                                                         |
-| Redis caching and invalidation        | `remember` / `invalidateTags` in `lib/server/cache.ts`; tags in `lib/data/cacheTags.ts`; used throughout `lib/data/posts.ts` and `lib/data/comments.ts`                                 |
-| Multi-filter `where` builder          | `buildPostWhere` in `lib/data/posts.ts`; `listPostsQuery` in `lib/dto/posts.ts`                                                                                                         |
-| REST CRUD handlers                    | `app/api/v1/posts/route.ts`, `app/api/v1/posts/[id]/route.ts`, `app/api/v1/posts/[id]/comments/route.ts`; `readJsonBody` and `toErrorResponse` in `lib/data/errors.ts`                  |
-| Aggregates and raw SQL                | `lib/data/stats.ts` (`getSiteStats`, `getMyStats` with `groupBy`, `getPostsPerDay` with `$queryRaw`); `components/Stats/PostsPerDayChart`; page `app/(site)/dashboard`                  |
-| File upload                           | `lib/data/uploads.ts`; `actions/uploads.ts`; `lib/server/storage.ts`; `lib/client/uploads.ts`; `components/Settings/AvatarUploader`                                                     |
-| Background job and email              | `jobs/definitions.ts`, `jobs/sendEmail.ts`; `lib/server/queue.ts`; `worker/index.ts`; `lib/server/mailer.ts`; `emails/`                                                                 |
-| Admin-only page                       | `app/(site)/admin/page.tsx` + `view.tsx`; `listUsers` / `setUserRole` with `requireAdmin()` in `lib/data/users.ts`                                                                      |
-| OAuth (Google)                        | `lib/data/auth.ts` (`socialProviders`, `isGoogleAuthEnabled`); `signInWithGoogleAction` in `actions/auth.ts`; `lib/username.ts`; `components/Auth/GoogleButton`                         |
+| Pattern                               | Where it is shown                                                                                                                                                                          |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Server-rendered list with URL filters | `app/(site)/posts/ssr/page.tsx` + `view.tsx`; `hooks/useUrlState.ts`; `postsUrlQuery` in `lib/dto/posts.ts`; `components/Posts/Filters`                                                    |
+| Client-fetched list                   | `app/(site)/posts/csr/page.tsx` + `view.tsx`; facade `lib/client/posts.ts`; handler `app/api/v1/posts/route.ts`                                                                            |
+| Create / edit form with field errors  | `components/Posts/Form/index.tsx` (+ `utils.ts`); `lib/formErrors.ts` (`applyActionErrors`); `actions/posts.ts`; pages `app/(site)/posts/new` and `app/(site)/posts/[userId]/[id]/edit`    |
+| Controlled form field                 | `components/Form/TagsInput/index.tsx`, wired through RHF's `Controller` in `components/Posts/Form/index.tsx`                                                                               |
+| Nested resource (comments)            | `lib/data/comments.ts`; `actions/comments.ts`; `components/Comments/Thread`, `Form`, `DeleteButton`; `app/api/v1/posts/[id]/comments/route.ts`                                             |
+| Many-to-many (tags)                   | `Tag` + `PostTag` in `prisma/schema.prisma`; `replacePostTags` and `listTags` in `lib/data/posts.ts`; `tagNameSchema` in `lib/dto/posts.ts`                                                |
+| Multi-table transaction               | `createPost` / `updatePost` with `db.$transaction` and `replacePostTags` in `lib/data/posts.ts`                                                                                            |
+| Status workflow                       | `POST_STATUS_TRANSITIONS` in `lib/dto/posts.ts`; `setPostStatus` in `lib/data/posts.ts`; `components/Posts/StatusActions`; `app/(site)/posts/mine`                                         |
+| Record-level authorization policies   | `lib/data/policy.ts` (`authorize`, `permissionsFor`); `lib/data/policies/posts.ts` (`postPolicy`, `commentPolicy`); used by `requirePostChange` in `lib/data/posts.ts` and `deleteComment` |
+| Viewer-dependent visibility           | `canViewPost`, `getPost` and `listPosts` in `lib/data/posts.ts` (cache the shared part, check the viewer after)                                                                            |
+| Redis caching and invalidation        | `remember` / `invalidateTags` in `lib/server/cache.ts`; tags in `lib/data/cacheTags.ts`; used throughout `lib/data/posts.ts` and `lib/data/comments.ts`                                    |
+| Multi-filter `where` builder          | `buildPostWhere` in `lib/data/posts.ts`; `listPostsQuery` in `lib/dto/posts.ts`                                                                                                            |
+| REST CRUD handlers                    | `app/api/v1/posts/route.ts`, `app/api/v1/posts/[id]/route.ts`, `app/api/v1/posts/[id]/comments/route.ts`; `readJsonBody` and `toErrorResponse` in `lib/data/errors.ts`                     |
+| Aggregates and raw SQL                | `lib/data/stats.ts` (`getSiteStats`, `getMyStats` with `groupBy`, `getPostsPerDay` with `$queryRaw`); `components/Stats/PostsPerDayChart`; page `app/(site)/dashboard`                     |
+| File upload                           | `lib/data/uploads.ts`; `actions/uploads.ts`; `lib/server/storage.ts`; `lib/client/uploads.ts`; `components/Settings/AvatarUploader`                                                        |
+| Background job and email              | `jobs/definitions.ts`, `jobs/sendEmail.ts`; `lib/server/queue.ts`; `worker/index.ts`; `lib/server/mailer.ts`; `emails/`                                                                    |
+| Admin-only page                       | `app/(site)/admin/page.tsx` + `view.tsx`; `listUsers` / `setUserRole` with `requireAdmin()` in `lib/data/users.ts`                                                                         |
+| OAuth (Google)                        | `lib/data/auth.ts` (`socialProviders`, `isGoogleAuthEnabled`); `signInWithGoogleAction` in `actions/auth.ts`; `lib/username.ts`; `components/Auth/GoogleButton`                            |
 
 ## Design decisions
 
@@ -450,7 +451,7 @@ Where to look to see each pattern done once, properly.
 
 ## What I'd do at scale
 
-- Declarative authorization policies instead of inline checks.
+- ZenStack-style declarative policies compiled from a schema; today's `lib/data/policies/*` are plain functions.
 - ZenStack or Postgres row-level security as a second enforcement layer.
 - Extend the existing lint rule to restrict `better-auth` imports as well.
 - The rate limiter fails open when Redis is down; decide per action whether that is acceptable.

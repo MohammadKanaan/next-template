@@ -27,7 +27,9 @@ import { getSessionUser, requireUser, type SessionUser } from './auth'
 import { POSTS_TAG, postTag } from './cacheTags'
 import { db } from './db'
 import { escapeLike } from './escapeLike'
-import { ForbiddenError, NotFoundError, parseInput, ValidationError } from './errors'
+import { NotFoundError, parseInput, ValidationError } from './errors'
+import { postPolicy } from './policies/posts'
+import { authorize, permissionsFor } from './policy'
 import { consumeRateLimit } from './rateLimit'
 import { userProfileSelect } from './users'
 
@@ -68,20 +70,8 @@ const postDetailSelect = {
 type PostSummaryRow = Prisma.PostGetPayload<{ select: typeof postSummarySelect }>
 type PostDetailRow = Prisma.PostGetPayload<{ select: typeof postDetailSelect }>
 
-/** Record-level rule: the author or an admin may change a post. */
-const canModify = (viewer: SessionUser | null, authorId: string) => {
-  return viewer !== null && (viewer.id === authorId || viewer.role === 'admin')
-}
-
-/**
- * Record-level rule: only published posts are public. A draft or archived post is visible to its
- * author and to admins; reads (`getPost`, `listComments`, `createComment`) answer not found for
- * everyone else. Exported for `createComment`, which reads its row straight from the database; a
- * pure predicate that returns no data.
- */
-export const canViewPost = (viewer: SessionUser | null, status: PostStatus, authorId: string) => {
-  return status === 'published' || canModify(viewer, authorId)
-}
+// Pure predicate for `createComment`, which reads its row straight from the database.
+export { canViewPost } from './policies/posts'
 
 const toPostSummary = (row: PostSummaryRow): PostSummary => {
   return {
@@ -115,8 +105,8 @@ const toPostBase = (row: PostDetailRow): PostDetailBase => {
 
 /** Adds what this viewer may do with the post; never cached, because it differs per viewer. */
 const withPermissions = (post: PostDetailBase, viewer: SessionUser | null): PostDetail => {
-  const allowed = canModify(viewer, post.author.id)
-  return { ...post, permissions: { update: allowed, delete: allowed } }
+  const record = { status: post.status, authorId: post.author.id }
+  return { ...post, permissions: permissionsFor(postPolicy, ['update', 'delete'], viewer, record) }
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -242,7 +232,7 @@ const getPostBase = async (id: number | string): Promise<PostDetailBase> => {
 export const getPost = async (id: number | string): Promise<PostDetail> => {
   // Cached for everyone; the visibility check and `permissions` follow per viewer, never cached.
   const [post, viewer] = await Promise.all([getPostBase(id), getSessionUser()])
-  if (!canViewPost(viewer, post.status, post.author.id)) {
+  if (!postPolicy.view(viewer, { status: post.status, authorId: post.author.id })) {
     throw new NotFoundError('Post not found')
   }
   return withPermissions(post, viewer)
@@ -323,7 +313,11 @@ const mapMissingRecord = (error: unknown): never => {
  * The post exists and the viewer may change it — in that order, so a stranger gets 403 (not 404)
  * for an existing post, draft or not.
  */
-const requirePostChange = async (viewer: SessionUser, id: number) => {
+const requirePostChange = async (
+  viewer: SessionUser,
+  id: number,
+  action: 'update' | 'delete' | 'changeStatus',
+) => {
   // Every change drops the cached lists and may add tags, so one account cannot hammer it.
   await consumeRateLimit(`write-post:user:${viewer.id}`, { max: 60, windowMs: 60_000 })
   const post = await db.post.findUnique({
@@ -333,9 +327,12 @@ const requirePostChange = async (viewer: SessionUser, id: number) => {
   if (!post) {
     throw new NotFoundError('Post not found')
   }
-  if (!canModify(viewer, post.userId)) {
-    throw new ForbiddenError('You cannot change this post')
-  }
+  authorize(
+    postPolicy[action],
+    viewer,
+    { status: post.status, authorId: post.userId },
+    'You cannot change this post',
+  )
   return post
 }
 
@@ -346,7 +343,7 @@ export const updatePost = async (
   const viewer = await requireUser()
   const postId = parseInput(idSchema, id)
   const { tags, ...data } = parseInput(updatePostInput, input)
-  await requirePostChange(viewer, postId)
+  await requirePostChange(viewer, postId, 'update')
   const row = await db
     .$transaction(async (tx) => {
       // Prisma skips `@updatedAt` for an empty `data`, so it is set here: a tags-only edit is an edit.
@@ -371,7 +368,7 @@ export const updatePost = async (
 export const setPostStatus = async (id: number, status: PostStatus): Promise<PostDetail> => {
   const viewer = await requireUser()
   const { id: postId, status: next } = parseInput(setPostStatusInput, { id, status })
-  const current = await requirePostChange(viewer, postId)
+  const current = await requirePostChange(viewer, postId, 'changeStatus')
   if (!canTransitionPostStatus(current.status, next)) {
     throw new ValidationError({
       status: [`A ${current.status} post cannot become ${next}`],
@@ -398,7 +395,7 @@ export const setPostStatus = async (id: number, status: PostStatus): Promise<Pos
 export const deletePost = async (id: number | string): Promise<void> => {
   const viewer = await requireUser()
   const postId = parseInput(idSchema, id)
-  await requirePostChange(viewer, postId)
+  await requirePostChange(viewer, postId, 'delete')
   await db.post.delete({ where: { id: postId } }).catch(mapMissingRecord)
   await invalidateTags(POSTS_TAG, postTag(postId))
 }

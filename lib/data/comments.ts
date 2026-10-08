@@ -13,12 +13,14 @@ import { NOTIFICATION_TITLE_MAX_LENGTH } from '@/lib/dto/notifications'
 import { toExcerpt } from '@/lib/excerpt'
 import { invalidateTags, remember } from '@/lib/server/cache'
 import { logger } from '@/lib/server/logger'
-import { getSessionUser, requireUser, type SessionUser } from './auth'
+import { getSessionUser, requireUser } from './auth'
 import { commentsTag, POSTS_TAG, postTag } from './cacheTags'
 import { db } from './db'
-import { ForbiddenError, NotFoundError, parseInput } from './errors'
+import { NotFoundError, parseInput } from './errors'
 import { createNotification } from './notifications'
-import { canViewPost, getPost } from './posts'
+import { commentPolicy, postPolicy } from './policies/posts'
+import { authorize, permissionsFor } from './policy'
+import { getPost } from './posts'
 import { consumeRateLimit } from './rateLimit'
 import { userProfileSelect } from './users'
 
@@ -41,14 +43,6 @@ type CommentRow = Prisma.CommentGetPayload<{ select: typeof commentSelect }>
 
 const toCommentBase = (row: CommentRow): CommentBase => {
   return { id: row.id, body: row.body, createdAt: row.createdAt, author: row.user }
-}
-
-/** Record-level rule: a comment goes when its author, the post's author or an admin removes it. */
-const canDeleteComment = (viewer: SessionUser | null, authorId: string, postAuthorId: string) => {
-  return (
-    viewer !== null &&
-    (viewer.id === authorId || viewer.id === postAuthorId || viewer.role === 'admin')
-  )
 }
 
 /** Every comment write changes `commentCount`, which cached lists and details embed. */
@@ -84,7 +78,10 @@ export const listComments = async (postId: number | string): Promise<Comment[]> 
   )
   return comments.map((comment) => ({
     ...comment,
-    permissions: { delete: canDeleteComment(viewer, comment.author.id, post.author.id) },
+    permissions: permissionsFor(commentPolicy, ['delete'], viewer, {
+      authorId: comment.author.id,
+      postAuthorId: post.author.id,
+    }),
   }))
 }
 
@@ -106,12 +103,14 @@ export const createComment = async (
     where: { id },
     select: { userId: true, status: true, title: true },
   })
-  if (!post || !canViewPost(viewer, post.status, post.userId)) {
+  if (!post) {
     throw new NotFoundError('Post not found')
   }
-  if (post.status !== 'published') {
-    throw new ForbiddenError('Comments are only open on published posts')
+  const record = { status: post.status, authorId: post.userId }
+  if (!postPolicy.view(viewer, record)) {
+    throw new NotFoundError('Post not found')
   }
+  authorize(postPolicy.comment, viewer, record, 'Comments are only open on published posts')
   const row = await db.comment
     .create({ data: { body, postId: id, userId: viewer.id }, select: commentSelect })
     .catch((error: unknown) => {
@@ -143,7 +142,10 @@ export const createComment = async (
   }
   return {
     ...toCommentBase(row),
-    permissions: { delete: canDeleteComment(viewer, viewer.id, post.userId) },
+    permissions: permissionsFor(commentPolicy, ['delete'], viewer, {
+      authorId: viewer.id,
+      postAuthorId: post.userId,
+    }),
   }
 }
 
@@ -162,9 +164,12 @@ export const deleteComment = async (id: number | string): Promise<void> => {
   if (!comment) {
     throw new NotFoundError('Comment not found')
   }
-  if (!canDeleteComment(viewer, comment.userId, comment.post.userId)) {
-    throw new ForbiddenError('You cannot delete this comment')
-  }
+  authorize(
+    commentPolicy.delete,
+    viewer,
+    { authorId: comment.userId, postAuthorId: comment.post.userId },
+    'You cannot delete this comment',
+  )
   await db.comment.delete({ where: { id: commentId } }).catch((error: unknown) => {
     // Deleted by someone else between the check and the write.
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {

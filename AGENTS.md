@@ -207,6 +207,10 @@ docs/DECISIONS.md        # Framework and library choices, with reasons
   rules (e.g. a post may be changed by its author or an admin). For writes the order is signed in
   (401) → exists (404) → allowed (403). `createPost` and `createComment` also call `consumeRateLimit`
   right after `requireUser()`, so every path to them shares the limit.
+- Record-level rules live in `lib/data/policies/<resource>.ts` (`postPolicy`, `commentPolicy`), pure and
+  tested per viewer in `tests/lib/data/policies/`; DAL functions call `authorize(rule, viewer, record)`
+  (`lib/data/policy.ts`, throws `ForbiddenError`) and build a DTO's `permissions` with
+  `permissionsFor(policy, actions, viewer, record)`. Do not write inline `viewer.id === authorId` checks.
 - Failures are typed errors (see **Errors**), not return codes.
 - **Raw SQL** (`db.$queryRaw`) is for what Prisma cannot express (today: `generate_series` in
   `getPostsPerDay`). Use the tagged template only, so every value is a bound parameter; never

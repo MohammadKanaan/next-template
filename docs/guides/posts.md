@@ -53,3 +53,11 @@ The posts example carries the domain patterns an app needs (all in `lib/data/pos
   control (owns `label` / `error` like `Form/Input`); `PostForm` uses it through RHF's `Controller`.
 - Tests that create posts and expect them to be public set `status: 'published'` explicitly, since
   the default is `draft`.
+
+- **Policies:** the record-level rules are in `lib/data/policies/posts.ts` (`postPolicy`: `view`,
+  `update`, `delete`, `changeStatus`, `comment`; `commentPolicy`: `delete`), pure functions of
+  `(viewer, record)` tested per viewer. `requirePostChange(viewer, id, action)` picks the rule for the
+  write (`update`, `delete` or `changeStatus`) and `authorize()`s it after the exists check, so the
+  order stays 401 → 422 → 404 → 403. `permissions` on `PostDetail` and `Comment` come from
+  `permissionsFor(policy, ['update', 'delete'], viewer, record)`. `canViewPost` is re-exported from
+  `lib/data/posts.ts` for `createComment`.
