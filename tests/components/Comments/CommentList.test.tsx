@@ -20,14 +20,20 @@ const comment = (id: number, canDelete = false): Comment => ({
   permissions: { delete: canDelete },
 })
 
+const list = (nextCursor: string | null, first: Comment[], commentCount: number) => (
+  <CommentList postId={7} nextCursor={nextCursor} commentCount={commentCount}>
+    {first.map((item) => (
+      <CommentItem key={item.id} comment={item} />
+    ))}
+  </CommentList>
+)
+
 const renderList = (nextCursor: string | null, first: Comment[] = [comment(1)]) => {
-  return render(
-    <CommentList postId={7} nextCursor={nextCursor}>
-      {first.map((item) => (
-        <CommentItem key={item.id} comment={item} />
-      ))}
-    </CommentList>,
-  )
+  return render(list(nextCursor, first, first.length))
+}
+
+const range = (from: number, to: number) => {
+  return Array.from({ length: to - from + 1 }, (_, index) => comment(from + index))
 }
 
 describe('CommentList', () => {
@@ -75,5 +81,33 @@ describe('CommentList', () => {
     expect(deleteCommentAction).toHaveBeenCalledWith(2)
     expect(screen.queryByText('Comment 2')).not.toBeInTheDocument()
     expect(screen.getByText('Comment 1')).toBeInTheDocument()
+  })
+
+  it('shows Load more for a comment that pushed the thread past the first page', () => {
+    // 20 comments fit the first page exactly, so there was no button; comment 21 is on page 2.
+    const { rerender } = render(list(null, range(1, 20), 20))
+    expect(screen.queryByRole('button', { name: 'Load more comments' })).not.toBeInTheDocument()
+    rerender(list('c20', range(1, 20), 21))
+    expect(screen.getByRole('button', { name: 'Load more comments' })).toBeInTheDocument()
+  })
+
+  it('does not show a comment twice when a delete moves it into the first page', async () => {
+    vi.mocked(fetchComments).mockResolvedValue({ items: [comment(21)], nextCursor: null })
+    const { rerender } = render(list('c20', range(1, 20), 21))
+    await userEvent.click(screen.getByRole('button', { name: 'Load more comments' }))
+    await screen.findByText('Comment 21')
+    // Comment 5 is deleted: the refreshed first page now ends with comment 21.
+    rerender(list(null, [...range(1, 4), ...range(6, 21)], 20))
+    expect(screen.getAllByText('Comment 21')).toHaveLength(1)
+    expect(screen.queryByRole('button', { name: 'Load more comments' })).not.toBeInTheDocument()
+  })
+
+  it('keeps the loaded pages while the thread is unchanged', async () => {
+    vi.mocked(fetchComments).mockResolvedValue({ items: [comment(2)], nextCursor: null })
+    const { rerender } = render(list('c1', [comment(1)], 2))
+    await userEvent.click(screen.getByRole('button', { name: 'Load more comments' }))
+    await screen.findByText('Comment 2')
+    rerender(list('c1', [comment(1)], 2))
+    expect(screen.getByText('Comment 2')).toBeInTheDocument()
   })
 })

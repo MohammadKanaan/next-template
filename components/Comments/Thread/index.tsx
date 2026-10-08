@@ -47,7 +47,7 @@ export const CommentThread = async ({
           {page.items.length === 0 ? (
             <p className={styles.empty}>No comments yet.</p>
           ) : (
-            <CommentList postId={postId} nextCursor={page.nextCursor}>
+            <CommentList postId={postId} nextCursor={page.nextCursor} commentCount={commentCount}>
               {page.items.map((comment) => (
                 <CommentItem key={comment.id} comment={comment} />
               ))}
