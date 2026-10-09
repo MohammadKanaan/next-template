@@ -18,9 +18,15 @@ import {
 import { auth, requireUser } from '@/lib/data/auth'
 import { db } from '@/lib/data/db'
 import { UnauthorizedError } from '@/lib/data/errors'
-import { jobs, type JobPayload } from '@/jobs/definitions'
-import { enqueue } from '@/lib/server/queue'
 import { cookieJar } from '../helpers/cookies'
+import {
+  clearMail,
+  flushMail,
+  linkOf,
+  sentMails,
+  sentMailsWithSubject,
+  tokenOf,
+} from '../helpers/mail'
 import { createUser, resetDatabase, resetRedis, signInAs, TEST_PASSWORD } from '../helpers/server'
 
 const { cookieStore, requestHeaders } = await vi.hoisted(async () => import('../helpers/cookies'))
@@ -41,7 +47,7 @@ describe('auth actions', () => {
   beforeEach(async () => {
     await resetDatabase()
     vi.mocked(refresh).mockClear()
-    vi.mocked(enqueue).mockClear()
+    clearMail()
   })
   afterEach(() => {
     vi.restoreAllMocks()
@@ -53,7 +59,7 @@ describe('auth actions', () => {
     expect(await signUpAction(newUser)).toEqual({ ok: true, data: null })
     await expect(requireUser()).resolves.toBeDefined()
     const stored = await db.user.findFirstOrThrow()
-    expect(stored).toMatchObject({ email: 'new@example.com', role: 'user' })
+    expect(stored).toMatchObject({ email: 'new@example.com', role: 'user', banned: false })
   })
 
   it('rejects a taken username', async () => {
@@ -98,6 +104,36 @@ describe('auth actions', () => {
       data: null,
     })
     await expect(requireUser()).resolves.toMatchObject({ id: user.id })
+  })
+
+  it('refuses a banned user with the reason and starts no session', async () => {
+    const user = await createUser({})
+    const silent = await createUser({})
+    const admin = await createUser({ role: 'admin' })
+    await signInAs(admin)
+    await auth.api.banUser({
+      body: { userId: user.id, banReason: 'Spam' },
+      headers: requestHeaders(),
+    })
+    await auth.api.banUser({ body: { userId: silent.id }, headers: requestHeaders() })
+    cookieJar.clear()
+    expect(await signInAction({ email: user.email, password: TEST_PASSWORD })).toEqual({
+      ok: false,
+      code: 'FORBIDDEN',
+      message: 'Your account is banned: Spam',
+    })
+    expect(await signInAction({ email: silent.email, password: TEST_PASSWORD })).toEqual({
+      ok: false,
+      code: 'FORBIDDEN',
+      message: 'Your account is banned: no reason given',
+    })
+    expect(cookieJar.size).toBe(0)
+    expect(refresh).not.toHaveBeenCalled()
+    // A wrong password is still the generic answer, so the ban is not a way to find out passwords.
+    expect(await signInAction({ email: user.email, password: 'wrong-password' })).toMatchObject({
+      code: 'UNAUTHORIZED',
+      message: 'Invalid email or password',
+    })
   })
 
   it('signs out and deletes the session row', async () => {
@@ -184,41 +220,42 @@ describe('auth actions', () => {
   })
 
   describe('emails', () => {
-    /** The link of the last queued email for `template`, as the worker would render it. */
-    const queuedLink = (template: 'verify-email' | 'reset-password') => {
-      const sent = vi
-        .mocked(enqueue)
-        .mock.calls.map(([, payload]) => payload)
-        .filter(
-          (payload): payload is JobPayload<'send-email'> =>
-            'template' in payload && payload.template === template,
-        )
-      return sent.at(-1)
+    /** The last mail sent with `subject`, once Better Auth's un-awaited send has landed. */
+    const lastMail = async (subject: string) => {
+      await flushMail()
+      const mail = sentMailsWithSubject(subject).at(-1)
+      if (!mail) {
+        throw new Error(`No email "${subject}" was sent`)
+      }
+      return mail
     }
 
-    const tokenIn = (url: string) =>
-      new URL(url).pathname.split('/').pop() ?? new URL(url).searchParams.get('token')
+    /** Reset links carry the token in the path (`/reset-password/<token>`). */
+    const tokenInPath = (mail: Awaited<ReturnType<typeof lastMail>>) =>
+      new URL(linkOf(mail)).pathname.split('/').pop()!
 
-    it('queues a verification email on sign-up and leaves the user unverified', async () => {
+    it('sends a verification email on sign-up and leaves the user unverified', async () => {
       expect(await signUpAction(newUser)).toEqual({ ok: true, data: null })
-      expect(queuedLink('verify-email')).toMatchObject({
-        to: 'new@example.com',
-        props: { name: 'New', url: expect.stringContaining('/verify-email?token=') },
-      })
+      const mail = await lastMail('Verify your email')
+      expect(mail.to).toBe('new@example.com')
+      expect(mail.text).toContain('New')
+      expect(linkOf(mail)).toContain('/verify-email?token=')
       expect(await db.user.findFirstOrThrow()).toMatchObject({ emailVerified: false })
     })
 
-    it('emits payloads that pass the schema the real enqueue validates with', async () => {
-      // The global queue mock skips validation, so run what Better Auth produced through the
-      // same schema `enqueue` applies; a drifted payload would otherwise only log "not queued".
+    it('sends each mail once, to the account’s address, with its link in both bodies', async () => {
       await signUpAction(newUser)
       await requestPasswordResetAction({ email: newUser.email })
-      const sent = vi.mocked(enqueue).mock.calls.filter(([name]) => name === 'send-email')
+      await flushMail()
       expect(
-        sent.map(([, payload]) => (payload as JobPayload<'send-email'>).template).sort(),
-      ).toEqual(['reset-password', 'verify-email'])
-      for (const [name, payload] of sent) {
-        expect(() => jobs[name as 'send-email'].schema.parse(payload)).not.toThrow()
+        sentMails()
+          .map((mail) => mail.subject)
+          .sort(),
+      ).toEqual(['Reset your password', 'Verify your email'])
+      for (const mail of sentMails()) {
+        expect(mail.to).toBe('new@example.com')
+        // The HTML twin carries the same link, with `&` escaped as HTML wants it.
+        expect(mail.html).toContain(linkOf(mail).replaceAll('&', '&amp;'))
       }
     })
 
@@ -230,25 +267,26 @@ describe('auth actions', () => {
       })
     })
 
-    it('answers ok for an unknown email without queueing anything', async () => {
+    it('answers ok for an unknown email without sending anything', async () => {
       expect(await requestPasswordResetAction({ email: 'ghost@example.com' })).toEqual({
         ok: true,
         data: null,
       })
-      expect(enqueue).not.toHaveBeenCalled()
+      await flushMail()
+      expect(sentMails()).toEqual([])
     })
 
-    it('queues a reset email for a known address', async () => {
+    it('sends a reset email for a known address', async () => {
       const user = await createUser({ email: 'ada@example.com' })
-      vi.mocked(enqueue).mockClear()
+      clearMail()
       expect(await requestPasswordResetAction({ email: 'Ada@Example.com' })).toEqual({
         ok: true,
         data: null,
       })
-      expect(queuedLink('reset-password')).toMatchObject({
-        to: user.email,
-        props: { name: user.name, url: expect.stringContaining('/reset-password/') },
-      })
+      const mail = await lastMail('Reset your password')
+      expect(mail.to).toBe(user.email)
+      expect(mail.text).toContain(user.name)
+      expect(linkOf(mail)).toContain('/reset-password/')
     })
 
     it('rejects a malformed email on the reset request', async () => {
@@ -264,7 +302,7 @@ describe('auth actions', () => {
       await signInAs(user)
       expect(await db.session.count({ where: { userId: user.id } })).toBeGreaterThan(0)
       await requestPasswordResetAction({ email: user.email })
-      const token = tokenIn(queuedLink('reset-password')!.props.url)!
+      const token = tokenInPath(await lastMail('Reset your password'))
 
       expect(await resetPasswordAction({ token, password: 'brand-new-pass-1' })).toEqual({
         ok: true,
@@ -286,7 +324,7 @@ describe('auth actions', () => {
     it('accepts a reset token only once', async () => {
       const user = await createUser({})
       await requestPasswordResetAction({ email: user.email })
-      const token = tokenIn(queuedLink('reset-password')!.props.url)!
+      const token = tokenInPath(await lastMail('Reset your password'))
       await resetPasswordAction({ token, password: 'brand-new-pass-1' })
       expect(await resetPasswordAction({ token, password: 'another-pass-22' })).toEqual({
         ok: false,
@@ -324,23 +362,27 @@ describe('auth actions', () => {
     it('resends the verification email to the signed-in user', async () => {
       const user = await createUser({ email: 'ada@example.com' })
       await signInAs(user)
-      vi.mocked(enqueue).mockClear()
+      clearMail()
       expect(await resendVerificationAction()).toEqual({ ok: true, data: null })
-      expect(queuedLink('verify-email')).toMatchObject({ to: 'ada@example.com' })
+      const mail = await lastMail('Verify your email')
+      expect(mail.to).toBe('ada@example.com')
+      expect(tokenOf(mail)).toEqual(expect.any(String))
     })
 
     it('requires a session to resend verification', async () => {
       expect(await resendVerificationAction()).toMatchObject({ ok: false, code: 'UNAUTHORIZED' })
-      expect(enqueue).not.toHaveBeenCalled()
+      await flushMail()
+      expect(sentMails()).toEqual([])
     })
 
     it('does not resend to an already verified user', async () => {
       const user = await createUser({})
       await db.user.update({ where: { id: user.id }, data: { emailVerified: true } })
       await signInAs(user)
-      vi.mocked(enqueue).mockClear()
+      clearMail()
       expect(await resendVerificationAction()).toEqual({ ok: true, data: null })
-      expect(enqueue).not.toHaveBeenCalled()
+      await flushMail()
+      expect(sentMails()).toEqual([])
     })
 
     it('rate limits resending verification in production', async () => {
@@ -363,7 +405,7 @@ describe('account actions', () => {
   beforeEach(async () => {
     await resetDatabase()
     vi.mocked(refresh).mockClear()
-    vi.mocked(enqueue).mockClear()
+    clearMail()
   })
   afterEach(() => {
     vi.restoreAllMocks()
@@ -449,11 +491,10 @@ describe('account actions', () => {
   })
 
   describe('changeEmailAction', () => {
-    const emails = () =>
-      vi
-        .mocked(enqueue)
-        .mock.calls.filter(([name]) => name === 'send-email')
-        .map(([, payload]) => payload as JobPayload<'send-email'>)
+    const emails = async () => {
+      await flushMail()
+      return sentMails()
+    }
 
     it('requires a session', async () => {
       expect(await changeEmailAction({ newEmail: 'x@example.com' })).toMatchObject({
@@ -480,27 +521,23 @@ describe('account actions', () => {
       })
     })
 
-    it('queues the confirmation for the current address of a verified user', async () => {
+    it('sends the confirmation to the current address of a verified user', async () => {
       const user = await createUser({ email: 'mine@example.com' })
       await db.user.update({ where: { id: user.id }, data: { emailVerified: true } })
       await signInAs(user)
-      vi.mocked(enqueue).mockClear()
+      clearMail()
 
       expect(await changeEmailAction({ newEmail: 'Fresh@Example.com' })).toEqual({
         ok: true,
         data: null,
       })
       expect(refresh).toHaveBeenCalledTimes(1)
-      expect(emails()).toEqual([
-        expect.objectContaining({
-          template: 'confirm-email-change',
-          to: 'mine@example.com',
-          props: expect.objectContaining({ newEmail: 'fresh@example.com' }),
-        }),
+      const sent = await emails()
+      expect(sent).toEqual([
+        expect.objectContaining({ subject: 'Confirm your email change', to: 'mine@example.com' }),
       ])
-      for (const payload of emails()) {
-        expect(() => jobs['send-email'].schema.parse(payload)).not.toThrow()
-      }
+      expect(sent[0].text).toContain('fresh@example.com')
+      expect(tokenOf(sent[0])).toEqual(expect.any(String))
       expect(await db.user.findUniqueOrThrow({ where: { id: user.id } })).toMatchObject({
         email: 'mine@example.com',
       })
@@ -511,13 +548,13 @@ describe('account actions', () => {
       const user = await createUser({ email: 'mine@example.com' })
       await db.user.update({ where: { id: user.id }, data: { emailVerified: true } })
       await signInAs(user)
-      vi.mocked(enqueue).mockClear()
+      clearMail()
 
       expect(await changeEmailAction({ newEmail: 'taken@example.com' })).toEqual({
         ok: true,
         data: null,
       })
-      expect(emails()).toEqual([])
+      expect(await emails()).toEqual([])
     })
   })
 

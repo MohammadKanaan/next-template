@@ -8,7 +8,7 @@ import {
   type UpdateProfileInput,
 } from '@/lib/dto/users'
 import { invalidateTags, remember } from '@/lib/server/cache'
-import { getSessionUser, requireUser } from './auth'
+import { getSessionUser, requireUser, toRole } from './auth'
 import { POSTS_TAG, userTag } from './cacheTags'
 import { db } from './db'
 import { parseInput, UnauthorizedError, ValidationError } from './errors'
@@ -41,7 +41,6 @@ export const getViewer = cache(async (): Promise<CurrentUser | null> => {
     return null
   }
   // The session was checked above; the record itself is the same for the user on every request.
-  // The schema parse also narrows the plugin's free-text `role` to ours.
   return remember(
     `user:${sessionUser.id}:viewer`,
     {
@@ -54,7 +53,7 @@ export const getViewer = cache(async (): Promise<CurrentUser | null> => {
         where: { id: sessionUser.id },
         select: currentUserSelect,
       })
-      return row ? currentUserSchema.parse(row) : null
+      return row ? { ...row, role: toRole(row.role) } : null
     },
   )
 })
@@ -112,5 +111,5 @@ export const updateProfile = async (input: UpdateProfileInput): Promise<CurrentU
       throw error
     })
   await invalidateTags(userTag(viewer.id), POSTS_TAG)
-  return currentUserSchema.parse(user)
+  return { ...user, role: toRole(user.role) }
 }

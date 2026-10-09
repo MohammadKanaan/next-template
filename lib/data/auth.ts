@@ -239,18 +239,25 @@ export type SessionUser = {
   impersonatedBy: string | null
 }
 
+/**
+ * The admin plugin stores roles as free text (it allows comma-separated lists). Anything that is
+ * not one of ours reads as a regular user, so an odd value can never grant more, and never breaks
+ * a read either. Every DAL function that maps a user row goes through this before its DTO schema.
+ */
+export const toRole = (value: string | null | undefined): Role => {
+  const role = roleSchema.safeParse(value)
+  return role.success ? role.data : 'user'
+}
+
 /** The signed-in user, or null. Deduplicated within one React render (not in Route Handlers). */
 export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
   const session = await auth.api.getSession({ headers: await headers() })
   if (!session) {
     return null
   }
-  // The plugin stores roles as free text (it allows comma-separated lists); anything that is not one
-  // of ours reads as a regular user, so an odd value can never grant more.
-  const role = roleSchema.safeParse(session.user.role)
   return {
     id: session.user.id,
-    role: role.success ? role.data : 'user',
+    role: toRole(session.user.role),
     sessionId: session.session.id,
     impersonatedBy: session.session.impersonatedBy ?? null,
   }

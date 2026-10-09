@@ -4,7 +4,6 @@ import { headers } from 'next/headers'
 import { Prisma } from '@/generated/prisma/client'
 import { toPage, type Page } from '@/lib/dto/common'
 import {
-  adminUserSchema,
   banUserInput,
   listUsersQuery,
   setUserRoleInput,
@@ -14,7 +13,7 @@ import {
   type ListUsersQuery,
   type SetUserRoleInput,
 } from '@/lib/dto/users'
-import { auth, requireAdmin } from './auth'
+import { auth, requireAdmin, requireUser, toRole } from './auth'
 import { db } from './db'
 import { escapeLike } from './escapeLike'
 import { ForbiddenError, NotFoundError, parseInput } from './errors'
@@ -52,13 +51,17 @@ const fromAdminApi = (error: unknown): never => {
   throw error
 }
 
+type AdminUserRow = Prisma.UserGetPayload<{ select: typeof adminUserSelect }>
+
+const toAdminUser = (row: AdminUserRow): AdminUser => ({ ...row, role: toRole(row.role) })
+
 /** The admin user DTO of one row, fresh from the database (the plugin's own output is untyped). */
 const readAdminUser = async (id: string): Promise<AdminUser> => {
   const row = await db.user.findUnique({ where: { id }, select: adminUserSelect })
   if (!row) {
     throw new NotFoundError('User not found')
   }
-  return adminUserSchema.parse(row)
+  return toAdminUser(row)
 }
 
 /**
@@ -83,11 +86,7 @@ export const listUsers = async (query: ListUsersQuery): Promise<Page<AdminUser>>
     }),
     db.user.count({ where }),
   ])
-  return toPage(
-    rows.map((row) => adminUserSchema.parse(row)),
-    totalItems,
-    { page, perPage },
-  )
+  return toPage(rows.map(toAdminUser), totalItems, { page, perPage })
 }
 
 /**
@@ -109,7 +108,8 @@ export const setUserRole = async (input: SetUserRoleInput): Promise<AdminUser> =
 
 /**
  * Admin only: bans a user. Better Auth deletes their sessions and refuses their sign-ins with the
- * reason until `unbanUser`. The plugin refuses to ban the admin's own account (403).
+ * reason until `unbanUser`. The plugin checks that the user exists (404) and then refuses the
+ * admin's own account (403).
  */
 export const banUser = async (input: BanUserInput): Promise<AdminUser> => {
   await requireAdmin()
@@ -138,8 +138,9 @@ export const impersonateUser = async (id: string): Promise<void> => {
   await auth.api.impersonateUser({ body: { userId }, headers: await headers() }).catch(fromAdminApi)
 }
 
-/** Ends an impersonation and restores the admin's session; a plain session answers 403. */
+/** Signed in (401) → ends an impersonation and restores the admin's session; a plain session answers 403. */
 export const stopImpersonating = async (): Promise<void> => {
+  await requireUser()
   await auth.api.stopImpersonating({ headers: await headers() }).catch((error: unknown) => {
     if (error instanceof APIError && error.status === 'BAD_REQUEST') {
       throw new ForbiddenError('You are not impersonating anyone')
