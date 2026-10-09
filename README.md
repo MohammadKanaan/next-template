@@ -35,7 +35,7 @@ typecheck` and `bun run lint` find whatever this list misses.
 - lucide-react icons, sonner toasts
 - Prisma ORM 7.10 (`prisma-client` generator, `@prisma/adapter-pg`) + PostgreSQL 18
 - Better Auth 1.7 (email + password, optional Google sign-in, admin plugin, official Prisma adapter)
-- Redis (data cache, rate limiter), pg-boss jobs, Resend for email
+- Redis (data cache, rate limiter), pg-boss jobs, Resend for email, Cloudflare R2 for uploads (optional)
 - Server Actions + Zod 4 DTOs; React Hook Form 7 + `@hookform/resolvers`
 - Vitest + Testing Library + jsdom
 
@@ -69,6 +69,11 @@ verification and reset links are right there in its output. That fallback is for
 with `NODE_ENV=production` the send job fails (and is retried) until the key is set, and nothing is
 logged.
 
+**Uploads (optional).** The profile photo on `/settings` is stored on Cloudflare R2. Set the five
+`R2_*` variables in `.env` (all or none; `docs/guides/uploads.md` walks through the bucket, its
+public domain, the CORS rule and the API token). Without them the card is hidden and everything else
+works.
+
 `db:seed` and `db:reset` write straight to PostgreSQL and do not flush the Redis cache, so `/posts`
 can show pre-reset data for up to 5 minutes (`redis-cli -n 0 flushdb` clears it).
 
@@ -95,7 +100,7 @@ creates `admin@example.com` with the public password `password123`).
 | `worker`  | `bun run worker`                              | Background jobs; waits for `migrate`.                                     |
 
 Compose reads `.env` for `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `RESEND_API_KEY`, `EMAIL_FROM`,
-`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and the `NEXT_PUBLIC_*` build args; every other container
+`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, the five `R2_*` variables and the `NEXT_PUBLIC_*` build args; every other container
 variable is fixed in `docker-compose.yml`. `BETTER_AUTH_SECRET` is required: compose refuses to start
 without it. Production boot (`instrumentation.ts`) also refuses a missing, short or placeholder
 secret and a missing `BETTER_AUTH_URL`. `NEXT_PUBLIC_*` values are baked into the bundle at build
@@ -257,22 +262,23 @@ set one. The round trip with Google has not been run here (it needs real credent
 
 Where to look to see each pattern done once, properly.
 
-| Pattern                               | Where it is shown                                                                                                                                               |
-| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Server-rendered list with URL filters | `app/(site)/posts/page.tsx` + `view.tsx`; `hooks/useUrlState.ts`; `postsUrlQuery` in `lib/dto/posts.ts`; `components/Posts/Filters`                             |
-| Create / edit form with field errors  | `components/Posts/Form/index.tsx` (+ `utils.ts`); `lib/formErrors.ts` (`applyActionErrors`); `actions/posts.ts`; pages `/posts/new` and `/posts/[id]/edit`      |
-| Controlled form field                 | the Published `Checkbox` wired through RHF's `Controller` in `components/Posts/Form/index.tsx`                                                                  |
-| Record-level authorization policies   | `lib/data/policy.ts` (`authorize`, `permissionsFor`); `lib/data/policies/posts.ts` (`postPolicy`); used by `requirePostChange` in `lib/data/posts.ts`           |
-| Viewer-dependent visibility           | `postPolicy.view`, `getPost` and `listPosts` in `lib/data/posts.ts` (cache the shared part, check the viewer after)                                             |
-| Redis caching and invalidation        | `remember` / `invalidateTags` in `lib/server/cache.ts`; tags in `lib/data/cacheTags.ts`; used in `lib/data/posts.ts` and `lib/data/users.ts`                    |
-| REST CRUD handlers                    | `app/api/v1/posts/route.ts`, `app/api/v1/posts/[id]/route.ts`; `readJsonBody` and `toErrorResponse` in `lib/data/errors.ts`                                     |
-| Rate limiting                         | `consumeRateLimit` / `getClientIp` in `lib/data/rateLimit.ts`; per IP and per account in `actions/auth.ts`, per user in `createPost`                            |
-| Wrapping a Better Auth plugin         | `lib/data/admin.ts` (`setUserRole`, `banUser`, `impersonateUser` over `auth.api.*`); `actions/admin.ts`; page `app/(site)/admin`                                |
-| Admin-only page                       | `app/(site)/admin/page.tsx` + `view.tsx`; `listUsers` with `requireAdmin()` in `lib/data/admin.ts`; `loadPage` turns 403 into the not-found page                |
-| Account settings on Better Auth       | `actions/auth.ts` (`changePasswordAction`, `changeEmailAction`, `deleteAccountAction`); `lib/data/sessions.ts`; `app/(site)/settings`                           |
-| Background job and email              | `jobs/definitions.ts`, `jobs/sendEmail.ts`, `jobs/cleanup.ts`; `lib/server/queue.ts`; `worker/index.ts`; `lib/server/mailer.ts`; `emails/`                      |
-| OAuth (Google)                        | `lib/data/auth.ts` (`socialProviders`, `isGoogleAuthEnabled`); `signInWithGoogleAction` in `actions/auth.ts`; `lib/username.ts`; `components/Auth/GoogleButton` |
-| Health check                          | `lib/data/health.ts`; `app/api/health/route.ts`                                                                                                                 |
+| Pattern                               | Where it is shown                                                                                                                                                                        |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Server-rendered list with URL filters | `app/(site)/posts/page.tsx` + `view.tsx`; `hooks/useUrlState.ts`; `postsUrlQuery` in `lib/dto/posts.ts`; `components/Posts/Filters`                                                      |
+| Create / edit form with field errors  | `components/Posts/Form/index.tsx` (+ `utils.ts`); `lib/formErrors.ts` (`applyActionErrors`); `actions/posts.ts`; pages `/posts/new` and `/posts/[id]/edit`                               |
+| Controlled form field                 | the Published `Checkbox` wired through RHF's `Controller` in `components/Posts/Form/index.tsx`                                                                                           |
+| Record-level authorization policies   | `lib/data/policy.ts` (`authorize`, `permissionsFor`); `lib/data/policies/posts.ts` (`postPolicy`); used by `requirePostChange` in `lib/data/posts.ts`                                    |
+| Viewer-dependent visibility           | `postPolicy.view`, `getPost` and `listPosts` in `lib/data/posts.ts` (cache the shared part, check the viewer after)                                                                      |
+| Redis caching and invalidation        | `remember` / `invalidateTags` in `lib/server/cache.ts`; tags in `lib/data/cacheTags.ts`; used in `lib/data/posts.ts` and `lib/data/users.ts`                                             |
+| REST CRUD handlers                    | `app/api/v1/posts/route.ts`, `app/api/v1/posts/[id]/route.ts`; `readJsonBody` and `toErrorResponse` in `lib/data/errors.ts`                                                              |
+| Rate limiting                         | `consumeRateLimit` / `getClientIp` in `lib/data/rateLimit.ts`; per IP and per account in `actions/auth.ts`, per user in `createPost`                                                     |
+| Wrapping a Better Auth plugin         | `lib/data/admin.ts` (`setUserRole`, `banUser`, `impersonateUser` over `auth.api.*`); `actions/admin.ts`; page `app/(site)/admin`                                                         |
+| Admin-only page                       | `app/(site)/admin/page.tsx` + `view.tsx`; `listUsers` with `requireAdmin()` in `lib/data/admin.ts`; `loadPage` turns 403 into the not-found page                                         |
+| Account settings on Better Auth       | `actions/auth.ts` (`changePasswordAction`, `changeEmailAction`, `deleteAccountAction`); `lib/data/sessions.ts`; `app/(site)/settings`                                                    |
+| Background job and email              | `jobs/definitions.ts`, `jobs/sendEmail.ts`, `jobs/cleanup.ts`; `lib/server/queue.ts`; `worker/index.ts`; `lib/server/mailer.ts`; `emails/`                                               |
+| OAuth (Google)                        | `lib/data/auth.ts` (`socialProviders`, `isGoogleAuthEnabled`); `signInWithGoogleAction` in `actions/auth.ts`; `lib/username.ts`; `components/Auth/GoogleButton`                          |
+| Direct-to-storage upload (R2)         | `lib/server/storage.ts` (presigned PUT); `createUpload` / `attachAvatar` in `lib/data/uploads.ts`; `lib/client/uploads.ts`; `components/Settings/AvatarUploader`; `jobs/deleteObject.ts` |
+| Health check                          | `lib/data/health.ts`; `app/api/health/route.ts`                                                                                                                                          |
 
 ## Design decisions
 
@@ -285,8 +291,8 @@ Where to look to see each pattern done once, properly.
 - **Server Actions vs Route Handlers.** Actions for UI writes (no extra HTTP surface to design);
   a Route Handler where an HTTP API is required or a client has to fetch.
 - **Typed errors per caller.** One set of error classes, translated once per transport.
-- **Small on purpose.** File uploads, notifications, an audit log, soft delete, optimistic
-  locking, full-text search and comments were all built once in this template and then removed,
+- **Small on purpose.** Notifications, an audit log, soft delete, optimistic locking, full-text
+  search and comments were all built once in this template and then removed,
   because every project that started from it had to delete them. `docs/recipes/` says how
   to add each one back in this architecture, and `docs/DECISIONS.md` ("Removed") where it is in the
   history.
@@ -332,6 +338,6 @@ record)`, call them with `authorize()` after the exists check, and build the DTO
 - [`docs/DECISIONS.md`](docs/DECISIONS.md): what was chosen and why, and what was removed and where it went.
 - [`AGENTS.md`](AGENTS.md): project conventions and rules for contributors and agents.
 - Area guides in [`docs/guides/`](docs/guides/): authentication, posts, route-handlers, caching,
-  jobs, email, infrastructure, hooks, forms, environment.
+  jobs, email, uploads, infrastructure, hooks, forms, environment.
 - Recipes in [`docs/recipes/`](docs/recipes/) for what the template leaves out: concurrency and
-  optimistic locking, file uploads, and the other removed patterns.
+  optimistic locking, and the other removed patterns.

@@ -1,13 +1,15 @@
 # Jobs
 
 Background work runs on pg-boss (the same PostgreSQL, `pgboss` schema) in a separate worker process.
-Today: `send-email` (every email Better Auth asks for) and the hourly `cleanup`.
+Today: `send-email` (every email Better Auth asks for), `delete-object` (removes an upload's object
+from R2, always queued with a `startAfter` delay; `docs/guides/uploads.md`) and the hourly `cleanup`.
 
 - **Definitions** (`jobs/definitions.ts`): one entry per job with its name, Zod payload schema,
   queue `options` (retries, backoff, expiry) and an optional `cron`. Payload types come from
   `z.infer` (`JobPayload<'send-email'>`). `send-email` sets `deleteAfterSeconds: 3600`: its payloads
   carry live links that expire after an hour, so finished jobs must not keep them for pg-boss's
-  7-day default. `cleanup` runs `0 * * * *` and deletes expired sessions and verification tokens.
+  7-day default. `cleanup` runs `0 * * * *` and deletes expired sessions and verification tokens and abandoned
+  pending uploads with their objects.
 - **Enqueue** (`lib/server/queue.ts`): `enqueue(name, payload, options?)` validates the payload with
   the job's schema and sends it through a lazily started send-only pg-boss instance
   (`migrate: false`, `supervise: false`, `schedule: false`). The web process never runs maintenance.

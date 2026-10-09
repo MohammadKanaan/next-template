@@ -34,13 +34,14 @@ Long area narratives live in `docs/guides/`. Read the one for the area you touch
 - `docs/guides/caching.md`: the Redis data cache (`remember`, tags, what is never cached).
 - `docs/guides/jobs.md`: pg-boss jobs, handlers, the worker, the system DAL.
 - `docs/guides/email.md`: the mailer, the `send-email` job and the plain templates in `emails/`.
+- `docs/guides/uploads.md`: avatar uploads on Cloudflare R2 (presigned PUT, attach, delayed deletes, bucket setup).
 - `docs/guides/infrastructure.md`: `lib/server`, logging, Docker and CI.
 - `docs/guides/hooks.md`: hook rules (no `useMemo` / `useCallback`; RHF files opt out with `'use no memo'`), `useUrlState`.
 - `docs/guides/forms.md`: React Hook Form + Zod forms (each starts `'use client'` then `'use no memo'`).
 - `docs/guides/environment.md`: public and server-only config, security headers, `serverEnv()`.
 
-`docs/recipes/` holds patterns the template does **not** implement (concurrency and optimistic locking,
-uploads, and the other removed features) written to fit this architecture. Read one before adding
+`docs/recipes/` holds patterns the template does **not** implement (concurrency and optimistic locking
+and the other removed features) written to fit this architecture. Read one before adding
 such a feature; never treat it as a description of existing code.
 
 ## Build & Run Commands
@@ -80,6 +81,8 @@ such a feature; never treat it as a description of existing code.
 - **Cache + rate limits:** Redis (`ioredis`) behind `lib/server`. It is the only cache: Next's
   Cache Components (`'use cache'`) are off
 - **Jobs:** pg-boss on the same PostgreSQL, run by a separate worker process (`worker/`)
+- **Storage:** Cloudflare R2 through `@aws-sdk/client-s3` (`lib/server/storage.ts`), optional: the
+  five `R2_*` variables turn the profile photo upload on
 - **Email:** Resend through the `send-email` job, plain HTML templates in `emails/`, logged to the
   logger without an API key
 - **Logging:** pino (`lib/server/logger.ts`), pino-pretty in development
@@ -103,11 +106,12 @@ presenters/              # Override functions for views that need reshaped data
 types/                   # Cross-cutting types (types/api.ts: ActionResult, ErrorBody, FieldErrors)
 lib/                     # Pure helpers, constants, env, formErrors, username derivation
 lib/dto/                 # Zod schemas + inferred types (inputs and outputs); client- and server-safe
+lib/client/              # Browser-side helpers: uploadFile (the one fetch to a non-app URL), RequestError
 lib/data/                # Server-only DAL: db client, auth (Better Auth config), errors, users, admin,
-                         # sessions, posts, policies, health, rateLimit, page loader; maintenance is
-                         # the system DAL (jobs only)
+                         # sessions, posts, uploads, policies, health, rateLimit, page loader;
+                         # maintenance is the system DAL (jobs only)
 lib/server/              # Server-only infrastructure that is not the database: env, redis, cache,
-                         # queue, mailer, logger
+                         # queue, mailer, storage (R2), logger
 jobs/                    # Job definitions (name + Zod payload + options) and handlers
 worker/                  # Background worker entry (pg-boss), tsconfig, test-DB migrate script
 emails/                  # Plain email templates ({ subject, html, text }), rendered by the send-email job

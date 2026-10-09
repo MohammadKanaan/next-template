@@ -50,6 +50,13 @@ describe('job definitions', () => {
     expect(jobs['send-email'].options.deleteAfterSeconds).toBe(3600)
   })
 
+  it('takes a non-empty object key for delete-object', () => {
+    expect(jobs['delete-object'].schema.safeParse({ key: 'avatars/u/x' }).success).toBe(true)
+    expect(jobs['delete-object'].schema.safeParse({ key: '' }).success).toBe(false)
+    expect(jobs['delete-object'].schema.safeParse({}).success).toBe(false)
+    expect(jobs['delete-object'].options.retryLimit).toBeGreaterThan(0)
+  })
+
   it('runs the cleanup every hour', () => {
     expect(jobs.cleanup.cron).toBe('0 * * * *')
     expect(jobs.cleanup.schema.safeParse({}).success).toBe(true)

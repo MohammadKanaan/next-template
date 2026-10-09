@@ -70,6 +70,7 @@ const eslintConfig = defineConfig([
       'components/**/*.{ts,tsx}',
       'hooks/**/*.{ts,tsx}',
       'presenters/**/*.ts',
+      'lib/client/**/*.ts',
       'lib/dto/**/*.ts',
       'emails/**/*.ts',
     ],

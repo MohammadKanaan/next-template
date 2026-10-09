@@ -14,6 +14,4 @@ simplification (`docs/DECISIONS.md`, "Removed"). The last commit that holds all 
 | Recipe                                       | Add it when                                                                                                                                |
 | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | [`concurrency.md`](concurrency.md)           | Two requests can change one record: edits, balances, stock, status moves.                                                                  |
-| [`uploads.md`](uploads.md)                   | Users upload files (avatars, attachments) to S3-compatible storage.                                                                        |
-| [`background-jobs.md`](background-jobs.md)   | Work must retry, run later, or run on a schedule.                                                                                          |
 | [`removed-patterns.md`](removed-patterns.md) | Notifications, realtime, push, audit log, soft delete, full-text search, nested resources, cursor pagination, React Email, client facades. |

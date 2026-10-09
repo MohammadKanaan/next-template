@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { assertAuthEnv, resetServerEnv, serverEnv } from '@/lib/server/env'
+import { assertAuthEnv, R2_VARIABLES, resetServerEnv, serverEnv } from '@/lib/server/env'
 
 const valid = {
   REDIS_URL: 'redis://localhost:6379/15',
@@ -13,6 +13,7 @@ const stubEnv = (values: Record<string, string | undefined>) => {
     GOOGLE_CLIENT_ID: undefined,
     GOOGLE_CLIENT_SECRET: undefined,
     TRUSTED_PROXY_HOPS: undefined,
+    ...Object.fromEntries(R2_VARIABLES.map((name) => [name, undefined])),
     ...values,
   })) {
     vi.stubEnv(name, value)
@@ -82,6 +83,46 @@ describe('serverEnv', () => {
     resetServerEnv()
     stubEnv({ ...valid, GOOGLE_CLIENT_SECRET: 'secret', GOOGLE_CLIENT_ID: '' })
     expect(() => serverEnv()).toThrow(/Set both GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET/)
+  })
+})
+
+describe('serverEnv R2 group', () => {
+  const r2 = {
+    R2_ACCOUNT_ID: 'acct',
+    R2_ACCESS_KEY_ID: 'key',
+    R2_SECRET_ACCESS_KEY: 'secret',
+    R2_BUCKET: 'bucket',
+    R2_PUBLIC_URL: 'https://pub-abc.r2.dev',
+  }
+  beforeEach(resetServerEnv)
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    resetServerEnv()
+  })
+
+  it('is optional as a whole, and empty values count as unset', () => {
+    stubEnv(valid)
+    expect(serverEnv().R2_BUCKET).toBeUndefined()
+    resetServerEnv()
+    stubEnv({ ...valid, ...Object.fromEntries(R2_VARIABLES.map((name) => [name, ''])) })
+    expect(serverEnv().R2_ACCOUNT_ID).toBeUndefined()
+  })
+
+  it('accepts all five together', () => {
+    stubEnv({ ...valid, ...r2 })
+    expect(serverEnv()).toMatchObject(r2)
+  })
+
+  it('rejects a partial group, naming every variable', () => {
+    stubEnv({ ...valid, ...r2, R2_PUBLIC_URL: undefined })
+    expect(() => serverEnv()).toThrow(
+      /Set R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET, R2_PUBLIC_URL together, or none/,
+    )
+  })
+
+  it('requires R2_PUBLIC_URL to be a URL', () => {
+    stubEnv({ ...valid, ...r2, R2_PUBLIC_URL: 'pub-abc.r2.dev' })
+    expect(() => serverEnv()).toThrow(/R2_PUBLIC_URL/)
   })
 })
 

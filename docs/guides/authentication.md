@@ -32,8 +32,9 @@
     taken address gets the same response and no email; the action itself only rejects the user's
     own address.
   - **Delete account:** `user.deleteUser` is enabled; `deleteAccountAction` always demands the
-    password. Posts, sessions and accounts cascade; `afterDelete` invalidates `POSTS_TAG` and the
-    user's tag.
+    password. Posts, sessions, accounts and upload rows cascade; `beforeDelete` queues a delayed
+    `delete-object` job for each of the user's upload keys (the objects would not cascade; see
+    `docs/guides/uploads.md`) and `afterDelete` invalidates `POSTS_TAG` and the user's tag.
   - **Sessions:** `lib/data/sessions.ts` (`listSessions`, `revokeSession`, `revokeOtherSessions`)
     works on the plain `sessions` rows, so deleting a row ends that session. `SessionUser` carries
     `sessionId` to mark the current one. `SessionSummary` never contains the token.

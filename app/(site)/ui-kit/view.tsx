@@ -4,6 +4,7 @@ import { X } from 'lucide-react'
 import { useState, type ComponentProps, type ReactNode } from 'react'
 import { toast } from 'sonner'
 import { Empty } from '@/components/Empty'
+import { FileUploader } from '@/components/Form/FileUploader'
 import { Input } from '@/components/Form/Input'
 import { Textarea } from '@/components/Form/Textarea'
 import { LoadingButton } from '@/components/LoadingButton'
@@ -13,6 +14,7 @@ import { Pagination } from '@/components/Pagination'
 import { PostsFilters, type PostsFiltersPatch } from '@/components/Posts/Filters'
 import { PostForm } from '@/components/Posts/Form'
 import { PostStatusBadge } from '@/components/Posts/StatusBadge'
+import { AvatarUploader } from '@/components/Settings/AvatarUploader'
 import {
   Avatar,
   AvatarBadge,
@@ -195,6 +197,36 @@ export const UiKitView = () => {
           <Textarea label="With label" placeholder="Write something" />
           <Textarea label="Required" required placeholder="Required field" />
           <Textarea label="With error" error="This field is required" />
+        </div>
+      </Section>
+
+      <Section
+        id="file-uploader"
+        eyebrow="Forms"
+        title="FileUploader"
+        description="Picks one or many files, checks type and size from its props, and hands them to onUpload one after the other; each file shows waiting, uploading, uploaded or its error. This demo fails every file called fail."
+      >
+        <div className={styles.formGrid}>
+          <FileUploader
+            label="Add files"
+            accept={['application/pdf', 'image/png', 'text/csv']}
+            maxSize={1024 * 1024}
+            multiple
+            hint="PDF, PNG or CSV, up to 1 MB each. A file named fail.* is rejected."
+            onUpload={async (file) => {
+              await new Promise((resolve) => setTimeout(resolve, 800))
+              if (file.name.startsWith('fail')) {
+                throw new Error('The upload was rejected')
+              }
+            }}
+          />
+          <FileUploader
+            label="Disabled"
+            accept={['application/pdf']}
+            maxSize={1024}
+            disabled
+            onUpload={async () => {}}
+          />
         </div>
       </Section>
 
@@ -528,6 +560,28 @@ export const UiKitView = () => {
           <UserAvatar name="Ada Lovelace" image={AVATAR_SAMPLE_IMAGE} size="lg" />
           <UserAvatar name="Grace Hopper" image={null} size="lg" />
         </div>
+      </Section>
+
+      <Section
+        id="avatar-uploader"
+        eyebrow="Application components"
+        title="Avatar uploader"
+        description="Picks a file, asks for a presigned upload ticket, sends it to storage, then attaches it. The catalog's handlers refuse, so nothing is uploaded."
+      >
+        <AvatarUploader
+          name="Ada Lovelace"
+          image={null}
+          onCreateUpload={async () => ({
+            ok: false,
+            code: 'FORBIDDEN',
+            message: 'Uploads are disabled in the catalog.',
+          })}
+          onAttach={async () => ({
+            ok: false,
+            code: 'FORBIDDEN',
+            message: 'Uploads are disabled in the catalog.',
+          })}
+        />
       </Section>
     </div>
   )

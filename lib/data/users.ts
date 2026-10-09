@@ -21,7 +21,7 @@ export const userProfileSelect = {
   website: true,
 } satisfies Prisma.UserSelect
 
-const currentUserSelect = {
+export const currentUserSelect = {
   id: true,
   name: true,
   username: true,

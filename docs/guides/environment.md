@@ -15,7 +15,8 @@
   **Verifying Changes**).
 - Server-only config (`REDIS_URL`, `EMAIL_FROM`, `RESEND_API_KEY` (optional), `TRUSTED_PROXY_HOPS`
   (optional, default 1: how many proxies append to `x-forwarded-for`, read by `getClientIp`),
-  `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` (optional pair)) is read through `serverEnv()` in
+  `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` (optional pair), the five `R2_*` variables (optional
+  group, all or none; `R2_VARIABLES` lists them)) is read through `serverEnv()` in
   `lib/server/env.ts`: Zod-validated, parsed on first use (so `next build` works without it), one
   error listing every bad variable. An empty optional variable counts as unset. In production
   `instrumentation.ts` and the worker's start call it at boot, so a bad config fails loudly instead

@@ -6,6 +6,8 @@ import { db } from '@/lib/data/db'
 import { ForbiddenError, UnauthorizedError } from '@/lib/data/errors'
 import { listPosts } from '@/lib/data/posts'
 import { getViewer } from '@/lib/data/users'
+import { MAX_OBJECT_DELETE_DELAY_SECONDS } from '@/lib/dto/uploads'
+import { enqueue } from '@/lib/server/queue'
 import { getRedis } from '@/lib/server/redis'
 import { cookieJar } from '../../helpers/cookies'
 import {
@@ -402,6 +404,30 @@ describe('DAL auth', () => {
 
       expect((await listPosts({ page: 1, perPage: 10 })).totalItems).toBe(0)
       expect(await getViewer()).toBeNull()
+    })
+
+    it("queues the user's upload objects for deletion, delayed past every ticket's lifetime", async () => {
+      const user = await createUser({})
+      const other = await createUser({})
+      const upload = (userId: string, key: string, status: 'pending' | 'attached') =>
+        db.upload.create({
+          data: { userId, key, purpose: 'avatar', contentType: 'image/png', size: 1, status },
+        })
+      await upload(user.id, `avatars/${user.id}/old`, 'attached')
+      await upload(user.id, `avatars/${user.id}/half`, 'pending')
+      await upload(other.id, `avatars/${other.id}/keep`, 'attached')
+      await signInAs(user)
+      vi.mocked(enqueue).mockClear()
+
+      await auth.api.deleteUser({ body: { password: TEST_PASSWORD }, headers: requestHeaders() })
+
+      const deletes = vi.mocked(enqueue).mock.calls.filter(([name]) => name === 'delete-object')
+      const keys = deletes.map(([, payload]) => ('key' in payload ? payload.key : null)).sort()
+      expect(keys).toEqual([`avatars/${user.id}/half`, `avatars/${user.id}/old`])
+      for (const [, , options] of deletes) {
+        expect(options).toEqual({ startAfter: MAX_OBJECT_DELETE_DELAY_SECONDS })
+      }
+      expect(await db.upload.count()).toBe(1)
     })
 
     it('refuses a wrong password and keeps the account', async () => {

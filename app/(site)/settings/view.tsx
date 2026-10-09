@@ -10,7 +10,9 @@ import {
   revokeOtherSessionsAction,
   revokeSessionAction,
 } from '@/actions/auth'
+import { attachAvatarAction, createUploadAction } from '@/actions/uploads'
 import { updateProfileAction } from '@/actions/users'
+import { AvatarUploader } from '@/components/Settings/AvatarUploader'
 import { DeleteAccountDialog } from '@/components/Settings/DeleteAccountDialog'
 import { EmailForm } from '@/components/Settings/EmailForm'
 import { PasswordForm } from '@/components/Settings/PasswordForm'
@@ -26,9 +28,11 @@ type SettingsViewProps = {
   user: CurrentUser
   sessions: SessionSummary[]
   hasPassword: boolean
+  /** Whether storage is configured; without it the photo card is not shown. */
+  canUpload: boolean
 }
 
-export const SettingsView = ({ user, sessions, hasPassword }: SettingsViewProps) => {
+export const SettingsView = ({ user, sessions, hasPassword, canUpload }: SettingsViewProps) => {
   const router = useRouter()
 
   const handleProfile = async (values: UpdateProfileInput) => {
@@ -84,6 +88,24 @@ export const SettingsView = ({ user, sessions, hasPassword }: SettingsViewProps)
 
   return (
     <div className={styles.stack}>
+      {canUpload && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Profile photo</CardTitle>
+            <CardDescription>Shown in the navigation bar next to your name.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <AvatarUploader
+              name={user.name}
+              image={user.image}
+              onCreateUpload={createUploadAction}
+              onAttach={attachAvatarAction}
+              onUploaded={() => toast.success('Profile photo updated')}
+            />
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle>Profile</CardTitle>

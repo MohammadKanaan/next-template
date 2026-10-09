@@ -4,6 +4,15 @@ import { z } from 'zod'
 /** An empty variable (`FOO=`, common in compose and CI templates) counts as unset. */
 const emptyToUndefined = (value: unknown) => (value === '' ? undefined : value)
 
+/** The variables that turn uploads on; all or none. */
+export const R2_VARIABLES = [
+  'R2_ACCOUNT_ID',
+  'R2_ACCESS_KEY_ID',
+  'R2_SECRET_ACCESS_KEY',
+  'R2_BUCKET',
+  'R2_PUBLIC_URL',
+] as const
+
 const serverEnvSchema = z
   .object({
     REDIS_URL: z.string().min(1),
@@ -23,11 +32,25 @@ const serverEnvSchema = z
     // half-configured provider fails at boot in production.
     GOOGLE_CLIENT_ID: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
     GOOGLE_CLIENT_SECRET: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
+    // Optional group: uploads (Cloudflare R2) are on only when all five are set. `R2_PUBLIC_URL`
+    // is the bucket's public origin (its `r2.dev` subdomain or a custom domain), without a path.
+    R2_ACCOUNT_ID: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
+    R2_ACCESS_KEY_ID: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
+    R2_SECRET_ACCESS_KEY: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
+    R2_BUCKET: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
+    R2_PUBLIC_URL: z.preprocess(emptyToUndefined, z.url().optional()),
   })
   .refine((env) => Boolean(env.GOOGLE_CLIENT_ID) === Boolean(env.GOOGLE_CLIENT_SECRET), {
     message: 'Set both GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET, or neither',
     path: ['GOOGLE_CLIENT_ID'],
   })
+  .refine(
+    (env) => {
+      const set = R2_VARIABLES.filter((name) => Boolean(env[name]))
+      return set.length === 0 || set.length === R2_VARIABLES.length
+    },
+    { message: `Set ${R2_VARIABLES.join(', ')} together, or none`, path: ['R2_ACCOUNT_ID'] },
+  )
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>
 

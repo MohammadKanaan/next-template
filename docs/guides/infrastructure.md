@@ -1,7 +1,7 @@
 # Infrastructure (`lib/server`)
 
 - Server-only code that is not the database: `env.ts`, `redis.ts`, `cache.ts`, `queue.ts`,
-  `mailer.ts`, `logger.ts`. Every file starts with `import 'server-only'`.
+  `mailer.ts`, `storage.ts` (Cloudflare R2, see `docs/guides/uploads.md`), `logger.ts`. Every file starts with `import 'server-only'`.
 - **Only `lib/data` (including the Better Auth config), `jobs/`, `worker/` and tests import
   `@/lib/server/*`.** ESLint forbids it from `app/`, `actions/`, `components/`, `hooks/`,
   `presenters/`, `emails/` and `lib/dto`. A page or action that needs infrastructure asks the DAL.
@@ -17,7 +17,7 @@
   redacted, because job payloads carry live reset and verification links. Never log a payload or a
   message body. ESLint forbids `console` in `lib/data`, `lib/server`, `jobs` and `worker/index.ts`;
   the CLI scripts `worker/migrate.ts` and `prisma/seed.ts` keep it.
-- Singletons (the Prisma client, Redis, pg-boss) hang off `globalThis` and are created lazily, so
+- Singletons (the Prisma client, Redis, pg-boss, the R2 client) hang off `globalThis` and are created lazily, so
   importing a file never needs its environment variables.
 - `docker-compose.yml` provides Postgres and Redis for development (`docker compose up -d`). Under
   `profiles: ['app']` it also builds the single `Dockerfile` (`node:24-slim` + bun 1.3.10, no
