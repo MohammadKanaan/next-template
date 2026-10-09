@@ -91,7 +91,7 @@ creates `admin@example.com` with the public password `password123`).
 
 `docker compose up -d` without the profile still starts only PostgreSQL and Redis, which is what
 `bun run dev` expects. The `app` profile adds three services built from one `Dockerfile`
-(`node:24-slim` plus bun 1.3.10):
+(`node:24-slim` plus bun 1.4.2):
 
 | Service   | Command                                       | Notes                                                                     |
 | --------- | --------------------------------------------- | ------------------------------------------------------------------------- |

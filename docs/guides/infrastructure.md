@@ -20,7 +20,7 @@
 - Singletons (the Prisma client, Redis, pg-boss, the R2 client) hang off `globalThis` and are created lazily, so
   importing a file never needs its environment variables.
 - `docker-compose.yml` provides Postgres and Redis for development (`docker compose up -d`). Under
-  `profiles: ['app']` it also builds the single `Dockerfile` (`node:24-slim` + bun 1.3.10, no
+  `profiles: ['app']` it also builds the single `Dockerfile` (`node:24-slim` + bun 1.4.2, no
   `output: 'standalone'`) and runs `migrate` (one-shot: `db:deploy`, then the `pgboss` schema), `web`
   (`bun run start`, healthcheck on `/api/health`) and `worker` (`bun run worker`) from it. The image's `bun run build` and the CI build step get a
   build-only placeholder `BETTER_AUTH_SECRET` (inline on the command, never `ENV`), because the

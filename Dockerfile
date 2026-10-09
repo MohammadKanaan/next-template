@@ -7,7 +7,7 @@
 # `tsx`, so it needs the source tree and the full node_modules anyway.
 
 ARG NODE_VERSION=24
-ARG BUN_VERSION=1.3.10
+ARG BUN_VERSION=1.4.2
 
 FROM oven/bun:${BUN_VERSION} AS bun
 
