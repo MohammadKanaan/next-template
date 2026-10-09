@@ -162,10 +162,21 @@ export const auth = betterAuth({
       // Upload rows go with the user (cascade) but their objects would stay in the bucket, so the
       // keys are read and queued for deletion before the rows disappear. That includes files that
       // other people (an admin) attached to this user's posts: the posts cascade, and those rows
-      // would otherwise be left behind. The jobs are delayed past every ticket's lifetime plus the
+      // would otherwise be left behind. The reverse, files this user (an admin) attached to
+      // someone else's post, belong to that post: they are handed to its author first, so the
+      // cascade leaves them alone. The jobs are delayed past every ticket's lifetime plus the
       // grace period: an object uploaded through a still-valid ticket after the rows are gone
       // would otherwise be orphaned.
       beforeDelete: async (user) => {
+        const onOtherPosts = await db.upload.findMany({
+          where: { userId: user.id, post: { userId: { not: user.id } } },
+          select: { id: true, post: { select: { userId: true } } },
+        })
+        for (const { id, post } of onOtherPosts) {
+          if (post) {
+            await db.upload.update({ where: { id }, data: { userId: post.userId } })
+          }
+        }
         const uploads = await db.upload.findMany({
           where: { OR: [{ userId: user.id }, { post: { userId: user.id } }] },
           select: { key: true },

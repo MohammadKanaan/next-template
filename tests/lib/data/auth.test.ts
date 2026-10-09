@@ -338,6 +338,34 @@ describe('DAL auth', () => {
       ])
     })
 
+    it("hands the files they attached to someone else's post to its author", async () => {
+      const admin = await createUser({ role: 'admin' })
+      const author = await createUser({})
+      const post = await db.post.create({ data: { userId: author.id, title: 'Bob', body: 'b' } })
+      await db.upload.create({
+        data: {
+          key: 'attachments/admin/on-bob',
+          userId: admin.id,
+          postId: post.id,
+          purpose: 'attachment',
+          name: 'report.pdf',
+          contentType: 'application/pdf',
+          size: 1,
+          status: 'attached',
+        },
+      })
+      await signInAs(admin)
+      vi.mocked(enqueue).mockClear()
+
+      await auth.api.deleteUser({ body: { password: TEST_PASSWORD }, headers: requestHeaders() })
+
+      const jobs = vi.mocked(enqueue).mock.calls.filter(([name]) => name === 'delete-object')
+      expect(jobs).toEqual([])
+      expect(
+        await db.upload.findMany({ select: { key: true, userId: true, postId: true } }),
+      ).toEqual([{ key: 'attachments/admin/on-bob', userId: author.id, postId: post.id }])
+    })
+
     it('drops the cached post lists and viewer', async () => {
       const { listPosts } = await import('@/lib/data/posts')
       const user = await createUser({})

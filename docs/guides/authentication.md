@@ -33,7 +33,9 @@
     user's own address.
   - **Delete account:** `user.deleteUser` is enabled. `beforeDelete` queues `delete-object` for each
     of the user's upload keys (the rows cascade, the objects would be orphaned), delayed with
-    `startAfter` past the ticket lifetime plus grace so an in-flight upload cannot outlive its job; `afterDelete`
+    `startAfter` past the ticket lifetime plus grace so an in-flight upload cannot outlive its job.
+    Files the user attached to someone else's post (an admin editing it) are first handed to that
+    post's author, so the post keeps them; `afterDelete`
     invalidates `POSTS_TAG` and the user's tag. Posts, sessions, accounts and uploads cascade.
   - **Sessions:** `lib/data/sessions.ts` (`listSessions`, `revokeSession`, `revokeOtherSessions`)
     works on the plain `sessions` rows, so deleting a row ends that session. `SessionUser` carries

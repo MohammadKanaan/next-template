@@ -20,8 +20,9 @@ export const metadata: Metadata = {
 }
 
 const PostsSsrPage = async ({ searchParams }: PageProps<'/posts/ssr'>) => {
-  // The same tolerant schema the client hook uses: a garbled URL falls back to the defaults.
-  const query = postsUrlQuery.parse(toScalarParams(await searchParams))
+  // The same tolerant schema the client hook uses: a garbled URL falls back to the defaults. The
+  // public list has no trash (that is /posts/mine), so a `?trash=` in the URL is ignored.
+  const query = postsUrlQuery.omit({ trash: true }).parse(toScalarParams(await searchParams))
   const [posts, tags] = await loadPage(
     () => Promise.all([listPosts({ ...toListPostsParams(query), perPage: PER_PAGE }), listTags()]),
     ROUTE_POSTS_SSR,
