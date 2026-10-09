@@ -6,8 +6,8 @@
   rule; `role`, `banned`, `banReason`, `banExpires` (user) and `impersonatedBy` (session) are the
   admin plugin's fields.
 - Email flows: sign-up sends a verification email, "Forgot password?" sends a reset email, both
-  through `sendMail` (see **Email**), called without awaiting so response time does not reveal
-  whether an account exists. Verification is **soft** (`requireEmailVerification: false`):
+  through the `send-email` job (see **Email**), queued without awaiting so response time does not
+  reveal whether an account exists. Verification is **soft** (`requireEmailVerification: false`):
   unverified users can sign in and see `VerifyEmailBanner` with a Resend button; opening the
   verification link only marks the address verified, it never signs the browser in. Either
   change-email link (the confirmation to the current address and the verification of the new one

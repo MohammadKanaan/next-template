@@ -5,15 +5,16 @@ Better Auth with its admin plugin, Server Actions for writes, a REST API on the 
 DTOs, schema-first forms, and shadcn/ui with SCSS everywhere else.
 
 It is deliberately small. Everything in it is either infrastructure you keep (auth, accounts, admin,
-cache, rate limits, email, logging, tooling) or the one example resource, **posts**, which shows
-every layer once and is meant to be replaced by your first real resource.
+cache, rate limits, background jobs, email, logging, tooling) or the one example resource,
+**posts**, which shows every layer once and is meant to be replaced by your first real resource.
 
 ## Start here
 
 Using this as the base of a new project:
 
 1. `cp .env.example .env`, generate `BETTER_AUTH_SECRET`, `docker compose up -d`, `bun install`,
-   `bun run db:deploy`, `bun run db:seed`, `bun run dev` (details under **Setup**).
+   `bun run db:deploy`, `bun run db:seed`, `bun run dev` and `bun run dev:worker` (details under
+   **Setup**).
 2. Rename the app (`NEXT_PUBLIC_APP_NAME`, `package.json`, `docker-compose.yml`'s database names).
 3. Build your first resource next to posts by following **Adding a resource** below, then delete
    posts: `actions/posts.ts`, `app/(site)/posts/**`, `app/api/v1/posts/**`, `components/Posts/**`,
@@ -34,7 +35,7 @@ typecheck` and `bun run lint` find whatever this list misses.
 - lucide-react icons, sonner toasts
 - Prisma ORM 7.10 (`prisma-client` generator, `@prisma/adapter-pg`) + PostgreSQL 18
 - Better Auth 1.7 (email + password, optional Google sign-in, admin plugin, official Prisma adapter)
-- Redis (data cache, rate limiter), Resend for email
+- Redis (data cache, rate limiter), pg-boss jobs, Resend for email
 - Server Actions + Zod 4 DTOs; React Hook Form 7 + `@hookform/resolvers`
 - Vitest + Testing Library + jsdom
 
@@ -47,7 +48,8 @@ docker compose up -d              # PostgreSQL and Redis; or run them yourself
 bun install                       # also generates the Prisma client (postinstall)
 bun run db:deploy                 # apply migrations
 bun run db:seed                   # 3 users, 12 posts (one draft each)
-bun run dev                       # http://localhost:3000
+bun run dev                       # web process, http://localhost:3000
+bun run dev:worker                # in a second terminal: background jobs (emails, cleanup)
 ```
 
 Log in as `leanne@example.com` / `password123` (admin: `admin@example.com` / `password123`), or
@@ -60,9 +62,12 @@ If you run them yourself, create the `next_template_dev` and `next_template_test
 `PEXPIRE ... NX`. The compose Redis sets `maxmemory` with the `volatile-lru` policy; use the same on
 a shared instance so only expiring keys can be evicted.
 
-Without `RESEND_API_KEY`, emails are logged to the dev server output instead of sent, so the
-verification and reset links are right there. That fallback is for development only: with
-`NODE_ENV=production` sending fails loudly until the key is set, and nothing is logged.
+The **worker** is a second process (`bun run worker`, or `dev:worker` to restart on changes). Without
+it, jobs pile up in the queue: no verification or reset email is sent and the hourly cleanup does
+not run. Without `RESEND_API_KEY`, the worker logs emails instead of sending them, so the
+verification and reset links are right there in its output. That fallback is for development only:
+with `NODE_ENV=production` the send job fails (and is retried) until the key is set, and nothing is
+logged.
 
 `db:seed` and `db:reset` write straight to PostgreSQL and do not flush the Redis cache, so `/posts`
 can show pre-reset data for up to 5 minutes (`redis-cli -n 0 flushdb` clears it).
@@ -80,13 +85,14 @@ because the containers run with `NODE_ENV=production`, where the seed refuses to
 creates `admin@example.com` with the public password `password123`).
 
 `docker compose up -d` without the profile still starts only PostgreSQL and Redis, which is what
-`bun run dev` expects. The `app` profile adds two services built from one `Dockerfile`
+`bun run dev` expects. The `app` profile adds three services built from one `Dockerfile`
 (`node:24-slim` plus bun 1.3.10):
 
-| Service   | Command             | Notes                                                                     |
-| --------- | ------------------- | ------------------------------------------------------------------------- |
-| `migrate` | `bun run db:deploy` | One-shot: applies the Prisma migrations. Builds the image.                |
-| `web`     | `bun run start`     | Port 3000 on loopback; healthcheck on `/api/health`; waits for `migrate`. |
+| Service   | Command                                       | Notes                                                                     |
+| --------- | --------------------------------------------- | ------------------------------------------------------------------------- |
+| `migrate` | `bun run db:deploy`, then `worker/migrate.ts` | One-shot: Prisma migrations, then the `pgboss` schema. Builds the image.  |
+| `web`     | `bun run start`                               | Port 3000 on loopback; healthcheck on `/api/health`; waits for `migrate`. |
+| `worker`  | `bun run worker`                              | Background jobs; waits for `migrate`.                                     |
 
 Compose reads `.env` for `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `RESEND_API_KEY`, `EMAIL_FROM`,
 `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and the `NEXT_PUBLIC_*` build args; every other container
@@ -107,32 +113,34 @@ appends the client address. Set `TRUSTED_PROXY_HOPS` (default `1`) to the number
 
 ## Scripts
 
-| Script                    | What it does                                                           |
-| ------------------------- | ---------------------------------------------------------------------- |
-| `bun run dev`             | Next dev server (Turbopack).                                           |
-| `bun run build`           | Production build.                                                      |
-| `bun run start`           | Serve the production build.                                            |
-| `bun run lint`            | ESLint.                                                                |
-| `bun run format`          | Prettier, write.                                                       |
-| `bun run format:check`    | Prettier, check only.                                                  |
-| `bun run typecheck`       | `prisma generate`, `next typegen`, then `tsc --noEmit`.                |
-| `bun run test`            | Vitest, single run.                                                    |
-| `bun run test:watch`      | Vitest in watch mode.                                                  |
-| `bun run db:generate`     | Regenerate the Prisma client into `generated/` (also runs on install). |
-| `bun run db:migrate`      | Create and apply a migration to the dev DB, then regenerate.           |
-| `bun run db:deploy`       | Apply pending migrations only (CI / production).                       |
-| `bun run db:seed`         | Seed the dev DB (`prisma/seed.ts`, replaces the seeded users).         |
-| `bun run db:reset`        | Drop, re-migrate, and re-seed the dev DB.                              |
-| `bun run db:studio`       | Prisma Studio.                                                         |
-| `bun run db:test:prepare` | Reset and migrate the database in `.env.test`.                         |
+| Script                    | What it does                                                            |
+| ------------------------- | ----------------------------------------------------------------------- |
+| `bun run dev`             | Next dev server (Turbopack).                                            |
+| `bun run build`           | Production build.                                                       |
+| `bun run start`           | Serve the production build.                                             |
+| `bun run worker`          | Background worker (pg-boss jobs and cron).                              |
+| `bun run dev:worker`      | The worker with `tsx watch`.                                            |
+| `bun run lint`            | ESLint.                                                                 |
+| `bun run format`          | Prettier, write.                                                        |
+| `bun run format:check`    | Prettier, check only.                                                   |
+| `bun run typecheck`       | `prisma generate`, `next typegen`, then `tsc --noEmit`.                 |
+| `bun run test`            | Vitest, single run.                                                     |
+| `bun run test:watch`      | Vitest in watch mode.                                                   |
+| `bun run db:generate`     | Regenerate the Prisma client into `generated/` (also runs on install).  |
+| `bun run db:migrate`      | Create and apply a migration to the dev DB, then regenerate.            |
+| `bun run db:deploy`       | Apply pending migrations only (CI / production).                        |
+| `bun run db:seed`         | Seed the dev DB (`prisma/seed.ts`, replaces the seeded users).          |
+| `bun run db:reset`        | Drop, re-migrate, and re-seed the dev DB.                               |
+| `bun run db:studio`       | Prisma Studio.                                                          |
+| `bun run db:test:prepare` | Reset and migrate the database in `.env.test`, install `pgboss` schema. |
 
 ## Testing
 
 Copy `.env.test.example` to `.env.test`, run `bun run db:test:prepare` once per schema change (and
 whenever the test DB may be dirty), then `bun run test`. Server tests call the DAL, Server Actions,
 and Route Handlers directly against `next_template_test` and Redis database 15 (flushed between
-tests) and never touch the dev database. The mailer is mocked, so no email is ever sent. Component,
-presenter, and DTO tests need no database.
+tests) and never touch the dev database. The job queue is mocked, so no email is ever sent.
+Component, presenter, and DTO tests need no database.
 
 ## Architecture
 
@@ -143,7 +151,7 @@ lib/dto/*  Zod schemas: inputs and outputs, types via z.infer (client- and serve
 lib/data/* server-only DAL: the only code that touches Prisma; enforces auth; validates inputs; returns DTOs
 
 Server Component ─────────────────▶ lib/data ──▶ PostgreSQL
-                                           └──▶ Redis, Resend (lib/server)
+                                           └──▶ Redis, job queue (lib/server) ──▶ worker/ ──▶ Resend
 Server Action (actions/*) ────────▶ lib/data
 Route Handler (app/api/v1) ───────▶ lib/data   (decodes with lib/dto, answers JSON)
 ```
@@ -177,9 +185,12 @@ cache: the DAL caches viewer-independent reads with tag versions and invalidates
 functions. Next's Cache Components (`'use cache'`) are off, so there is no second cache to keep in
 sync.
 
-**Email.** Better Auth's verification, reset and email-change mails are plain templates in `emails/`
-(`{ subject, html, text }`), sent through Resend by `lib/server/mailer.ts` without awaiting (so
-response time cannot reveal whether an account exists) and logged instead when no key is set.
+**Jobs and email.** `jobs/definitions.ts` lists each job (name, Zod payload, retry options, cron).
+`enqueue()` validates and sends; the worker runs the handlers. Better Auth's verification, reset and
+email-change mails are queued as `send-email` jobs without awaiting (so response time cannot reveal
+whether an account exists); the worker renders the plain templates in `emails/` and sends through
+Resend, or logs the mail when no key is set. Jobs that touch the database use the system DAL
+`lib/data/maintenance.ts`, importable only from `jobs/`.
 
 **Route Handlers.** The REST endpoints below exist for HTTP API clients; no UI calls them. Each
 handler reads the body with `readJsonBody`, decodes it with the DTO schema, and passes it, with the
@@ -259,7 +270,7 @@ Where to look to see each pattern done once, properly.
 | Wrapping a Better Auth plugin         | `lib/data/admin.ts` (`setUserRole`, `banUser`, `impersonateUser` over `auth.api.*`); `actions/admin.ts`; page `app/(site)/admin`                                |
 | Admin-only page                       | `app/(site)/admin/page.tsx` + `view.tsx`; `listUsers` with `requireAdmin()` in `lib/data/admin.ts`; `loadPage` turns 403 into the not-found page                |
 | Account settings on Better Auth       | `actions/auth.ts` (`changePasswordAction`, `changeEmailAction`, `deleteAccountAction`); `lib/data/sessions.ts`; `app/(site)/settings`                           |
-| Transactional email                   | `emails/*.ts`; `lib/server/mailer.ts`; `deliver` in `lib/data/auth.ts`                                                                                          |
+| Background job and email              | `jobs/definitions.ts`, `jobs/sendEmail.ts`, `jobs/cleanup.ts`; `lib/server/queue.ts`; `worker/index.ts`; `lib/server/mailer.ts`; `emails/`                      |
 | OAuth (Google)                        | `lib/data/auth.ts` (`socialProviders`, `isGoogleAuthEnabled`); `signInWithGoogleAction` in `actions/auth.ts`; `lib/username.ts`; `components/Auth/GoogleButton` |
 | Health check                          | `lib/data/health.ts`; `app/api/health/route.ts`                                                                                                                 |
 
@@ -274,9 +285,9 @@ Where to look to see each pattern done once, properly.
 - **Server Actions vs Route Handlers.** Actions for UI writes (no extra HTTP surface to design);
   a Route Handler where an HTTP API is required or a client has to fetch.
 - **Typed errors per caller.** One set of error classes, translated once per transport.
-- **Small on purpose.** Background jobs, file uploads, notifications, an audit log, soft delete,
-  optimistic locking, full-text search and comments were all built once in this template and then
-  removed, because every project that started from it had to delete them. `docs/recipes/` says how
+- **Small on purpose.** File uploads, notifications, an audit log, soft delete, optimistic
+  locking, full-text search and comments were all built once in this template and then removed,
+  because every project that started from it had to delete them. `docs/recipes/` says how
   to add each one back in this architecture, and `docs/DECISIONS.md` ("Removed") where it is in the
   history.
 
@@ -321,6 +332,6 @@ record)`, call them with `authorize()` after the exists check, and build the DTO
 - [`docs/DECISIONS.md`](docs/DECISIONS.md): what was chosen and why, and what was removed and where it went.
 - [`AGENTS.md`](AGENTS.md): project conventions and rules for contributors and agents.
 - Area guides in [`docs/guides/`](docs/guides/): authentication, posts, route-handlers, caching,
-  email, infrastructure, hooks, forms, environment.
+  jobs, email, infrastructure, hooks, forms, environment.
 - Recipes in [`docs/recipes/`](docs/recipes/) for what the template leaves out: concurrency and
-  optimistic locking, file uploads, background jobs, and the other removed patterns.
+  optimistic locking, file uploads, and the other removed patterns.

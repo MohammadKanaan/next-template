@@ -1,6 +1,7 @@
 # `docker compose up -d` starts only the infrastructure (db, redis), for local development with
-# `bun run dev`. `docker compose --profile app up --build` also builds the app image and runs the
-# migrations and the web process (see "Run everything with Docker" in README.md).
+# `bun run dev` and `bun run dev:worker`. `docker compose --profile app up --build` also builds the
+# app image and runs the migrations, the web process and the worker (see "Run everything with
+# Docker" in README.md).
 
 # Environment shared by the app containers. Inside compose the services reach each other by service
 # name. A variable from the shell or from `.env` overrides the `${NAME:-default}` fallbacks below.
@@ -51,8 +52,8 @@ services:
       timeout: 3s
       retries: 10
 
-  # One-shot: applies the Prisma migrations. Seeding stays an explicit command because the seed
-  # replaces rows:
+  # One-shot: applies the Prisma migrations, then installs or upgrades the `pgboss` schema.
+  # Seeding stays an explicit command because the seed replaces rows:
   #   docker compose --profile app run --rm -e ALLOW_SEED=1 migrate bun run db:seed
   migrate:
     profiles: ['app']
@@ -62,7 +63,10 @@ services:
         NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-Next Template}
         NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-/api/v1}
     image: next-template-app
-    command: ['bun', 'run', 'db:deploy']
+    command:
+      - sh
+      - -c
+      - bun run db:deploy && node_modules/.bin/tsx --tsconfig worker/tsconfig.json worker/migrate.ts
     environment: *app-env
     depends_on:
       db:
@@ -92,6 +96,17 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
+
+  worker:
+    profiles: ['app']
+    image: next-template-app
+    command: ['bun', 'run', 'worker']
+    environment: *app-env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
 
 volumes:
   db-data:

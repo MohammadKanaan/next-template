@@ -6,17 +6,14 @@ import { nextCookies } from 'better-auth/next-js'
 import { admin } from 'better-auth/plugins'
 import { headers } from 'next/headers'
 import { cache } from 'react'
-import { confirmEmailChangeEmail } from '@/emails/confirmEmailChange'
-import type { EmailMessage } from '@/emails/layout'
-import { resetPasswordEmail } from '@/emails/resetPassword'
-import { verifyEmail } from '@/emails/verifyEmail'
+import type { JobPayload } from '@/jobs/definitions'
 import { loginPath } from '@/lib/constants-routes'
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, signUpInput } from '@/lib/dto/auth'
 import { roleSchema, type Role } from '@/lib/dto/users'
 import { deriveUsername } from '@/lib/username'
 import { invalidateTags } from '@/lib/server/cache'
 import { logger } from '@/lib/server/logger'
-import { sendMail } from '@/lib/server/mailer'
+import { enqueue } from '@/lib/server/queue'
 import { POSTS_TAG, userTag } from './cacheTags'
 import { db } from './db'
 import { ForbiddenError, UnauthorizedError } from './errors'
@@ -24,12 +21,12 @@ import { ForbiddenError, UnauthorizedError } from './errors'
 const log = logger.child({ module: 'auth' })
 
 /**
- * Sends an email without awaiting it: the caller's response time must not reveal whether an
- * account exists. A failure is logged (never the message: it carries a live link); the user can
- * ask again.
+ * Queues an email without awaiting it: the caller's response time must not reveal whether an
+ * account exists. The worker renders and sends it (`jobs/sendEmail.ts`). A failure to queue is
+ * logged (never the payload: it carries a live link); the user can ask again.
  */
-const deliver = (to: string, message: EmailMessage) => {
-  sendMail({ to, ...message }).catch((error) => log.error({ err: error }, 'email not sent'))
+const queueEmail = (payload: JobPayload<'send-email'>) => {
+  enqueue('send-email', payload).catch((error) => log.error({ err: error }, 'email not queued'))
 }
 
 /**
@@ -110,7 +107,7 @@ export const auth = betterAuth({
     requireEmailVerification: false,
     revokeSessionsOnPasswordReset: true,
     sendResetPassword: async ({ user, url }) => {
-      deliver(user.email, resetPasswordEmail({ name: user.name, url }))
+      queueEmail({ template: 'reset-password', to: user.email, props: { name: user.name, url } })
     },
   },
   emailVerification: {
@@ -120,7 +117,7 @@ export const auth = betterAuth({
     // below), because an email verification token is a replayable JWT valid for an hour.
     autoSignInAfterVerification: false,
     sendVerificationEmail: async ({ user, url }) => {
-      deliver(user.email, verifyEmail({ name: user.name, url }))
+      queueEmail({ template: 'verify-email', to: user.email, props: { name: user.name, url } })
     },
   },
   // Account linking stays at Better Auth's default: a Google sign-in whose email is verified links
@@ -180,7 +177,11 @@ export const auth = betterAuth({
       // the new address through `sendVerificationEmail` above. A taken address gets the same
       // response, so this cannot be used to find out who has an account.
       sendChangeEmailConfirmation: async ({ user, newEmail, url }) => {
-        deliver(user.email, confirmEmailChangeEmail({ name: user.name, newEmail, url }))
+        queueEmail({
+          template: 'confirm-email-change',
+          to: user.email,
+          props: { name: user.name, newEmail, url },
+        })
       },
     },
     deleteUser: {

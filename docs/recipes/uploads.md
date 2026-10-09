@@ -21,7 +21,7 @@ add them in the shape that worked.
    rules is deleted, the row stays `pending` for the cleanup) → marks the row `attached` and links
    it (`user.image = publicUrl(key)`, or `postId`) → invalidates the cache of what it changed.
 4. **Replace or remove.** The previous object is deleted **later**, not now: queue a delayed
-   `delete-object` job (`background-jobs.md`) with `startAfter: ticketSeconds + grace`, because S3
+   `delete-object` job (`docs/guides/jobs.md`) with `startAfter: ticketSeconds + grace`, because S3
    checks a presigned POST's expiry when the request starts, so a slow upload begun just before
    expiry can land after it, and an object re-uploaded to a key with no row would be invisible to
    every cleanup. 300 s ticket + 600 s grace meant a replaced file stayed readable for about 15 min.

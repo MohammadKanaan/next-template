@@ -18,8 +18,8 @@
   `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` (optional pair)) is read through `serverEnv()` in
   `lib/server/env.ts`: Zod-validated, parsed on first use (so `next build` works without it), one
   error listing every bad variable. An empty optional variable counts as unset. In production
-  `instrumentation.ts` calls it at boot, so a bad config fails loudly instead of degrading the rate
-  limiter or cache. Never read these from `process.env` elsewhere (the one exception is the Google
+  `instrumentation.ts` and the worker's start call it at boot, so a bad config fails loudly instead
+  of degrading the rate limiter or cache. Never read these from `process.env` elsewhere (the one exception is the Google
   pair, which `lib/data/auth.ts` reads directly; see **Authentication**).
 - `.env.test` points `REDIS_URL` at **database 15**; the test helpers flush it and refuse to run
   against any other database.

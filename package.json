@@ -7,6 +7,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "worker": "tsx --tsconfig worker/tsconfig.json --env-file-if-exists=.env worker/index.ts",
+    "dev:worker": "NODE_ENV=development tsx watch --tsconfig worker/tsconfig.json --env-file-if-exists=.env worker/index.ts",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -20,7 +22,7 @@
     "db:seed": "prisma db seed",
     "db:reset": "prisma migrate reset --force && prisma db seed",
     "db:studio": "prisma studio",
-    "db:test:prepare": "test -f .env.test || { echo 'Missing .env.test'; exit 1; }; DOTENV_CONFIG_PATH=.env.test DOTENV_CONFIG_OVERRIDE=true prisma migrate reset --force"
+    "db:test:prepare": "test -f .env.test || { echo 'Missing .env.test'; exit 1; }; DOTENV_CONFIG_PATH=.env.test DOTENV_CONFIG_OVERRIDE=true prisma migrate reset --force && tsx --tsconfig worker/tsconfig.json --env-file=.env.test worker/migrate.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",
@@ -35,6 +37,7 @@
     "next": "16.3.8",
     "next-themes": "^0.4.6",
     "pg": "8.23.1",
+    "pg-boss": "^12.36.0",
     "pino": "^10.4.0",
     "radix-ui": "^1.6.7",
     "react": "19.2.8",
@@ -43,6 +46,7 @@
     "resend": "^6.32.0",
     "server-only": "^0.0.1",
     "sonner": "^2.0.8",
+    "tsx": "^4.23.15",
     "zod": "^4.6.5"
   },
   "devDependencies": {

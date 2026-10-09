@@ -1,19 +1,29 @@
 import { vi } from 'vitest'
-import { sendMail, type Mail } from '@/lib/server/mailer'
+import type { JobPayload } from '@/jobs/definitions'
+import { renderEmail } from '@/jobs/sendEmail'
+import { enqueue } from '@/lib/server/queue'
+import type { Mail } from '@/lib/server/mailer'
 
-// `@/lib/server/mailer` is mocked for every test in `tests/setup.ts`; these helpers read what the
-// app asked it to send. Better Auth sends without awaiting, so a test that needs the mail awaits
-// `flushMail()` first.
+// `@/lib/server/queue` is mocked for every test in `tests/setup.ts`; these helpers read the
+// `send-email` jobs the app queued and build the mails the worker would send. Better Auth queues
+// without awaiting, so a test that needs the mail awaits `flushMail()` first.
 
-/** Lets the un-awaited `sendMail` calls Better Auth makes land. */
+/** Lets the un-awaited `enqueue` calls Better Auth makes land. */
 export const flushMail = () => new Promise<void>((resolve) => setTimeout(resolve, 0))
 
 export const clearMail = () => {
-  vi.mocked(sendMail).mockClear()
+  vi.mocked(enqueue).mockClear()
 }
 
-/** Every mail sent since the last clear, oldest first. */
-export const sentMails = (): Mail[] => vi.mocked(sendMail).mock.calls.map(([mail]) => mail)
+/** The `send-email` payloads queued since the last clear, oldest first. */
+export const queuedEmails = (): JobPayload<'send-email'>[] =>
+  vi
+    .mocked(enqueue)
+    .mock.calls.filter(([name]) => name === 'send-email')
+    .map(([, payload]) => payload as JobPayload<'send-email'>)
+
+/** Every mail queued since the last clear, as the worker would send it, oldest first. */
+export const sentMails = (): Mail[] => queuedEmails().map(renderEmail)
 
 /** The mails with this subject (`verifyEmail`, `resetPasswordEmail`, ... each have one). */
 export const sentMailsWithSubject = (subject: string) =>

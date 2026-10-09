@@ -13,6 +13,12 @@ const serverImportPattern = {
   message: 'lib/server is server-only infrastructure. Reach it through the DAL (lib/data).',
 }
 
+const maintenanceImportPattern = {
+  group: ['@/lib/data/maintenance', '**/lib/data/maintenance'],
+  message:
+    'lib/data/maintenance is the system DAL for background jobs. Import it from jobs/** only.',
+}
+
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
@@ -41,6 +47,16 @@ const eslintConfig = defineConfig([
   {
     files: ['**/*.{ts,tsx,mts}'],
     ignores: ['lib/data/**', 'prisma/**'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        { patterns: [prismaImportPattern, maintenanceImportPattern] },
+      ],
+    },
+  },
+  // Background jobs (and tests of them) are the only callers of the system DAL.
+  {
+    files: ['jobs/**/*.ts', 'tests/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-imports': ['error', { patterns: [prismaImportPattern] }],
     },
@@ -79,9 +95,10 @@ const eslintConfig = defineConfig([
       ],
     },
   },
-  // Server code logs through lib/server/logger. The seed (prisma/seed.ts) is a CLI script and keeps console.
+  // Server code logs through lib/server/logger. The CLI scripts (worker/migrate.ts, prisma/seed.ts)
+  // keep console on purpose.
   {
-    files: ['lib/data/**/*.ts', 'lib/server/**/*.ts'],
+    files: ['lib/data/**/*.ts', 'lib/server/**/*.ts', 'jobs/**/*.ts', 'worker/index.ts'],
     rules: { 'no-console': 'error' },
   },
   // Override default ignores of eslint-config-next.

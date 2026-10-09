@@ -32,15 +32,16 @@ Long area narratives live in `docs/guides/`. Read the one for the area you touch
 - `docs/guides/posts.md`: the posts example (visibility, caching, search, the pages).
 - `docs/guides/route-handlers.md`: Route Handlers, the REST API, health.
 - `docs/guides/caching.md`: the Redis data cache (`remember`, tags, what is never cached).
-- `docs/guides/email.md`: the mailer and the plain templates in `emails/`.
+- `docs/guides/jobs.md`: pg-boss jobs, handlers, the worker, the system DAL.
+- `docs/guides/email.md`: the mailer, the `send-email` job and the plain templates in `emails/`.
 - `docs/guides/infrastructure.md`: `lib/server`, logging, Docker and CI.
 - `docs/guides/hooks.md`: hook rules (no `useMemo` / `useCallback`; RHF files opt out with `'use no memo'`), `useUrlState`.
 - `docs/guides/forms.md`: React Hook Form + Zod forms (each starts `'use client'` then `'use no memo'`).
 - `docs/guides/environment.md`: public and server-only config, security headers, `serverEnv()`.
 
 `docs/recipes/` holds patterns the template does **not** implement (concurrency and optimistic locking,
-uploads, background jobs, and the other removed features) written to fit this architecture. Read one
-before adding such a feature; never treat it as a description of existing code.
+uploads, and the other removed features) written to fit this architecture. Read one before adding
+such a feature; never treat it as a description of existing code.
 
 ## Build & Run Commands
 
@@ -59,7 +60,9 @@ before adding such a feature; never treat it as a description of existing code.
 | `bun run db:deploy`                        | Apply pending migrations only (CI / production)                                                                  |
 | `bun run db:seed`                          | Seed the dev DB (3 users, 12 posts; password `password123`); refuses `NODE_ENV=production` unless `ALLOW_SEED=1` |
 | `bun run db:reset`                         | Drop, re-migrate, and re-seed the dev DB (destroys its data)                                                     |
-| `bun run db:test:prepare`                  | Reset the test DB and apply the migrations                                                                       |
+| `bun run db:test:prepare`                  | Reset the test DB, apply migrations, install the `pgboss` schema                                                 |
+| `bun run worker`                           | Start the background worker (pg-boss jobs and cron)                                                              |
+| `bun run dev:worker`                       | The worker with `tsx watch`, restarting on file changes                                                          |
 
 - **Package manager:** bun (pinned via `packageManager`). Do not use npm or yarn. Scripts run on
   Node, not the Bun runtime.
@@ -76,7 +79,9 @@ before adding such a feature; never treat it as a description of existing code.
 - **Database:** Prisma ORM 7.10 (`prisma-client` generator, `@prisma/adapter-pg`) on PostgreSQL 18
 - **Cache + rate limits:** Redis (`ioredis`) behind `lib/server`. It is the only cache: Next's
   Cache Components (`'use cache'`) are off
-- **Email:** Resend, plain HTML templates in `emails/`, logged to the logger without an API key
+- **Jobs:** pg-boss on the same PostgreSQL, run by a separate worker process (`worker/`)
+- **Email:** Resend through the `send-email` job, plain HTML templates in `emails/`, logged to the
+  logger without an API key
 - **Logging:** pino (`lib/server/logger.ts`), pino-pretty in development
 - **Auth:** Better Auth (email + password, official Prisma adapter, `admin` plugin, `nextCookies`)
 - **Forms:** React Hook Form + Zod 4
@@ -99,9 +104,13 @@ types/                   # Cross-cutting types (types/api.ts: ActionResult, Erro
 lib/                     # Pure helpers, constants, env, formErrors, username derivation
 lib/dto/                 # Zod schemas + inferred types (inputs and outputs); client- and server-safe
 lib/data/                # Server-only DAL: db client, auth (Better Auth config), errors, users, admin,
-                         # sessions, posts, policies, health, rateLimit, page loader
-lib/server/              # Server-only infrastructure that is not the database: env, redis, cache, mailer, logger
-emails/                  # Plain email templates ({ subject, html, text })
+                         # sessions, posts, policies, health, rateLimit, page loader; maintenance is
+                         # the system DAL (jobs only)
+lib/server/              # Server-only infrastructure that is not the database: env, redis, cache,
+                         # queue, mailer, logger
+jobs/                    # Job definitions (name + Zod payload + options) and handlers
+worker/                  # Background worker entry (pg-boss), tsconfig, test-DB migrate script
+emails/                  # Plain email templates ({ subject, html, text }), rendered by the send-email job
 prisma/                  # schema.prisma, migrations, seed
 generated/               # Generated Prisma client (git-ignored; `postinstall` regenerates it)
 styles/                  # global.css: official shadcn theme tokens and Tailwind base styles
@@ -206,8 +215,9 @@ docs/DECISIONS.md        # Framework and library choices, with reasons; what was
   `connection()` before it loads, so a page is never prerendered (and frozen) by `next build`,
   even when its read does not touch the session; a component that calls the DAL without
   `loadPage` (e.g. the layout's `getViewer()`) is session based and so is already request-time.
-- `lib/data/health.ts` is the one deliberate exception to "every function enforces auth": health is
-  a public probe that returns only ok/fail per dependency.
+- `lib/data/health.ts` and `lib/data/maintenance.ts` are the two deliberate exceptions to "every
+  function enforces auth": health is a public probe that returns only ok/fail per dependency, and
+  maintenance is the system DAL for jobs (importable from `jobs/**` only, lint-enforced).
 - `lib/data/admin.ts` wraps Better Auth's admin plugin (`auth.api.setRole`, `banUser`, …) behind
   `requireAdmin()` and this app's own rules; the plugin's HTTP routes are closed in `lib/data/auth.ts`.
 - The seed (`prisma/seed.ts`) runs on plain Node outside Next, so it owns its own client rather than
@@ -294,9 +304,10 @@ author lists are never cached. Redis is an optimization, never a dependency. Ful
 - `vitest.config.mts` inlines `better-auth` so its internal `next/headers` import goes through the
   mock. It also runs the React Compiler (`reactCompilerPreset`), so component and hook tests
   exercise the same memoized code that ships.
-- Server tests also need Redis (database 15 via `.env.test`); `resetDatabase()` flushes it. The
-  mailer is mocked globally in `tests/setup.ts`; `tests/helpers/mail.ts` reads the sent links and
-  tokens back. Tests never send mail or reach Google.
+- Server tests also need Redis (database 15 via `.env.test`); `resetDatabase()` flushes it. The job
+  queue (`@/lib/server/queue`) is mocked globally in `tests/setup.ts`; `tests/helpers/mail.ts` turns
+  the queued `send-email` payloads back into mails and reads their links and tokens. Tests never send
+  mail or reach Google.
 
 ## Test Pages
 

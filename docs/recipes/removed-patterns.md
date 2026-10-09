@@ -95,11 +95,12 @@ input wired through RHF's `Controller`. Files: `replacePostTags` and `listTags` 
 
 ## React Email
 
-`@react-email/components` templates rendered with `render(react)` and `render(react, { plainText: true })`.
-Its renderer needs `react-dom/server`, which the React Server layer refuses to load, so rendering had
-to happen in the worker; that constraint alone forced emails through the job queue. The plain
-templates in `emails/` have no such constraint. Use React Email only if you already run a worker
-and want component-based templates. Files: `emails/*.tsx`, `jobs/sendEmail.ts`.
+`@react-email/components` templates rendered with `render(react)` and `render(react, { plainText: true })`
+inside the `send-email` handler. Its renderer needs `react-dom/server`, which the React Server layer
+refuses to load, so a template can only be rendered in the worker, never in a request. The plain
+templates in `emails/` have no such constraint and are what the handler renders today; switch to
+React Email if component-based templates are worth that restriction. Files: `emails/*.tsx`,
+`jobs/sendEmail.ts` at `7bd01c5`.
 
 ## Client fetch facades
 
