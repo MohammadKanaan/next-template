@@ -66,8 +66,8 @@ export const DeleteAccountDialog = ({ onConfirm }: DeleteAccountDialogProps) => 
           <DialogHeader>
             <DialogTitle>Delete your account?</DialogTitle>
             <DialogDescription>
-              This permanently removes your account, your posts, and your uploads. It cannot be
-              undone. Enter your password to confirm.
+              This permanently removes your account and your posts. It cannot be undone. Enter your
+              password to confirm.
             </DialogDescription>
           </DialogHeader>
           <Input

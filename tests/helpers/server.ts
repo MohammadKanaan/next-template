@@ -29,7 +29,7 @@ export const resetDatabase = async () => {
   assertTestDatabase()
   await resetRedis()
   cookieJar.clear()
-  await db.$executeRaw`TRUNCATE TABLE posts, tags, sessions, accounts, verifications, audit_logs, users RESTART IDENTITY CASCADE`
+  await db.$executeRaw`TRUNCATE TABLE posts, sessions, accounts, verifications, users RESTART IDENTITY CASCADE`
 }
 
 /** Signs a user up through Better Auth (real password hash and account row), then signs out locally. */
@@ -47,6 +47,7 @@ export const createUser = async (
     },
   })
   cookieJar.clear()
+  // The admin plugin's `role` is `input: false`, so it cannot come from sign-up; set it directly.
   return db.user.update({ where: { email }, data: { role: overrides.role ?? 'user' } })
 }
 

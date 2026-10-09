@@ -1,9 +1,7 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { VerifyEmail } from '@/emails/VerifyEmail'
+import { verifyEmail } from '@/emails/verifyEmail'
 import { resetServerEnv } from '@/lib/server/env'
-import { sendMail } from '@/lib/server/mailer'
-import { createElement } from 'react'
 
 const send = vi.hoisted(() => vi.fn())
 const log = vi.hoisted(() => ({ info: vi.fn(), error: vi.fn() }))
@@ -14,12 +12,12 @@ vi.mock('resend', () => ({
   },
 }))
 
+// `tests/setup.ts` mocks the mailer for every other test; this one needs the real module.
+const { sendMail } =
+  await vi.importActual<typeof import('@/lib/server/mailer')>('@/lib/server/mailer')
+
 const url = 'http://localhost:3000/api/auth/verify-email?token=abc'
-const mail = {
-  to: 'ada@example.com',
-  subject: 'Verify your email',
-  react: createElement(VerifyEmail, { name: 'Ada', url }),
-}
+const mail = { to: 'ada@example.com', ...verifyEmail({ name: 'Ada', url }) }
 
 describe('sendMail', () => {
   beforeEach(() => {
@@ -51,7 +49,7 @@ describe('sendMail', () => {
     expect(log.info).not.toHaveBeenCalled()
   })
 
-  it('sends rendered html and text through Resend when a key is set', async () => {
+  it('sends the html and text through Resend when a key is set', async () => {
     vi.stubEnv('RESEND_API_KEY', 're_test_key')
     send.mockResolvedValue({ data: { id: 'email_1' }, error: null })
     await sendMail(mail)
@@ -64,7 +62,7 @@ describe('sendMail', () => {
     })
   })
 
-  it('throws when Resend rejects the message so the job is retried', async () => {
+  it('throws when Resend rejects the message', async () => {
     vi.stubEnv('RESEND_API_KEY', 're_test_key')
     send.mockResolvedValue({
       data: null,

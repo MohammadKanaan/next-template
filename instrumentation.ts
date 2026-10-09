@@ -1,8 +1,8 @@
 /**
  * Runs once when a Next server starts. In production it validates the server env so a bad config
- * (an empty `REDIS_URL`, a malformed S3 endpoint) stops the boot instead of silently disabling the
- * rate limiter, cache or uploads, and checks the auth secret and URL (`assertAuthEnv`). It stays off in dev, tests and `next build`, which never need
- * these variables.
+ * (an empty `REDIS_URL`, a half-set Google pair) stops the boot instead of silently disabling the
+ * rate limiter or cache, and checks the auth secret and URL (`assertAuthEnv`). It stays off in
+ * dev, tests and `next build`, which never need these variables.
  */
 export const register = async () => {
   if (

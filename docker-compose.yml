@@ -1,10 +1,9 @@
-# `docker compose up -d` starts only the infrastructure (db, redis, minio), for local development
-# with `bun run dev`. `docker compose --profile app up --build` also builds the app image and runs
-# the migrations, the web process and the worker (see "Run everything with Docker" in README.md).
+# `docker compose up -d` starts only the infrastructure (db, redis), for local development with
+# `bun run dev`. `docker compose --profile app up --build` also builds the app image and runs the
+# migrations and the web process (see "Run everything with Docker" in README.md).
 
-# Environment shared by the three app containers. Inside compose the services reach each other by
-# service name; the browser reaches MinIO through the published port, hence S3_PUBLIC_ENDPOINT.
-# A variable from the shell or from `.env` overrides the `${NAME:-default}` fallbacks below.
+# Environment shared by the app containers. Inside compose the services reach each other by service
+# name. A variable from the shell or from `.env` overrides the `${NAME:-default}` fallbacks below.
 # BETTER_AUTH_SECRET has no fallback: it is required, and compose refuses to start the app profile
 # without it (a shared default would let anyone forge verification links). Compose interpolates the
 # whole file, so even `docker compose up -d` needs it set (generate it: openssl rand -base64 32).
@@ -16,26 +15,9 @@ x-app-env: &app-env
   REDIS_URL: redis://redis:6379/0
   RESEND_API_KEY: ${RESEND_API_KEY:-}
   EMAIL_FROM: ${EMAIL_FROM:-Next Template <noreply@example.com>}
-  S3_ENDPOINT: http://minio:9000
-  S3_PUBLIC_ENDPOINT: http://localhost:9000
-  S3_REGION: us-east-1
-  S3_BUCKET: next-template
-  S3_ACCESS_KEY_ID: minioadmin
-  S3_SECRET_ACCESS_KEY: minioadmin
-  S3_PUBLIC_URL: http://localhost:9000/next-template
   # Google sign-in is on only when both are set (redirect URI: <BETTER_AUTH_URL>/api/auth/callback/google).
   GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
   GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
-  # Web Push is on only when all three are set (see .env.example).
-  VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
-  VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
-  VAPID_SUBJECT: ${VAPID_SUBJECT:-}
-
-x-app-build: &app-build
-  context: .
-  args:
-    NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-Next Template}
-    NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-/api/v1}
 
 services:
   db:
@@ -69,44 +51,18 @@ services:
       timeout: 3s
       retries: 10
 
-  # The upstream minio/minio and minio/mc images are no longer published, hence Chainguard's builds.
-  minio:
-    image: cgr.dev/chainguard/minio:latest
-    command: server /data --console-address ':9001'
-    environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
-    ports:
-      - '127.0.0.1:9000:9000'
-      - '127.0.0.1:9001:9001'
-    volumes:
-      - minio-data:/data
-
-  # One-shot: creates the bucket and makes `avatars/` and `attachments/` publicly downloadable.
-  minio-init:
-    image: cgr.dev/chainguard/minio-client:latest
-    depends_on:
-      - minio
-    entrypoint: ['/bin/sh', '-c']
-    command:
-      - >
-        until mc alias set local http://minio:9000 minioadmin minioadmin; do sleep 1; done &&
-        mc mb --ignore-existing local/next-template &&
-        mc anonymous set download local/next-template/avatars &&
-        mc anonymous set download local/next-template/attachments
-    restart: 'no'
-
-  # One-shot: applies the Prisma migrations, then installs or upgrades the `pgboss` schema.
-  # Seeding stays an explicit command because the seed replaces rows:
-  #   docker compose --profile app run --rm migrate bun run db:seed
+  # One-shot: applies the Prisma migrations. Seeding stays an explicit command because the seed
+  # replaces rows:
+  #   docker compose --profile app run --rm -e ALLOW_SEED=1 migrate bun run db:seed
   migrate:
     profiles: ['app']
-    build: *app-build
+    build:
+      context: .
+      args:
+        NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-Next Template}
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-/api/v1}
     image: next-template-app
-    command:
-      - sh
-      - -c
-      - bun run db:deploy && node_modules/.bin/tsx --tsconfig worker/tsconfig.json worker/migrate.ts
+    command: ['bun', 'run', 'db:deploy']
     environment: *app-env
     depends_on:
       db:
@@ -125,8 +81,6 @@ services:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
-      minio-init:
-        condition: service_completed_successfully
     healthcheck:
       # The image has no curl; Node's fetch does the probe. 200 means PostgreSQL and Redis answer.
       test:
@@ -139,20 +93,6 @@ services:
       retries: 5
       start_period: 20s
 
-  worker:
-    profiles: ['app']
-    image: next-template-app
-    command: ['bun', 'run', 'worker']
-    environment: *app-env
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
-      redis:
-        condition: service_healthy
-      minio-init:
-        condition: service_completed_successfully
-
 volumes:
   db-data:
   redis-data:
-  minio-data:

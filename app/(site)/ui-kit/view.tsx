@@ -4,9 +4,7 @@ import { X } from 'lucide-react'
 import { useState, type ComponentProps, type ReactNode } from 'react'
 import { toast } from 'sonner'
 import { Empty } from '@/components/Empty'
-import { FileUploader } from '@/components/Form/FileUploader'
 import { Input } from '@/components/Form/Input'
-import { TagsInput } from '@/components/Form/TagsInput'
 import { Textarea } from '@/components/Form/Textarea'
 import { LoadingButton } from '@/components/LoadingButton'
 import { ThemeToggle } from '@/components/ThemeToggle'
@@ -15,9 +13,6 @@ import { Pagination } from '@/components/Pagination'
 import { PostsFilters, type PostsFiltersPatch } from '@/components/Posts/Filters'
 import { PostForm } from '@/components/Posts/Form'
 import { PostStatusBadge } from '@/components/Posts/StatusBadge'
-import { PostTags } from '@/components/Posts/Tags'
-import { AvatarUploader } from '@/components/Settings/AvatarUploader'
-import { StatCard } from '@/components/Stats/StatCard'
 import {
   Avatar,
   AvatarBadge,
@@ -69,7 +64,6 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/SCN/tooltip'
 import { UserAvatar } from '@/components/UserAvatar'
 import styles from './styles.module.scss'
-import { normalizeTagName, postStatusSchema } from '@/lib/dto/posts'
 
 type ButtonVariant = NonNullable<ComponentProps<typeof Button>['variant']>
 type ButtonSize = NonNullable<ComponentProps<typeof Button>['size']>
@@ -131,16 +125,7 @@ const Section = ({ id, eyebrow, title, description, children }: SectionProps) =>
 
 export const UiKitView = () => {
   const [page, setPage] = useState(2)
-  const [tags, setTags] = useState(['news', 'tips'])
-  const [filters, setFilters] = useState<Required<PostsFiltersPatch>>({
-    q: '',
-    sort: 'newest',
-    status: '',
-    tag: '',
-    from: '',
-    to: '',
-    trash: false,
-  })
+  const [filters, setFilters] = useState<Required<PostsFiltersPatch>>({ q: '', sort: 'newest' })
 
   return (
     <div className={styles.page}>
@@ -210,61 +195,6 @@ export const UiKitView = () => {
           <Textarea label="With label" placeholder="Write something" />
           <Textarea label="Required" required placeholder="Required field" />
           <Textarea label="With error" error="This field is required" />
-        </div>
-      </Section>
-
-      <Section
-        id="tags-input"
-        eyebrow="Forms"
-        title="TagsInput"
-        description="Chips with a text entry: Enter or a comma adds, Backspace on an empty field removes the last. Controlled, with the same label and error treatment as Input."
-      >
-        <div className={styles.formGrid}>
-          <TagsInput
-            label="Tags"
-            value={tags}
-            onChange={setTags}
-            normalize={normalizeTagName}
-            maxTags={5}
-            maxLength={30}
-          />
-          <TagsInput
-            label="With error"
-            value={['one']}
-            onChange={() => {}}
-            error="Use at most 5 tags"
-          />
-          <TagsInput label="Disabled" value={['locked']} onChange={() => {}} disabled />
-        </div>
-      </Section>
-
-      <Section
-        id="file-uploader"
-        eyebrow="Forms"
-        title="FileUploader"
-        description="Picks one or many files, checks type and size from its props, and hands them to onUpload one after the other; each file shows waiting, uploading, uploaded or its error. This demo fails every file called fail."
-      >
-        <div className={styles.formGrid}>
-          <FileUploader
-            label="Add files"
-            accept={['application/pdf', 'image/png', 'text/csv']}
-            maxSize={1024 * 1024}
-            multiple
-            hint="PDF, PNG or CSV, up to 1 MB each. A file named fail.* is rejected."
-            onUpload={async (file) => {
-              await new Promise((resolve) => setTimeout(resolve, 800))
-              if (file.name.startsWith('fail')) {
-                throw new Error('The upload was rejected')
-              }
-            }}
-          />
-          <FileUploader
-            label="Disabled"
-            accept={['application/pdf']}
-            maxSize={1024}
-            disabled
-            onUpload={async () => {}}
-          />
         </div>
       </Section>
 
@@ -548,54 +478,27 @@ export const UiKitView = () => {
         id="posts-filters"
         eyebrow="Application components"
         title="PostsFilters"
-        description="Debounced full-text search (most relevant order only while searching), tag, status and trash toggle (only where the page passes a status), date range, sort order and a clear button; the page decides where the values live (URL state on the post lists)."
+        description="Debounced title search and sort order, with a clear button; the page decides where the values live (URL state on the post lists)."
       >
         <PostsFilters
           q={filters.q}
           sort={filters.sort}
-          tag={filters.tag}
-          from={filters.from}
-          to={filters.to}
-          status={filters.status}
-          trash={filters.trash}
-          tags={[
-            { name: 'news', postCount: 4 },
-            { name: 'tips', postCount: 2 },
-          ]}
           onChange={(patch) => setFilters((current) => ({ ...current, ...patch }))}
         />
         <p>
-          Search: {filters.q || 'none'}, tag: {filters.tag || 'none'}, status:{' '}
-          {filters.status || 'all'}, from: {filters.from || 'none'}, to: {filters.to || 'none'},
-          sort: {filters.sort}
+          Search: {filters.q || 'none'}, sort: {filters.sort}
         </p>
       </Section>
 
       <Section
         id="post-status"
         eyebrow="Application components"
-        title="Post status and tags"
-        description="The workflow status badge (draft, published, archived) and a post's tag list."
-      >
-        <div className={styles.stack}>
-          <div className={styles.row}>
-            {postStatusSchema.options.map((status) => (
-              <PostStatusBadge key={status} status={status} />
-            ))}
-          </div>
-          <PostTags tags={['news', 'tips', 'typescript']} />
-        </div>
-      </Section>
-
-      <Section
-        id="stat-card"
-        eyebrow="Application components"
-        title="StatCard"
-        description="A label, a number and an optional hint; a Server Component that the dashboard lays out in a grid."
+        title="Post status"
+        description="Whether a post is a draft or published."
       >
         <div className={styles.row}>
-          <StatCard label="Published posts" value={12} />
-          <StatCard label="Comments received" value={34} hint="From other people" />
+          <PostStatusBadge published={false} />
+          <PostStatusBadge published />
         </div>
       </Section>
 
@@ -625,28 +528,6 @@ export const UiKitView = () => {
           <UserAvatar name="Ada Lovelace" image={AVATAR_SAMPLE_IMAGE} size="lg" />
           <UserAvatar name="Grace Hopper" image={null} size="lg" />
         </div>
-      </Section>
-
-      <Section
-        id="avatar-uploader"
-        eyebrow="Application components"
-        title="Avatar uploader"
-        description="Picks a file, asks for a presigned upload, sends it to storage, then attaches it. The catalog's handlers refuse, so nothing is uploaded."
-      >
-        <AvatarUploader
-          name="Ada Lovelace"
-          image={null}
-          onCreateUpload={async () => ({
-            ok: false,
-            code: 'FORBIDDEN',
-            message: 'Uploads are disabled in the catalog.',
-          })}
-          onAttach={async () => ({
-            ok: false,
-            code: 'FORBIDDEN',
-            message: 'Uploads are disabled in the catalog.',
-          })}
-        />
       </Section>
     </div>
   )

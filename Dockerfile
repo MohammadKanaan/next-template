@@ -1,10 +1,10 @@
-# One image for the web process, the worker and the migrations: the same files and node_modules
-# run `bun run start`, `bun run worker` and `bun run db:deploy` (compose picks the command).
+# One image for the web process and the migrations: the same files and node_modules run
+# `bun run start` and `bun run db:deploy` (compose picks the command).
 #
 # bun is only the package manager and script runner; the scripts themselves run on Node, so the
 # image carries both. Keep the bun version in step with `packageManager` in package.json.
-# `output: 'standalone'` is deliberately not used: the worker runs the TypeScript source through
-# `tsx`, so it needs the source tree and the full node_modules anyway.
+# `output: 'standalone'` is deliberately not used: `prisma migrate deploy` needs the CLI and the
+# seed runs from the source tree, so the full node_modules stay in the image.
 
 ARG NODE_VERSION=24
 ARG BUN_VERSION=1.3.10
@@ -33,7 +33,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/generated ./generated
 COPY . .
 # NEXT_PUBLIC_* values are inlined into the client bundle at build time. Everything else is read at
-# runtime, so the build needs no database, Redis or storage.
+# runtime, so the build needs no database or Redis.
 ARG NEXT_PUBLIC_APP_NAME
 ARG NEXT_PUBLIC_API_BASE_URL
 ENV NEXT_PUBLIC_APP_NAME=$NEXT_PUBLIC_APP_NAME \

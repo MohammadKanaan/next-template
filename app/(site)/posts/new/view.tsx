@@ -15,15 +15,15 @@ export const PostNewView = () => {
   const handleSubmit = async (values: CreatePostInput) => {
     const result = await createPostAction(values)
     if (result.ok) {
-      toast.success('Post created')
-      router.push(ROUTE_POST_DETAILS(result.data.author.id, result.data.id))
+      toast.success(result.data.published ? 'Post published' : 'Draft saved')
+      router.push(ROUTE_POST_DETAILS(result.data.id))
     }
     return result
   }
 
   return (
     <div className={styles.page}>
-      <PageHeader title="Write a post" description="Share something with everyone." />
+      <PageHeader title="Write a post" description="Save it as a draft or publish it right away." />
       <PostForm
         post={null}
         submitLabel="Create post"

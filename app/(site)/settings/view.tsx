@@ -10,20 +10,15 @@ import {
   revokeOtherSessionsAction,
   revokeSessionAction,
 } from '@/actions/auth'
-import { subscribePushAction, unsubscribePushAction } from '@/actions/push'
-import { attachAvatarAction, createUploadAction } from '@/actions/uploads'
 import { updateProfileAction } from '@/actions/users'
 import { DeleteAccountDialog } from '@/components/Settings/DeleteAccountDialog'
-import { AvatarUploader } from '@/components/Settings/AvatarUploader'
 import { EmailForm } from '@/components/Settings/EmailForm'
 import { PasswordForm } from '@/components/Settings/PasswordForm'
 import { ProfileForm } from '@/components/Settings/ProfileForm'
-import { PushSettings } from '@/components/Settings/PushSettings'
 import { SessionList } from '@/components/Settings/SessionList'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/SCN/card'
 import { ROUTE_FORGOT_PASSWORD, ROUTE_HOME } from '@/lib/constants-routes'
 import type { ChangeEmailInput, ChangePasswordInput, DeleteAccountInput } from '@/lib/dto/auth'
-import type { PushConfig } from '@/lib/dto/push'
 import type { CurrentUser, SessionSummary, UpdateProfileInput } from '@/lib/dto/users'
 import styles from './styles.module.scss'
 
@@ -31,11 +26,9 @@ type SettingsViewProps = {
   user: CurrentUser
   sessions: SessionSummary[]
   hasPassword: boolean
-  /** The VAPID public key, or null when Web Push is not configured. */
-  pushConfig: PushConfig | null
 }
 
-export const SettingsView = ({ user, sessions, hasPassword, pushConfig }: SettingsViewProps) => {
+export const SettingsView = ({ user, sessions, hasPassword }: SettingsViewProps) => {
   const router = useRouter()
 
   const handleProfile = async (values: UpdateProfileInput) => {
@@ -91,22 +84,6 @@ export const SettingsView = ({ user, sessions, hasPassword, pushConfig }: Settin
 
   return (
     <div className={styles.stack}>
-      <Card>
-        <CardHeader>
-          <CardTitle>Profile photo</CardTitle>
-          <CardDescription>Shown in the navigation bar next to your name.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <AvatarUploader
-            name={user.name}
-            image={user.image}
-            onCreateUpload={createUploadAction}
-            onAttach={attachAvatarAction}
-            onUploaded={() => toast.success('Profile photo updated')}
-          />
-        </CardContent>
-      </Card>
-
       <Card>
         <CardHeader>
           <CardTitle>Profile</CardTitle>
@@ -167,30 +144,11 @@ export const SettingsView = ({ user, sessions, hasPassword, pushConfig }: Settin
         </CardContent>
       </Card>
 
-      {pushConfig && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Browser notifications</CardTitle>
-            <CardDescription>
-              Per browser. The bell in the navigation works everywhere; this adds a system
-              notification when no tab is open.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <PushSettings
-              publicKey={pushConfig.publicKey}
-              onSubscribe={subscribePushAction}
-              onUnsubscribe={unsubscribePushAction}
-            />
-          </CardContent>
-        </Card>
-      )}
-
       <Card>
         <CardHeader>
           <CardTitle>Delete account</CardTitle>
           <CardDescription>
-            Permanently remove your account, posts, and uploads. This cannot be undone.
+            Permanently remove your account and your posts. This cannot be undone.
           </CardDescription>
         </CardHeader>
         <CardContent>

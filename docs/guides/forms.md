@@ -10,5 +10,5 @@
   alert).
 - Hydrate/build helpers (`hydrateXForm`, `buildXAttributes`) live in a `utils.ts` beside the form.
 - Keep field markup explicit — no field-definition arrays, no generic FormField wrapper.
-- A control that is not a native input (`components/Form/TagsInput`, a list of chips) is controlled
-  and goes through RHF's `Controller`; it still owns its `label` and `error`.
+- A control that is not a native input (the shadcn `Checkbox` in `components/Posts/Form`) is
+  controlled and goes through RHF's `Controller`.

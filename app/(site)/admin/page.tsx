@@ -1,10 +1,9 @@
 import type { Metadata } from 'next'
-import Link from 'next/link'
 import { PageHeader } from '@/components/PageHeader'
-import { Button } from '@/components/SCN/button'
-import { ROUTE_ADMIN, ROUTE_ADMIN_AUDIT } from '@/lib/constants-routes'
+import { ROUTE_ADMIN } from '@/lib/constants-routes'
+import { listUsers } from '@/lib/data/admin'
 import { loadPage } from '@/lib/data/page'
-import { getCurrentUser, listUsers } from '@/lib/data/users'
+import { getCurrentUser } from '@/lib/data/users'
 import { usersUrlQuery } from '@/lib/dto/users'
 import { toScalarParams } from '@/lib/searchParams'
 import { AdminView } from './view'
@@ -27,15 +26,7 @@ const AdminPage = async ({ searchParams }: PageProps<'/admin'>) => {
 
   return (
     <div className={styles.page}>
-      <PageHeader
-        title="Admin"
-        description="Users and their roles."
-        actions={
-          <Button asChild variant="outline">
-            <Link href={ROUTE_ADMIN_AUDIT}>Audit log</Link>
-          </Button>
-        }
-      />
+      <PageHeader title="Admin" description="Users, their roles and bans." />
       <AdminView users={users} viewerId={viewer.id} />
     </div>
   )

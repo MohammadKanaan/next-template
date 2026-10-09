@@ -13,18 +13,7 @@ beforeAll(() => {
 })
 
 const Filters = (props: Partial<ComponentProps<typeof PostsFilters>>) => {
-  return (
-    <PostsFilters
-      q=""
-      sort="newest"
-      tag=""
-      from=""
-      to=""
-      tags={[]}
-      onChange={() => {}}
-      {...props}
-    />
-  )
+  return <PostsFilters q="" sort="newest" onChange={() => {}} {...props} />
 }
 
 describe('PostsFilters', () => {
@@ -32,14 +21,20 @@ describe('PostsFilters', () => {
   afterEach(() => vi.useRealTimers())
 
   it('shows the current search and sort', () => {
-    render(<Filters q="cats" sort="oldest" onChange={() => {}} />)
+    render(<Filters q="cats" sort="oldest" />)
     expect(screen.getByLabelText('Search')).toHaveValue('cats')
+    expect(screen.getByLabelText('Search')).toHaveAttribute('maxlength', '100')
     expect(screen.getByRole('combobox', { name: 'Sort' })).toHaveTextContent('Oldest first')
+  })
+
+  it('shows newest first by default', () => {
+    render(<Filters />)
+    expect(screen.getByRole('combobox', { name: 'Sort' })).toHaveTextContent('Newest first')
   })
 
   it('reports the search once, after the debounce, trimmed', () => {
     const onChange = vi.fn()
-    render(<Filters q="" sort="newest" onChange={onChange} />)
+    render(<Filters onChange={onChange} />)
     const input = screen.getByLabelText('Search')
     fireEvent.change(input, { target: { value: 'c' } })
     fireEvent.change(input, { target: { value: 'cat ' } })
@@ -52,7 +47,7 @@ describe('PostsFilters', () => {
 
   it('does not report a keystroke that leaves the trimmed search unchanged', () => {
     const onChange = vi.fn()
-    render(<Filters q="cat" sort="newest" onChange={onChange} />)
+    render(<Filters q="cat" onChange={onChange} />)
     const input = screen.getByLabelText('Search')
     fireEvent.change(input, { target: { value: 'cat ' } })
     act(() => vi.advanceTimersByTime(1000))
@@ -67,7 +62,7 @@ describe('PostsFilters', () => {
 
   it('does not report the same search twice', () => {
     const onChange = vi.fn()
-    render(<Filters q="" sort="newest" onChange={onChange} />)
+    render(<Filters onChange={onChange} />)
     const input = screen.getByLabelText('Search')
     fireEvent.change(input, { target: { value: 'cat' } })
     act(() => vi.advanceTimersByTime(300))
@@ -76,9 +71,17 @@ describe('PostsFilters', () => {
     expect(onChange).toHaveBeenCalledTimes(1)
   })
 
+  it('reports an emptied search box', () => {
+    const onChange = vi.fn()
+    render(<Filters q="cat" onChange={onChange} />)
+    fireEvent.change(screen.getByLabelText('Search'), { target: { value: '' } })
+    act(() => vi.advanceTimersByTime(300))
+    expect(onChange).toHaveBeenCalledWith({ q: '' })
+  })
+
   it('does not report after unmounting', () => {
     const onChange = vi.fn()
-    const { unmount } = render(<Filters q="" sort="newest" onChange={onChange} />)
+    const { unmount } = render(<Filters onChange={onChange} />)
     fireEvent.change(screen.getByLabelText('Search'), { target: { value: 'cat' } })
     unmount()
     act(() => vi.advanceTimersByTime(1000))
@@ -87,202 +90,91 @@ describe('PostsFilters', () => {
 
   it('keeps what the user is typing when the URL echoes an earlier value back', () => {
     const onChange = vi.fn()
-    const { rerender } = render(<Filters q="" sort="newest" onChange={onChange} />)
+    const { rerender } = render(<Filters onChange={onChange} />)
     const input = screen.getByLabelText('Search')
     fireEvent.change(input, { target: { value: 'cat' } })
     act(() => vi.advanceTimersByTime(300))
     fireEvent.change(input, { target: { value: 'cats' } })
-    rerender(<Filters q="cat" sort="newest" onChange={onChange} />)
+    rerender(<Filters q="cat" onChange={onChange} />)
     expect(input).toHaveValue('cats')
   })
 
   it('follows a search that changed from outside (back/forward)', () => {
-    const { rerender } = render(<Filters q="cats" sort="newest" onChange={() => {}} />)
-    rerender(<Filters q="dogs" sort="newest" onChange={() => {}} />)
+    const { rerender } = render(<Filters q="cats" />)
+    rerender(<Filters q="dogs" />)
     expect(screen.getByLabelText('Search')).toHaveValue('dogs')
+    rerender(<Filters q="" />)
+    expect(screen.getByLabelText('Search')).toHaveValue('')
   })
 
   it('reports a sort change at once', async () => {
     vi.useRealTimers()
     const onChange = vi.fn()
-    render(<Filters q="" sort="newest" onChange={onChange} />)
+    render(<Filters onChange={onChange} />)
     await userEvent.click(screen.getByRole('combobox', { name: 'Sort' }))
     await userEvent.click(await screen.findByRole('option', { name: 'Oldest first' }))
+    expect(onChange).toHaveBeenCalledTimes(1)
     expect(onChange).toHaveBeenCalledWith({ sort: 'oldest' })
   })
 
-  describe('relevance', () => {
-    it('is the order shown while searching with the default sort, and can be chosen', async () => {
-      vi.useRealTimers()
-      const onChange = vi.fn()
-      render(<Filters q="cats" sort="" onChange={onChange} />)
-      const sort = screen.getByRole('combobox', { name: 'Sort' })
-      expect(sort).toHaveTextContent('Most relevant')
-      await userEvent.click(sort)
-      expect(await screen.findByRole('option', { name: 'Most relevant' })).toBeInTheDocument()
-      await userEvent.click(screen.getByRole('option', { name: 'Newest first' }))
-      expect(onChange).toHaveBeenCalledWith({ sort: 'newest' })
-    })
-
-    it('is offered only while searching; the default order is newest first otherwise', async () => {
-      vi.useRealTimers()
-      render(<Filters q="" sort="" />)
-      const sort = screen.getByRole('combobox', { name: 'Sort' })
-      expect(sort).toHaveTextContent('Newest first')
-      await userEvent.click(sort)
-      await screen.findByRole('option', { name: 'Oldest first' })
-      expect(screen.queryByRole('option', { name: 'Most relevant' })).not.toBeInTheDocument()
-    })
-
-    it('shows newest first for a stale relevance order once the search is gone', () => {
-      render(<Filters q="" sort="relevance" />)
-      expect(screen.getByRole('combobox', { name: 'Sort' })).toHaveTextContent('Newest first')
-    })
-
-    it('keeps an order chosen explicitly while searching', () => {
-      render(<Filters q="cats" sort="oldest" />)
-      expect(screen.getByRole('combobox', { name: 'Sort' })).toHaveTextContent('Oldest first')
-    })
+  it('offers newest and oldest only', async () => {
+    vi.useRealTimers()
+    render(<Filters />)
+    await userEvent.click(screen.getByRole('combobox', { name: 'Sort' }))
+    const options = await screen.findAllByRole('option')
+    expect(options.map((option) => option.textContent)).toEqual(['Newest first', 'Oldest first'])
   })
 
   it('disables both controls', () => {
-    render(<Filters q="" sort="newest" onChange={() => {}} disabled />)
+    render(<Filters disabled />)
     expect(screen.getByLabelText('Search')).toBeDisabled()
     expect(screen.getByRole('combobox', { name: 'Sort' })).toBeDisabled()
   })
 
-  describe('tag, status and dates', () => {
-    const tags = [
-      { name: 'news', postCount: 3 },
-      { name: 'tips', postCount: 1 },
-    ]
-
-    it('offers the tags with their counts and reports the chosen one', async () => {
-      vi.useRealTimers()
-      const onChange = vi.fn()
-      render(<Filters tags={tags} onChange={onChange} />)
-      expect(screen.getByRole('combobox', { name: 'Tag' })).toHaveTextContent('All tags')
-      await userEvent.click(screen.getByRole('combobox', { name: 'Tag' }))
-      await userEvent.click(await screen.findByRole('option', { name: 'tips (1)' }))
-      expect(onChange).toHaveBeenCalledWith({ tag: 'tips' })
-    })
-
-    it('reports "All tags" as an empty tag', async () => {
-      vi.useRealTimers()
-      const onChange = vi.fn()
-      render(<Filters tags={tags} tag="news" onChange={onChange} />)
-      await userEvent.click(screen.getByRole('combobox', { name: 'Tag' }))
-      await userEvent.click(await screen.findByRole('option', { name: 'All tags' }))
-      expect(onChange).toHaveBeenCalledWith({ tag: '' })
-    })
-
-    it('treats a tag named "all" as that tag, not as "All tags"', async () => {
-      vi.useRealTimers()
-      const onChange = vi.fn()
-      render(<Filters tags={[{ name: 'all', postCount: 2 }]} onChange={onChange} />)
-      await userEvent.click(screen.getByRole('combobox', { name: 'Tag' }))
-      await userEvent.click(await screen.findByRole('option', { name: 'all (2)' }))
-      expect(onChange).toHaveBeenCalledWith({ tag: 'all' })
-    })
-
-    it('still shows a selected tag named "all" as selected', () => {
-      render(<Filters tags={[{ name: 'all', postCount: 2 }]} tag="all" />)
-      expect(screen.getByRole('combobox', { name: 'Tag' })).toHaveTextContent('all (2)')
-    })
-
-    it('still shows a selected tag that no published post uses', () => {
-      render(<Filters tags={tags} tag="gone" />)
-      expect(screen.getByRole('combobox', { name: 'Tag' })).toHaveTextContent('gone (0)')
-    })
-
-    it('shows the status select only when a status is passed', async () => {
-      vi.useRealTimers()
-      const { rerender } = render(<Filters />)
-      expect(screen.queryByRole('combobox', { name: 'Status' })).not.toBeInTheDocument()
-
-      const onChange = vi.fn()
-      rerender(<Filters status="" onChange={onChange} />)
-      expect(screen.getByRole('combobox', { name: 'Status' })).toHaveTextContent('All statuses')
-      await userEvent.click(screen.getByRole('combobox', { name: 'Status' }))
-      await userEvent.click(await screen.findByRole('option', { name: 'Draft' }))
-      expect(onChange).toHaveBeenCalledWith({ status: 'draft' })
-    })
-
-    it('offers the Trash toggle only with the status select, and reports it', async () => {
-      vi.useRealTimers()
-      const { rerender } = render(<Filters />)
-      expect(screen.queryByRole('checkbox', { name: 'Trash' })).not.toBeInTheDocument()
-
-      const onChange = vi.fn()
-      rerender(<Filters status="" onChange={onChange} />)
-      expect(screen.getByRole('checkbox', { name: 'Trash' })).not.toBeChecked()
-      await userEvent.click(screen.getByRole('checkbox', { name: 'Trash' }))
-      expect(onChange).toHaveBeenCalledWith({ trash: true })
-
-      rerender(<Filters status="" trash onChange={onChange} />)
-      expect(screen.getByRole('checkbox', { name: 'Trash' })).toBeChecked()
-      expect(screen.getByRole('button', { name: 'Clear filters' })).toBeInTheDocument()
-    })
-
-    it('reports each date as soon as it changes, and an emptied one as empty', () => {
-      const onChange = vi.fn()
-      render(<Filters from="2026-10-01" onChange={onChange} />)
-      expect(screen.getByLabelText('From')).toHaveAttribute('type', 'date')
-      fireEvent.change(screen.getByLabelText('To'), { target: { value: '2026-10-05' } })
-      expect(onChange).toHaveBeenLastCalledWith({ to: '2026-10-05' })
-      fireEvent.change(screen.getByLabelText('From'), { target: { value: '' } })
-      expect(onChange).toHaveBeenLastCalledWith({ from: '' })
-    })
-
-    it('limits each date by the other', () => {
-      render(<Filters from="2026-10-01" to="2026-10-09" />)
-      expect(screen.getByLabelText('From')).toHaveAttribute('max', '2026-10-09')
-      expect(screen.getByLabelText('To')).toHaveAttribute('min', '2026-10-01')
-    })
-  })
-
-  describe('clear filters', () => {
-    it('is hidden while nothing is filtered, and sort alone is not a filter', () => {
+  describe('clear search', () => {
+    it('is hidden while no search is applied, and sort alone does not show it', () => {
       render(<Filters sort="oldest" />)
-      expect(screen.queryByRole('button', { name: 'Clear filters' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Clear search' })).not.toBeInTheDocument()
     })
 
-    it('resets every filter at once and empties the search box', async () => {
-      vi.useRealTimers()
+    it('stays hidden while a search is typed but not yet applied', () => {
+      render(<Filters />)
+      fireEvent.change(screen.getByLabelText('Search'), { target: { value: 'cat' } })
+      expect(screen.queryByRole('button', { name: 'Clear search' })).not.toBeInTheDocument()
+    })
+
+    it('clears the applied search at once and empties the box', () => {
       const onChange = vi.fn()
-      render(<Filters q="cats" tag="news" from="2026-10-01" to="2026-10-05" onChange={onChange} />)
-      await userEvent.click(screen.getByRole('button', { name: 'Clear filters' }))
-      expect(onChange).toHaveBeenCalledWith({ q: '', tag: '', from: '', to: '' })
+      render(<Filters q="cats" onChange={onChange} />)
+      fireEvent.click(screen.getByRole('button', { name: 'Clear search' }))
+      expect(onChange).toHaveBeenCalledTimes(1)
+      expect(onChange).toHaveBeenCalledWith({ q: '' })
       expect(screen.getByLabelText('Search')).toHaveValue('')
-    })
-
-    it('also clears the status where there is a status select', async () => {
-      vi.useRealTimers()
-      const onChange = vi.fn()
-      render(<Filters status="draft" onChange={onChange} />)
-      await userEvent.click(screen.getByRole('button', { name: 'Clear filters' }))
-      expect(onChange).toHaveBeenCalledWith({
-        q: '',
-        tag: '',
-        from: '',
-        to: '',
-        status: '',
-        trash: false,
-      })
     })
 
     it('drops a search that is still waiting for its debounce', () => {
       const onChange = vi.fn()
-      render(<Filters tag="news" onChange={onChange} />)
-      fireEvent.change(screen.getByLabelText('Search'), { target: { value: 'cat' } })
-      fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }))
+      render(<Filters q="cats" onChange={onChange} />)
+      fireEvent.change(screen.getByLabelText('Search'), { target: { value: 'dogs' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Clear search' }))
       act(() => vi.advanceTimersByTime(1000))
       expect(onChange).toHaveBeenCalledTimes(1)
+      expect(onChange).toHaveBeenCalledWith({ q: '' })
+    })
+
+    it('lets the user search again after clearing', () => {
+      const onChange = vi.fn()
+      const { rerender } = render(<Filters q="cats" onChange={onChange} />)
+      fireEvent.click(screen.getByRole('button', { name: 'Clear search' }))
+      rerender(<Filters q="" onChange={onChange} />)
+      fireEvent.change(screen.getByLabelText('Search'), { target: { value: 'cats' } })
+      act(() => vi.advanceTimersByTime(300))
+      expect(onChange).toHaveBeenLastCalledWith({ q: 'cats' })
     })
 
     it('is disabled with the other controls', () => {
-      render(<Filters tag="news" disabled />)
-      expect(screen.getByRole('button', { name: 'Clear filters' })).toBeDisabled()
+      render(<Filters q="cats" disabled />)
+      expect(screen.getByRole('button', { name: 'Clear search' })).toBeDisabled()
     })
   })
 })

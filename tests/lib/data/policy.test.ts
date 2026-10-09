@@ -10,7 +10,7 @@ const isOwner: Rule<Note> = (viewer, note) => viewer !== null && viewer.id === n
 const isUnlocked: Rule<Note> = (_viewer, note) => !note.locked
 const notePolicy = { edit: isOwner, read: isUnlocked }
 
-const owner: SessionUser = { id: 'u1', role: 'user', sessionId: 's1' }
+const owner: SessionUser = { id: 'u1', role: 'user', sessionId: 's1', impersonatedBy: null }
 const note: Note = { ownerId: 'u1', locked: true }
 
 describe('authorize', () => {

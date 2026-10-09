@@ -13,12 +13,6 @@ const serverImportPattern = {
   message: 'lib/server is server-only infrastructure. Reach it through the DAL (lib/data).',
 }
 
-const maintenanceImportPattern = {
-  group: ['@/lib/data/maintenance', '**/lib/data/maintenance'],
-  message:
-    'lib/data/maintenance is the system DAL for background jobs. Import it from jobs/** only.',
-}
-
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
@@ -48,18 +42,6 @@ const eslintConfig = defineConfig([
     files: ['**/*.{ts,tsx,mts}'],
     ignores: ['lib/data/**', 'prisma/**'],
     rules: {
-      'no-restricted-imports': [
-        'error',
-        {
-          patterns: [prismaImportPattern, maintenanceImportPattern],
-        },
-      ],
-    },
-  },
-  // Background jobs (and tests of them) are the only callers of the system DAL.
-  {
-    files: ['jobs/**/*.ts', 'tests/**/*.{ts,tsx}'],
-    rules: {
       'no-restricted-imports': ['error', { patterns: [prismaImportPattern] }],
     },
   },
@@ -72,16 +54,11 @@ const eslintConfig = defineConfig([
       'components/**/*.{ts,tsx}',
       'hooks/**/*.{ts,tsx}',
       'presenters/**/*.ts',
-      'lib/client/**/*.ts',
       'lib/dto/**/*.ts',
+      'emails/**/*.ts',
     ],
     rules: {
-      'no-restricted-imports': [
-        'error',
-        {
-          patterns: [prismaImportPattern, serverImportPattern, maintenanceImportPattern],
-        },
-      ],
+      'no-restricted-imports': ['error', { patterns: [prismaImportPattern, serverImportPattern] }],
     },
   },
   // React Hook Form 7 relies on `register()` being called on every render (a reset clears its
@@ -102,10 +79,9 @@ const eslintConfig = defineConfig([
       ],
     },
   },
-  // Server code logs through lib/server/logger. The CLI scripts (worker/migrate.ts, prisma/seed.ts)
-  // keep console on purpose.
+  // Server code logs through lib/server/logger. The seed (prisma/seed.ts) is a CLI script and keeps console.
   {
-    files: ['lib/data/**/*.ts', 'lib/server/**/*.ts', 'jobs/**/*.ts', 'worker/index.ts'],
+    files: ['lib/data/**/*.ts', 'lib/server/**/*.ts'],
     rules: { 'no-console': 'error' },
   },
   // Override default ignores of eslint-config-next.
@@ -123,8 +99,6 @@ const eslintConfig = defineConfig([
     '.claude/**',
     '.cursor/**',
     '.devin/**',
-    // Plain browser scripts (the service worker), outside the TypeScript project.
-    'public/**',
   ]),
 ])
 

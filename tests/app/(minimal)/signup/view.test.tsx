@@ -7,10 +7,10 @@ vi.mock('@/actions/auth', () => ({ signUpAction: vi.fn(), signInWithGoogleAction
 
 describe('SignUpView', () => {
   it('offers Google sign-in only when the provider is configured', () => {
-    const { rerender } = render(<SignUpView nextPath="/dashboard" googleEnabled={false} />)
+    const { rerender } = render(<SignUpView nextPath="/posts" googleEnabled={false} />)
     expect(screen.queryByRole('button', { name: 'Continue with Google' })).not.toBeInTheDocument()
 
-    rerender(<SignUpView nextPath="/dashboard" googleEnabled />)
+    rerender(<SignUpView nextPath="/posts" googleEnabled />)
     expect(screen.getByRole('button', { name: 'Continue with Google' })).toBeInTheDocument()
   })
 })

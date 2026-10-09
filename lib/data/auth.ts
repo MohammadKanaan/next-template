@@ -3,17 +3,20 @@ import { betterAuth } from 'better-auth'
 import { createAuthMiddleware, getSessionFromCtx } from 'better-auth/api'
 import { prismaAdapter } from 'better-auth/adapters/prisma'
 import { nextCookies } from 'better-auth/next-js'
+import { admin } from 'better-auth/plugins'
 import { headers } from 'next/headers'
 import { cache } from 'react'
+import { confirmEmailChangeEmail } from '@/emails/confirmEmailChange'
+import type { EmailMessage } from '@/emails/layout'
+import { resetPasswordEmail } from '@/emails/resetPassword'
+import { verifyEmail } from '@/emails/verifyEmail'
 import { loginPath } from '@/lib/constants-routes'
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, signUpInput } from '@/lib/dto/auth'
-import { MAX_OBJECT_DELETE_DELAY_SECONDS } from '@/lib/dto/uploads'
-import type { JobPayload } from '@/jobs/definitions'
 import { roleSchema, type Role } from '@/lib/dto/users'
 import { deriveUsername } from '@/lib/username'
 import { invalidateTags } from '@/lib/server/cache'
 import { logger } from '@/lib/server/logger'
-import { enqueue } from '@/lib/server/queue'
+import { sendMail } from '@/lib/server/mailer'
 import { POSTS_TAG, userTag } from './cacheTags'
 import { db } from './db'
 import { ForbiddenError, UnauthorizedError } from './errors'
@@ -21,11 +24,12 @@ import { ForbiddenError, UnauthorizedError } from './errors'
 const log = logger.child({ module: 'auth' })
 
 /**
- * Queues an email without awaiting it: the caller's response time must not reveal whether an
- * account exists. A failure to queue is logged; the user can ask again.
+ * Sends an email without awaiting it: the caller's response time must not reveal whether an
+ * account exists. A failure is logged (never the message: it carries a live link); the user can
+ * ask again.
  */
-const queueEmail = (payload: JobPayload<'send-email'>) => {
-  enqueue('send-email', payload).catch((error) => log.error({ err: error }, 'email not queued'))
+const deliver = (to: string, message: EmailMessage) => {
+  sendMail({ to, ...message }).catch((error) => log.error({ err: error }, 'email not sent'))
 }
 
 /**
@@ -56,6 +60,29 @@ const googleProvider = () => {
 const AUTH_BASE_PATH = '/api/auth'
 
 /**
+ * The admin plugin's HTTP routes. The DAL (`lib/data/admin.ts`) reaches the same operations
+ * through `auth.api.*` behind `requireAdmin()` and this app's own rules (an admin cannot change
+ * their own role); the router would skip those rules, so it is closed like the other paths below.
+ */
+const ADMIN_PLUGIN_PATHS = [
+  'ban-user',
+  'create-user',
+  'get-user',
+  'has-permission',
+  'impersonate-user',
+  'list-user-sessions',
+  'list-users',
+  'remove-user',
+  'revoke-user-session',
+  'revoke-user-sessions',
+  'set-role',
+  'set-user-password',
+  'stop-impersonating',
+  'unban-user',
+  'update-user',
+].map((path) => `/admin/${path}`)
+
+/**
  * The payload of a JWT, read without verifying the signature. Only used to decide whether the
  * `/verify-email` hook below applies; Better Auth verifies the token itself right after. Anything
  * unreadable yields `null`.
@@ -83,7 +110,7 @@ export const auth = betterAuth({
     requireEmailVerification: false,
     revokeSessionsOnPasswordReset: true,
     sendResetPassword: async ({ user, url }) => {
-      queueEmail({ template: 'reset-password', to: user.email, props: { name: user.name, url } })
+      deliver(user.email, resetPasswordEmail({ name: user.name, url }))
     },
   },
   emailVerification: {
@@ -93,7 +120,7 @@ export const auth = betterAuth({
     // below), because an email verification token is a replayable JWT valid for an hour.
     autoSignInAfterVerification: false,
     sendVerificationEmail: async ({ user, url }) => {
-      queueEmail({ template: 'verify-email', to: user.email, props: { name: user.name, url } })
+      deliver(user.email, verifyEmail({ name: user.name, url }))
     },
   },
   // Account linking stays at Better Auth's default: a Google sign-in whose email is verified links
@@ -108,8 +135,10 @@ export const auth = betterAuth({
   // requests and verification-email requests are closed because their actions enforce per-account
   // limits that the router would skip; so are the session-bound account changes (change password,
   // change email, verify password), which go only through their actions and are limited per user
-  // there, while Better Auth's own limiter is per process and keyed on a spoofable client address. `auth.api.*` calls made directly from server code are
-  // unaffected; only the `/api/auth/*` router honours this list.
+  // there, while Better Auth's own limiter is per process and keyed on a spoofable client address.
+  // The admin plugin's routes are closed for the same reason (see `ADMIN_PLUGIN_PATHS`).
+  // `auth.api.*` calls made directly from server code are unaffected; only the `/api/auth/*`
+  // router honours this list.
   disabledPaths: [
     '/sign-up/email',
     '/update-user',
@@ -121,6 +150,7 @@ export const auth = betterAuth({
     '/change-password',
     '/change-email',
     '/verify-password',
+    ...ADMIN_PLUGIN_PATHS,
   ],
   hooks: {
     // `/verify-email` with a change-email token (`updateTo`) creates a session for whoever opens
@@ -150,52 +180,12 @@ export const auth = betterAuth({
       // the new address through `sendVerificationEmail` above. A taken address gets the same
       // response, so this cannot be used to find out who has an account.
       sendChangeEmailConfirmation: async ({ user, newEmail, url }) => {
-        queueEmail({
-          template: 'confirm-email-change',
-          to: user.email,
-          props: { name: user.name, newEmail, url },
-        })
+        deliver(user.email, confirmEmailChangeEmail({ name: user.name, newEmail, url }))
       },
     },
     deleteUser: {
       enabled: true,
-      // Upload rows go with the user (cascade) but their objects would stay in the bucket, so the
-      // keys are read and queued for deletion before the rows disappear. That includes files that
-      // other people (an admin) attached to this user's posts: the posts cascade, and those rows
-      // would otherwise be left behind. The reverse, files this user (an admin) attached to
-      // someone else's post, belong to that post: they are handed to its author first, so the
-      // cascade leaves them alone. The jobs are delayed past every ticket's lifetime plus the
-      // grace period: an object uploaded through a still-valid ticket after the rows are gone
-      // would otherwise be orphaned.
-      beforeDelete: async (user) => {
-        const onOtherPosts = await db.upload.findMany({
-          where: { userId: user.id, post: { userId: { not: user.id } } },
-          select: { id: true, post: { select: { userId: true } } },
-        })
-        for (const { id, post } of onOtherPosts) {
-          if (post) {
-            await db.upload.update({ where: { id }, data: { userId: post.userId } })
-          }
-        }
-        const uploads = await db.upload.findMany({
-          where: { OR: [{ userId: user.id }, { post: { userId: user.id } }] },
-          select: { key: true },
-        })
-        const results = await Promise.allSettled(
-          uploads.map(({ key }) =>
-            enqueue('delete-object', { key }, { startAfter: MAX_OBJECT_DELETE_DELAY_SECONDS }),
-          ),
-        )
-        for (const result of results) {
-          if (result.status === 'rejected') {
-            log.error({ err: result.reason, userId: user.id }, 'object not queued for deletion')
-          }
-        }
-        await db.upload.deleteMany({
-          where: { post: { userId: user.id }, userId: { not: user.id } },
-        })
-      },
-      // Posts cascade too: drop the cached lists and the cached viewer.
+      // Posts, sessions and accounts cascade: drop the cached lists and the cached viewer.
       afterDelete: async (user) => {
         await invalidateTags(POSTS_TAG, userTag(user.id))
       },
@@ -206,21 +196,34 @@ export const auth = betterAuth({
         required: true,
         validator: { input: signUpInput.shape.username },
       },
-      role: { type: ['user', 'admin'], required: false, defaultValue: 'user', input: false },
     },
   },
   databaseHooks: {
     user: {
       update: {
-        // Any Better Auth-side user change (e.g. email verification) must drop the cached viewer.
+        // Any Better Auth-side user change (e.g. email verification, a role change or a ban made
+        // through the admin plugin) must drop the cached viewer.
         after: async (user) => {
           await invalidateTags(userTag(user.id))
         },
       },
     },
   },
-  // nextCookies must stay the last plugin: it writes Set-Cookie through next/headers in Server Actions.
-  plugins: [nextCookies()],
+  plugins: [
+    // Roles (`role`), bans (`banned`, `banReason`, `banExpires`: a banned user cannot sign in and
+    // loses their sessions) and impersonation (`session.impersonatedBy`). The DAL wraps its server
+    // API in `lib/data/admin.ts`; `requireAdmin()` below is the check every admin read and write runs.
+    admin({
+      defaultRole: 'user',
+      adminRoles: ['admin'],
+      defaultBanReason: 'no reason given',
+      // What a banned user sees when they try to sign in (`signInAction` passes it through).
+      bannedUserMessage: (user) =>
+        user.banReason ? `Your account is banned: ${user.banReason}` : 'Your account is banned.',
+    }),
+    // nextCookies must stay the last plugin: it writes Set-Cookie through next/headers in Server Actions.
+    nextCookies(),
+  ],
 })
 
 /** Whether the Google button should be offered. Public: it only says what the login page can do. */
@@ -228,7 +231,13 @@ export const isGoogleAuthEnabled = (): boolean => {
   return Boolean(auth.options.socialProviders?.google)
 }
 
-export type SessionUser = { id: string; role: Role; sessionId: string }
+export type SessionUser = {
+  id: string
+  role: Role
+  sessionId: string
+  /** The admin behind this session when it was opened through impersonation, else null. */
+  impersonatedBy: string | null
+}
 
 /** The signed-in user, or null. Deduplicated within one React render (not in Route Handlers). */
 export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
@@ -236,10 +245,14 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
   if (!session) {
     return null
   }
+  // The plugin stores roles as free text (it allows comma-separated lists); anything that is not one
+  // of ours reads as a regular user, so an odd value can never grant more.
+  const role = roleSchema.safeParse(session.user.role)
   return {
     id: session.user.id,
-    role: roleSchema.parse(session.user.role),
+    role: role.success ? role.data : 'user',
     sessionId: session.session.id,
+    impersonatedBy: session.session.impersonatedBy ?? null,
   }
 })
 

@@ -8,45 +8,42 @@ datasource db {
   provider = "postgresql"
 }
 
-enum Role {
-  user
-  admin
-}
-
+/// Better Auth's user, plus the fields of its `admin` plugin (`role`, `banned`, `banReason`,
+/// `banExpires`) and this app's own `username` and `website`.
 model User {
-  id                String             @id
-  name              String
-  email             String             @unique
-  emailVerified     Boolean            @default(false) @map("email_verified")
-  image             String?
-  username          String             @unique
-  phone             String?
-  website           String?
-  role              Role               @default(user)
-  createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt         DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
-  sessions          Session[]
-  accounts          Account[]
-  posts             Post[]
-  uploads           Upload[]
-  comments          Comment[]
-  notifications     Notification[]
-  pushSubscriptions PushSubscription[]
-  auditLogs         AuditLog[]
+  id            String    @id
+  name          String
+  email         String    @unique
+  emailVerified Boolean   @default(false) @map("email_verified")
+  image         String?
+  username      String    @unique
+  website       String?
+  /// `user` or `admin` (`roleSchema` in `lib/dto/users.ts`); the admin plugin stores roles as text.
+  role          String    @default("user")
+  banned        Boolean   @default(false)
+  banReason     String?   @map("ban_reason")
+  banExpires    DateTime? @map("ban_expires") @db.Timestamptz(3)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  sessions      Session[]
+  accounts      Account[]
+  posts         Post[]
 
   @@map("users")
 }
 
 model Session {
-  id        String   @id
-  token     String   @unique
-  expiresAt DateTime @map("expires_at") @db.Timestamptz(3)
-  ipAddress String?  @map("ip_address")
-  userAgent String?  @map("user_agent")
-  userId    String   @map("user_id")
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id             String   @id
+  token          String   @unique
+  expiresAt      DateTime @map("expires_at") @db.Timestamptz(3)
+  ipAddress      String?  @map("ip_address")
+  userAgent      String?  @map("user_agent")
+  userId         String   @map("user_id")
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// The admin who opened this session through the admin plugin's impersonation, if any.
+  impersonatedBy String?  @map("impersonated_by")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@index([userId])
   @@map("sessions")
@@ -84,155 +81,18 @@ model Verification {
   @@map("verifications")
 }
 
-enum PostStatus {
-  draft
-  published
-  archived
-}
-
+/// The example resource. Only published posts are public; a draft is visible to its author and admins.
 model Post {
-  id           Int                      @id @default(autoincrement())
-  title        String
-  body         String
-  status       PostStatus               @default(draft)
-  version      Int                      @default(1)
-  publishedAt  DateTime?                @map("published_at") @db.Timestamptz(3)
-  deletedAt    DateTime?                @map("deleted_at") @db.Timestamptz(3)
-  /// Set by a database trigger from title (weight A) and body (weight B); read only through raw SQL.
-  searchVector Unsupported("tsvector")? @map("search_vector")
-  userId       String                   @map("user_id")
-  user         User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  comments     Comment[]
-  tags         PostTag[]
-  uploads      Upload[]
-  createdAt    DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt    DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(3)
-
-  @@index([userId])
-  @@index([status])
-  @@index([userId, deletedAt])
-  @@index([searchVector], map: "posts_search_vector_idx", type: Gin)
-  @@map("posts")
-}
-
-model Comment {
   id        Int      @id @default(autoincrement())
-  body      String
-  postId    Int      @map("post_id")
-  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
-  userId    String   @map("user_id")
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-
-  @@index([postId])
-  @@index([userId])
-  @@map("comments")
-}
-
-model Notification {
-  id        Int              @id @default(autoincrement())
-  /// The recipient.
-  userId    String           @map("user_id")
-  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type      NotificationType
   title     String
   body      String
-  /// An app path (`/posts/...`), never an absolute URL.
-  url       String
-  readAt    DateTime?        @map("read_at") @db.Timestamptz(3)
-  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
-
-  @@index([userId, readAt])
-  @@index([userId, createdAt])
-  @@map("notifications")
-}
-
-model PushSubscription {
-  id        String   @id @default(uuid())
+  published Boolean  @default(false)
   userId    String   @map("user_id")
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  /// One browser profile has one endpoint; re-subscribing re-owns the row.
-  endpoint  String   @unique
-  p256dh    String
-  auth      String
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@index([userId])
-  @@map("push_subscriptions")
-}
-
-model Tag {
-  id    Int       @id @default(autoincrement())
-  name  String    @unique
-  posts PostTag[]
-
-  @@map("tags")
-}
-
-/// Explicit join table of the Post <-> Tag many-to-many.
-model PostTag {
-  postId Int  @map("post_id")
-  post   Post @relation(fields: [postId], references: [id], onDelete: Cascade)
-  tagId  Int  @map("tag_id")
-  tag    Tag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
-
-  @@id([postId, tagId])
-  @@index([tagId])
-  @@map("post_tags")
-}
-
-enum UploadPurpose {
-  avatar
-  attachment
-}
-
-enum UploadStatus {
-  pending
-  attached
-}
-
-enum NotificationType {
-  comment
-}
-
-model Upload {
-  id          String        @id @default(uuid())
-  key         String        @unique
-  userId      String        @map("user_id")
-  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  purpose     UploadPurpose
-  contentType String        @map("content_type")
-  size        Int
-  /// The file's original name; only set for an attachment (shown to people, never used as a key).
-  name        String?       @db.VarChar(255)
-  /// The post an attachment belongs to, once attached; the purge deletes the objects and rows itself.
-  postId      Int?          @map("post_id")
-  post        Post?         @relation(fields: [postId], references: [id], onDelete: SetNull)
-  status      UploadStatus  @default(pending)
-  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
-
-  @@index([userId, purpose, status])
-  @@index([postId])
-  @@index([status, createdAt])
-  @@map("uploads")
-}
-
-/// Who changed what and when. The row outlives its actor (`SetNull`); `metadata` holds ids and
-/// changed field names only, never bodies or emails.
-model AuditLog {
-  id         Int      @id @default(autoincrement())
-  actorId    String?  @map("actor_id")
-  actor      User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
-  /// One of `auditActionSchema` (`lib/dto/audit.ts`).
-  action     String
-  /// `post`, `comment` or `user`.
-  entityType String   @map("entity_type")
-  entityId   String   @map("entity_id")
-  metadata   Json?
-  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-
-  @@index([entityType, entityId])
-  @@index([createdAt])
-  @@index([actorId])
-  @@map("audit_logs")
+  @@index([published, id])
+  @@map("posts")
 }

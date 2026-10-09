@@ -31,7 +31,7 @@ export const DeletePostButton = ({ postId }: DeletePostButtonProps) => {
     startTransition(async () => {
       const result = await deletePostAction(postId)
       if (result.ok) {
-        toast.success('Post moved to trash')
+        toast.success('Post deleted')
         router.push(ROUTE_POSTS)
         return
       }
@@ -44,16 +44,13 @@ export const DeletePostButton = ({ postId }: DeletePostButtonProps) => {
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
         <Button type="button" variant="destructive">
-          Move to trash
+          Delete
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Move this post to the trash?</DialogTitle>
-          <DialogDescription>
-            It disappears for everyone else. You can restore it from your trash within 30 days;
-            after that it is deleted for good.
-          </DialogDescription>
+          <DialogTitle>Delete this post?</DialogTitle>
+          <DialogDescription>This cannot be undone.</DialogDescription>
         </DialogHeader>
         <DialogFooter>
           <DialogClose asChild>
@@ -67,7 +64,7 @@ export const DeletePostButton = ({ postId }: DeletePostButtonProps) => {
             loading={isPending}
             onClick={handleConfirm}
           >
-            Move to trash
+            Delete
           </LoadingButton>
         </DialogFooter>
       </DialogContent>

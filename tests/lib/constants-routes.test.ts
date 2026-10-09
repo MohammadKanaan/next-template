@@ -10,8 +10,8 @@ import {
 
 describe('route helpers', () => {
   it('builds encoded post routes', () => {
-    expect(ROUTE_POST_DETAILS(3, 'a b')).toBe('/posts/3/a%20b')
-    expect(ROUTE_POST_EDIT(3, 7)).toBe('/posts/3/7/edit')
+    expect(ROUTE_POST_DETAILS('a b')).toBe('/posts/a%20b')
+    expect(ROUTE_POST_EDIT(7)).toBe('/posts/7/edit')
   })
 
   it('treats listing and detail pages as public', () => {
@@ -22,8 +22,7 @@ describe('route helpers', () => {
       '/forgot-password',
       '/reset-password',
       '/posts',
-      '/posts/ssr',
-      '/posts/1/2',
+      '/posts/12',
       '/ui-kit',
     ]) {
       expect(isPublicRoute(path)).toBe(true)
@@ -35,11 +34,10 @@ describe('route helpers', () => {
       '/posts/new',
       '/posts/mine',
       '/posts/mine/',
-      '/posts/1/2/edit',
-      '/dashboard',
+      '/posts/12/edit',
+      '/settings',
       '/admin',
       '/admin/users',
-      '/admin/audit',
       '/anything',
     ]) {
       expect(isPrivateRoute(path)).toBe(true)
@@ -61,15 +59,16 @@ describe('route helpers', () => {
       '/a/..//evil.example',
       '/./\\evil.example',
     ]) {
-      expect(safeRedirectPath(value)).toBe('/dashboard')
+      expect(safeRedirectPath(value)).toBe('/')
     }
   })
 
-  it('only accepts same-origin relative redirect targets', () => {
+  it('only accepts same-origin relative redirect targets, landing on the home page otherwise', () => {
     expect(safeRedirectPath('/posts/new')).toBe('/posts/new')
     expect(safeRedirectPath('/posts/new?x=1#h')).toBe('/posts/new?x=1#h')
-    expect(safeRedirectPath('//evil.example')).toBe('/dashboard')
-    expect(safeRedirectPath('https://evil.example')).toBe('/dashboard')
-    expect(safeRedirectPath(undefined, '/')).toBe('/')
+    expect(safeRedirectPath('//evil.example')).toBe('/')
+    expect(safeRedirectPath('https://evil.example')).toBe('/')
+    expect(safeRedirectPath(undefined)).toBe('/')
+    expect(safeRedirectPath(undefined, '/settings')).toBe('/settings')
   })
 })

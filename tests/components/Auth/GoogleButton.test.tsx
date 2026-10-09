@@ -24,7 +24,7 @@ describe('GoogleButton', () => {
       code: 'VALIDATION',
       message: 'Google sign-in is not available.',
     })
-    render(<GoogleButton nextPath="/dashboard" />)
+    render(<GoogleButton nextPath="/posts" />)
     await userEvent.click(screen.getByRole('button', { name: 'Continue with Google' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Google sign-in is not available.')
   })

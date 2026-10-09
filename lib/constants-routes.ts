@@ -7,29 +7,20 @@ export const ROUTE_LOGIN = '/login'
 export const ROUTE_SIGNUP = '/signup'
 export const ROUTE_FORGOT_PASSWORD = '/forgot-password'
 export const ROUTE_RESET_PASSWORD = '/reset-password'
-export const ROUTE_DASHBOARD = '/dashboard'
 export const ROUTE_SETTINGS = '/settings'
 export const ROUTE_ADMIN = '/admin'
-export const ROUTE_ADMIN_AUDIT = `${ROUTE_ADMIN}/audit`
-export const ROUTE_NOTIFICATIONS = '/notifications'
 export const ROUTE_POSTS = '/posts'
-export const ROUTE_POSTS_SSR = `${ROUTE_POSTS}/ssr`
-export const ROUTE_POSTS_CSR = `${ROUTE_POSTS}/csr`
 export const ROUTE_POST_NEW = `${ROUTE_POSTS}/new`
 export const ROUTE_POSTS_MINE = `${ROUTE_POSTS}/mine`
 export const ROUTE_UI_KIT = '/ui-kit'
 
 export const loginPath = (next: string) => `${ROUTE_LOGIN}?next=${encodeURIComponent(next)}`
 
-export const ROUTE_POST_DETAILS = (userId: RouteParameter, postId: RouteParameter) =>
-  `${ROUTE_POSTS}/${encode(userId)}/${encode(postId)}`
+export const ROUTE_POST_DETAILS = (postId: RouteParameter) => `${ROUTE_POSTS}/${encode(postId)}`
 
-/** The detail page's route pattern, for `revalidatePath(…, 'page')`. */
-export const ROUTE_POST_DETAILS_PATTERN = `${ROUTE_POSTS}/[userId]/[id]`
+export const ROUTE_POST_EDIT = (postId: RouteParameter) => `${ROUTE_POST_DETAILS(postId)}/edit`
 
-export const ROUTE_POST_EDIT = (userId: RouteParameter, postId: RouteParameter) =>
-  `${ROUTE_POST_DETAILS(userId, postId)}/edit`
-
+/** Routes a signed-out visitor may open; everything else redirects to login (see `proxy.ts`). */
 export const PUBLIC_ROUTES = [
   ROUTE_HOME,
   ROUTE_LOGIN,
@@ -40,7 +31,8 @@ export const PUBLIC_ROUTES = [
   ROUTE_UI_KIT,
 ] as const
 
-const AUTHORING_ROUTE_PATTERN = /^\/posts\/(?:new|mine|[^/]+\/[^/]+\/edit)\/?$/
+/** The pages under `/posts` that need a session: writing, the viewer's own list, editing. */
+const AUTHORING_ROUTE_PATTERN = /^\/posts\/(?:new|mine|[^/]+\/edit)\/?$/
 
 export const isPublicRoute = (path: string): boolean =>
   !AUTHORING_ROUTE_PATTERN.test(path) &&
@@ -53,12 +45,13 @@ export const isPrivateRoute = (path: string): boolean => !isPublicRoute(path)
 const REDIRECT_BASE = 'http://localhost'
 
 /**
- * Accepts only same-origin relative targets. The value is resolved the way a browser would, so
- * `/\\evil.example` and `/<TAB>/evil.example` (which browsers read as `//evil.example`) fall back.
- * Dot segments can also normalise to a `//` path (`/.//evil.example`), which a browser would treat
- * as protocol-relative, so the resolved path is checked too.
+ * Accepts only same-origin relative targets; the fallback is where sign-in lands by default. The
+ * value is resolved the way a browser would, so `/\\evil.example` and `/<TAB>/evil.example` (which
+ * browsers read as `//evil.example`) fall back. Dot segments can also normalise to a `//` path
+ * (`/.//evil.example`), which a browser would treat as protocol-relative, so the resolved path is
+ * checked too.
  */
-export const safeRedirectPath = (value: string | null | undefined, fallback = ROUTE_DASHBOARD) => {
+export const safeRedirectPath = (value: string | null | undefined, fallback = ROUTE_HOME) => {
   if (!value || !value.startsWith('/')) {
     return fallback
   }
