@@ -38,6 +38,10 @@ Long area narratives live in `docs/guides/`. Read the one for the area you touch
 - `docs/guides/forms.md`: React Hook Form + Zod forms (each starts `'use client'` then `'use no memo'`).
 - `docs/guides/environment.md`: public and server-only config, security headers, `serverEnv()`.
 
+`docs/recipes/` holds patterns the template does **not** implement (concurrency and optimistic locking,
+uploads, background jobs, and the other removed features) written to fit this architecture. Read one
+before adding such a feature; never treat it as a description of existing code.
+
 ## Build & Run Commands
 
 | Command                                    | Purpose                                                                                                          |

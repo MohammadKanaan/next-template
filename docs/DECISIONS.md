@@ -65,6 +65,7 @@ tested and documented here once; each project that started from the template the
 hours deleting it. The last commit that still has all of it is `7bd01c5` (branch
 `feat/take-home-patterns`): `git show 7bd01c5:<path>` or `git checkout 7bd01c5 -- <path>` brings a
 piece back, with its tests under the mirrored `tests/` path and its guide under `docs/guides/`.
+`docs/recipes/` keeps the design of each one as a standalone recipe for this architecture.
 
 | Removed                                                                                                              | Where it was                                                                                                                                                                                                                                    | Why it went                                                                                                                                                                       |
 | -------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

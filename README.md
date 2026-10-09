@@ -276,8 +276,9 @@ Where to look to see each pattern done once, properly.
 - **Typed errors per caller.** One set of error classes, translated once per transport.
 - **Small on purpose.** Background jobs, file uploads, notifications, an audit log, soft delete,
   optimistic locking, full-text search and comments were all built once in this template and then
-  removed, because every project that started from it had to delete them. `docs/DECISIONS.md`
-  ("Removed") says where to find them in the history when a project needs one.
+  removed, because every project that started from it had to delete them. `docs/recipes/` says how
+  to add each one back in this architecture, and `docs/DECISIONS.md` ("Removed") where it is in the
+  history.
 
 ## Adding a resource
 
@@ -321,3 +322,5 @@ record)`, call them with `authorize()` after the exists check, and build the DTO
 - [`AGENTS.md`](AGENTS.md): project conventions and rules for contributors and agents.
 - Area guides in [`docs/guides/`](docs/guides/): authentication, posts, route-handlers, caching,
   email, infrastructure, hooks, forms, environment.
+- Recipes in [`docs/recipes/`](docs/recipes/) for what the template leaves out: concurrency and
+  optimistic locking, file uploads, background jobs, and the other removed patterns.
