@@ -1,7 +1,7 @@
 # `docker compose up -d` starts only the infrastructure (db, redis), for local development with
 # `bun run dev` and `bun run dev:worker`. `docker compose --profile app up --build` also builds the
-# app image and runs the migrations, the web process and the worker (see "Run everything with
-# Docker" in README.md).
+# app image and runs the migrations, the web process and the worker (see "Docker" in
+# docs/guides/getting-started.md).
 
 # Environment shared by the app containers. Inside compose the services reach each other by service
 # name. A variable from the shell or from `.env` overrides the `${NAME:-default}` fallbacks below.

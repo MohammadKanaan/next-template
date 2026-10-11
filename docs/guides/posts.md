@@ -2,8 +2,8 @@
 
 Posts exist to show every layer once (`prisma/schema.prisma` → `lib/dto/posts.ts` →
 `lib/data/posts.ts` → `actions/posts.ts` and `app/api/v1/posts` → the pages). Replace them with
-your first real resource by following the same shape; "Adding a resource" in the README is the
-checklist.
+your first real resource by following the same shape; "Adding a resource" in
+[`architecture.md`](architecture.md) is the checklist.
 
 - **Schema:** `Post { id, title, body, published, userId, createdAt, updatedAt }`, cascading from
   the user. `published` is a boolean: a post is a draft or it is published, nothing in between.

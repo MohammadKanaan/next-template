@@ -6,7 +6,7 @@
   and decode it with the DTO schema (`parseInput(createPostInput, …)`); then call the DAL (which
   validates again, because it trusts no caller) and return JSON or `toErrorResponse(error)`.
 - **REST API (`app/api/v1/posts`):** `GET`/`POST /posts`, `GET`/`PATCH`/`DELETE /posts/[id]`
-  (table in the README). Auth is the session cookie. A write handler first calls `requireUser()`
+  (table in [`architecture.md`](architecture.md)). Auth is the session cookie. A write handler first calls `requireUser()`
   (so an anonymous caller gets 401 whatever the body or content type), then reads the body with
   `readJsonBody(request)` (`lib/data/errors.ts`), which rejects a content type other than
   `application/json` and maps malformed JSON to a `ValidationError` (both 422); that requirement

@@ -28,6 +28,8 @@ that forgets a check cannot bypass it.
 
 Long area narratives live in `docs/guides/`. Read the one for the area you touch before editing it.
 
+- `docs/guides/architecture.md`: the layer diagram, DTOs, DAL, actions, Route Handlers (REST API table), errors, presenters, caching, jobs, auth, admin, the pattern index and the "Adding a resource" checklist.
+- `docs/guides/getting-started.md`: the stack, setup, services, Docker, every script, testing.
 - `docs/guides/authentication.md`: Better Auth, the admin plugin (roles, bans, impersonation), email flows, account settings, Google, rate limits.
 - `docs/guides/posts.md`: the posts example (visibility, caching, search, the pages).
 - `docs/guides/route-handlers.md`: Route Handlers, the REST API, health.
