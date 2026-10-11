@@ -23,6 +23,8 @@
 # misc
 .DS_Store
 *.pem
+# Redis writes its dump into the working directory when run without a volume
+dump.rdb
 
 # debug
 npm-debug.log*
