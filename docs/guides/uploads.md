@@ -1,87 +1,122 @@
-# Uploads
+# Uploads (Cloudflare R2)
 
-Files go straight from the browser to S3-compatible storage; the app only issues tickets and
-records the result. Two purposes use the same machinery: `avatar` (the user's photo) and
-`attachment` (files on a post).
+Files go straight from the browser to the bucket; the app only issues tickets and records the result.
+The one implemented purpose is the profile photo on `/settings` (`avatar`). Storage is Cloudflare R2
+through its S3 API, so the client is `@aws-sdk/client-s3`; nothing here is R2-specific except the
+endpoint and the absence of presigned POST.
 
-- `lib/server/storage.ts`: presigned **POST** (a presigned PUT cannot cap size) with
-  `content-length-range` and `Content-Type` conditions, `headObject`, `deleteObject`,
-  `publicUrl(key)`.
-- The `Upload` table (`key` unique, `userId`, `purpose` `avatar` | `attachment`, `contentType`,
-  `size`, `status` `pending` | `attached`, `name` (attachments only, `VARCHAR(255)`), `postId`
-  (attachments only, `onDelete: SetNull`, indexed)) tracks every object.
-- **Rules per purpose:** `UPLOAD_RULES` in `lib/dto/uploads.ts` is the one table:
-  `{ contentTypes, maxSize, maxPending, ticketSeconds }` (plus the two messages shown for a bad type
-  or size). Avatar: PNG, JPEG, WebP, 2 MB, 3 pending. Attachment: PNG, JPEG, WebP, GIF, PDF, CSV (no
-  SVG or HTML: the bucket is public), 10 MB, 5 pending. `createUploadInput { purpose, contentType,
-size, name?, postId? }` is refined against the rule of its `purpose` (an attachment needs a `name`,
-  trimmed and at most 255 characters, and the `postId` it is for; an avatar ignores both); the DAL reads limits from the same table, and `AvatarUploader` and
-  `PostAttachments` take `accept` and the size from it. `POST_ATTACHMENTS_MAX` is 10.
-- `lib/data/uploads.ts`: `createUpload(input)` (signed in → input valid → for an attachment, the
-  post exists and is live (404) and the viewer may update it (403), through
-  `requirePostChange(viewer, postId, 'update')`, so no ticket is issued for a file that could not be
-  attached (a stranger cannot rotate 10 MB tickets on the public prefix) → key
-  `<purpose>s/<userId>/<uuid>` → `pending` row → ticket; reclaim and the pending cap work per
-  purpose) and `attachAvatar` (signed in → exists → owner, i.e. 401/404/403 → `headObject`
-  re-checks size and type against the rule, deleting an object that broke the rules (the row stays
-  `pending` for the cleanup, because the ticket may still be valid) → mark `attached`, set
-  `user.image`, delete the previous avatar's row and queue a delayed `delete-object` for its object (see Orphans) →
-  `invalidateTags(userTag)`).
-- **Attachments:** `attachPostUpload(postId, uploadId)` is signed in (401) → input valid (422) → the
-  post exists and is live (404) → `postPolicy.update`, author or admin (403) (all through
-  `requirePostChange(viewer, id, 'update')`, so a trashed post is 404) → the upload exists (404),
-  is of purpose `attachment`, and is the viewer's own (403) → still pending (422) → `headObject`
-  re-check (422) → in a transaction that locks the post row (`FOR UPDATE`): fewer than 10 attached
-  (422), then claim the pending row (`attached` + `postId`). `detachPostUpload(postId, uploadId)`
-  has the same first steps, then the attachment must belong to that post (404), whoever uploaded
-  it; the row is deleted and a delayed `delete-object` queued like a replaced avatar. Both
-  `invalidateTags(postTag(id))` and neither bumps `Post.version`. `PostDetail.attachments`
-  (`attachmentSchema`: `id`, `name`, `url`, `contentType`, `size`, `createdAt`, oldest first) comes
-  from `postDetailSelect` and is cached with the post under `postTag`; anyone who can see the post
-  can read the list.
-- Orphans: the hourly `cleanup` job deletes `pending` uploads, of every purpose, older than 24 hours
-  with their objects, looping through batches (at most 20 per run). Tickets last
-  `UPLOAD_TICKET_SECONDS` (300, `lib/dto/uploads.ts`, per purpose in the rule). An object is only
-  deleted after its ticket plus `UPLOAD_OBJECT_GRACE_SECONDS` (600, same file) have passed, because
-  S3 checks expiry when the upload starts and an object re-uploaded to a key with no row would be
-  invisible to every cleanup: the `delete-object` jobs for replaced avatars, removed attachments and
-  deleted accounts are queued with `startAfter` (`objectDeleteDelaySeconds(purpose)`), and
-  `createUpload` reclaims (object, then row) only pending uploads older than that same cut-off. Rows
-  past the ticket but inside the grace period are neither counted nor touched. When the user holds
-  `maxPending` live tickets of a purpose it throws `RateLimitedError`. `createUploadAction` is rate
-  limited per user too (30 a minute, so a batch of files fits), so pending rows stay bounded. Because
-  those `delete-object` jobs are delayed by the ticket lifetime plus grace, a replaced avatar, a
-  removed attachment, and the files of a deleted account, stay readable at their public URL for
-  about 15 minutes.
-- **Posts that go away:** `purgeDeletedPosts` (`lib/data/maintenance.ts`) works in batches inside a
-  transaction that locks the batch's posts: it re-checks they are still past the cut-off (a restore
-  that raced with it wins), queues a `delete-object` job (no delay: the tickets are long dead) for
-  every attachment key, deletes the upload rows, then the posts. A job that cannot be queued rolls the
-  batch back and fails the run, so nothing is deleted without its objects being queued. The jobs
-  are queued inside the transaction on purpose (the usual rule is after the commit): after it, a
-  crash would leave objects no row points to, which no cleanup could find; inside it, the worst case
-  is a failed commit after the sends, which costs files of posts already past retention one run
-  early. When the batch commits, the cached detail and comments of the purged posts are dropped. Deleting an
-  account queues the keys of the user's own uploads and of files others (an admin) attached to their
-  posts, and removes the latter rows (the posts cascade, `SetNull` would leave them behind).
-- Client: `lib/client/uploads.ts` (`uploadFile`) is the one facade that talks to a non-app URL.
-  `AvatarUploader` on `/settings` runs ticket action → `uploadFile` → attach action.
-  `components/Form/FileUploader` is the reusable picker: multiple files, `accept` and `maxSize` from
-  props, files sent one after the other, per-file state (waiting, uploading, uploaded, or an inline
-  error), no progress bar (`fetch` has no upload progress). `components/Posts/Attachments` (client)
-  uses it on the post edit page for ticket action → `uploadFile` → `attachPostUploadAction`, lists the
-  current files with a Remove button (`detachPostUploadAction`). Its list is its own state, updated
-  from what the actions return, and the page is not refreshed: the post form beside it follows the
-  server's values, so a refresh would replace what the author has typed. For the same reason the
-  two actions revalidate only the detail page (`ROUTE_POST_DETAILS_PATTERN`), not the whole
-  `/posts` layout. `FileUploader` takes `maxFiles`; the component passes the free slots, so files
-  beyond `POST_ATTACHMENTS_MAX` are refused in the browser before they are uploaded. Attachments
-  change at once and do not wait for "Save changes".
-  `components/Posts/AttachmentList` (server) lists them as links on the detail page.
-- Avatars render through `UserAvatar` (shadcn `Avatar`) with a plain `<img>`, so no `next/image`
-  `remotePatterns` are needed.
-- **Public bucket:** both prefixes, `avatars/` and `attachments/`, are publicly readable (the
-  compose `minio-init` sets it); on real S3 give both prefixes the same bucket policy. A file is
-  reachable by anyone with its URL (the key holds a random UUID), even when its post is a draft, so
-  attachments are not for private documents. A private variant would serve through short-lived
-  signed GET URLs from the DAL instead of `publicUrl`.
+## Flow
+
+1. **Ticket** (`createUpload(input)` in `lib/data/uploads.ts`): signed in → `createUploadInput` valid
+   for its purpose (type and exact size against `UPLOAD_RULES`) → storage configured (otherwise a
+   `ValidationError`, "Uploads are not available") → expired pending uploads of that purpose are
+   reclaimed → at most `maxPending` live tickets per user (`RateLimitedError`) → a `pending` row with
+   the key `avatars/<userId>/<uuid>` → a **presigned PUT** from `createUploadTicket`
+   (`lib/server/storage.ts`). `createUploadAction` also rate-limits tickets per user (30 a minute).
+2. **Upload** (`uploadFile(ticket, file)` in `lib/client/uploads.ts`): the browser `PUT`s the file to
+   the ticket's URL with the ticket's headers. It is the one client-side fetch to a non-app URL;
+   bytes never pass through the app.
+3. **Attach** (`attachAvatar(uploadId)`): signed in → id valid → the row exists and is of the purpose
+   (404) → it is the viewer's own (403; not even an admin may use someone else's upload) → still
+   `pending` → `headObject` re-checks size and type against the rule (an object that broke them is
+   deleted at once; the row stays pending for the cleanup) → in one transaction: `user.image =
+publicUrl(key)`, the row becomes `attached` (an `updateMany` on `status: 'pending'`, so a
+   concurrent attach of the same upload matches nothing and rolls back), the previous attached rows
+   are deleted → the user's cache tag is invalidated → each replaced object is queued for deletion.
+   `attachAvatarAction` calls `refresh()` so the layout shows the new image.
+4. **Delete later, not now.** Storage checks a presigned URL's expiry when the request starts, so a
+   slow upload begun just before expiry can land after it. An object is therefore never deleted before
+   its ticket lifetime plus `UPLOAD_OBJECT_GRACE_SECONDS` (300 s + 600 s): the replaced avatar goes
+   through a delayed `delete-object` job, and deleting an account queues one per key of the user in
+   Better Auth's `beforeDelete` hook (`lib/data/auth.ts`), delayed by `MAX_OBJECT_DELETE_DELAY_SECONDS`
+   (the rows cascade with the user, the objects would not).
+5. **Orphans.** The hourly `cleanup` job calls `deleteStalePendingUploads` (`lib/data/maintenance.ts`):
+   `pending` rows older than a day, oldest first, in batches of 100 (at most 20 batches a run), object
+   first so a storage failure leaves the row for the next run. `createUpload` reclaims the viewer's
+   own expired tickets sooner, when they ask for a new one.
+
+## Why a presigned PUT, and what it enforces
+
+R2 has no presigned POST, whose policy could cap a size _range_. The PUT's signature covers the
+`Content-Type` and the exact `Content-Length` instead (`signableHeaders`, `SignedHeaders =
+content-length;content-type;host` in the URL), so a file of another type or size is refused by R2
+with a 403. The browser sets `Content-Length` from the body itself; the ticket's `headers` carry the
+content type and are sent as they are. The DTO already checked both against the rule when the ticket
+was issued, and `attach` checks the stored object a third time with `headObject`.
+
+## Rules and limits
+
+`UPLOAD_RULES` in `lib/dto/uploads.ts` is the one definition of what each purpose accepts: the DTO
+refines against it, the DAL reads `maxSize`, `maxPending` and `ticketSeconds` from it, and
+`AvatarUploader` takes `accept` and the size hint from it. Avatars: PNG, JPEG or WebP, 2 MB, three
+live tickets per user, 300 s tickets. **No SVG or HTML, ever:** the bucket serves files from a
+public origin, and those execute in the browser.
+
+Adding a purpose: a value in `uploadPurposeSchema`, a row in `UPLOAD_RULES`, a value in the Prisma
+`UploadPurpose` enum (migration), an `attachXxx` DAL function modelled on `attachAvatar` (and the
+record it links to), its action, and a wrapper component around `components/Form/FileUploader`.
+
+## Configuration
+
+The five `R2_*` variables are **optional as a group** (`lib/server/env.ts` refuses a partial set).
+Without them `isStorageConfigured()` is false, the DAL refuses tickets, `/settings` hides the profile
+photo card (`canUpload()`), and the template runs without an R2 account. With them:
+
+| Variable               | Value                                                                                               |
+| ---------------------- | --------------------------------------------------------------------------------------------------- |
+| `R2_ACCOUNT_ID`        | Your Cloudflare account id; the S3 endpoint is `https://<account>.r2.cloudflarestorage.com`.        |
+| `R2_ACCESS_KEY_ID`     | From an R2 API token with **Object Read & Write** on the bucket (R2 → Manage R2 API Tokens).        |
+| `R2_SECRET_ACCESS_KEY` | Its secret.                                                                                         |
+| `R2_BUCKET`            | The bucket name.                                                                                    |
+| `R2_PUBLIC_URL`        | The bucket's public origin, no path: its `https://pub-….r2.dev` subdomain or a custom domain on it. |
+
+Setting up the bucket in the Cloudflare dashboard:
+
+1. **Create the bucket.** Location hint as you like; `region` in the client is `auto`.
+2. **Public access.** Settings → Public access: enable the `r2.dev` subdomain (fine for a template;
+   rate limited and not for production traffic) or connect a custom domain (recommended in production:
+   Cloudflare's cache and WAF sit in front). Either origin is `R2_PUBLIC_URL`. This makes **every
+   object in the bucket** readable by URL, drafts included: private documents need short-lived signed
+   GET URLs from the DAL instead of `publicUrl`, and a separate bucket.
+3. **CORS.** Settings → CORS policy. The browser's presigned PUT is a cross-origin request with a
+   `Content-Type` header, so it preflights; allow your app origins:
+   ```json
+   [
+     {
+       "AllowedOrigins": ["http://localhost:3000", "https://your-app.example"],
+       "AllowedMethods": ["PUT"],
+       "AllowedHeaders": ["Content-Type", "Content-Length"],
+       "MaxAgeSeconds": 3600
+     }
+   ]
+   ```
+   Reads through `R2_PUBLIC_URL` are plain `<img>` loads and need no CORS.
+4. **API token.** Manage R2 API Tokens → Create: Object Read & Write, scoped to this bucket. The
+   token's Access Key ID and Secret Access Key are the two credential variables.
+
+The client uses path-style URLs (`forcePathStyle: true`): tickets look like
+`https://<account>.r2.cloudflarestorage.com/<bucket>/avatars/<userId>/<uuid>?X-Amz-…`, so one host
+covers CORS and any CSP `connect-src`, and a bucket name with dots still gets a valid certificate.
+
+Compose passes the five variables from `.env` to `web` and `worker` (empty by default). Tests mock
+`@/lib/server/storage` and never need an account; `tests/lib/server/storage.test.ts` checks the
+signature against a stubbed environment.
+
+## Pieces
+
+- `lib/server/storage.ts`: lazy `S3Client` on `globalThis`, `isStorageConfigured`,
+  `createUploadTicket`, `headObject` (null for 404), `deleteObject` (a missing key is success),
+  `publicUrl`.
+- `lib/dto/uploads.ts`: rules, `createUploadInput`, `uploadTicketSchema`, `uploadIdSchema`, the delay
+  constants.
+- `lib/data/uploads.ts`: `canUpload`, `createUpload`, `attachAvatar`.
+- `actions/uploads.ts`: `createUploadAction`, `attachAvatarAction`.
+- `lib/client/uploads.ts`: `uploadFile`; `lib/client/errors.ts`: `RequestError`.
+- `components/Form/FileUploader` (reusable picker: `accept`, `maxSize`, per-file state, files sent
+  one after the other; `fetch` has no upload progress) and `components/Settings/AvatarUploader`
+  (asks for the ticket, uploads, attaches, reports). Avatars render through a plain `<img>`, so
+  `next/image` remote patterns are not needed.
+- `jobs/deleteObject.ts`, `deleteStalePendingUploads` in `lib/data/maintenance.ts`, the
+  `beforeDelete` hook in `lib/data/auth.ts`.
+- Tests under the mirrored paths; `tests/lib/data/uploads.test.ts` covers the order of checks, the
+  pending cap, reclaiming, the concurrent attach and the delayed deletes.

@@ -1,13 +1,7 @@
 // @vitest-environment node
 import { revalidatePath } from 'next/cache'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-  createPostAction,
-  deletePostAction,
-  restorePostAction,
-  setPostStatusAction,
-  updatePostAction,
-} from '@/actions/posts'
+import { createPostAction, deletePostAction, updatePostAction } from '@/actions/posts'
 import { db } from '@/lib/data/db'
 import { createUser, resetDatabase, signInAs } from '../helpers/server'
 
@@ -18,6 +12,10 @@ vi.mock('next/headers', () => ({
 }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn(), refresh: vi.fn() }))
 
+const seedPost = (userId: string, published = true) => {
+  return db.post.create({ data: { userId, title: 'T', body: 'B', published } })
+}
+
 describe('post actions', () => {
   beforeEach(async () => {
     await resetDatabase()
@@ -25,150 +23,175 @@ describe('post actions', () => {
   })
   afterAll(() => db.$disconnect())
 
-  it('returns UNAUTHORIZED when signed out and does not revalidate', async () => {
-    expect(await createPostAction({ title: 'T', body: 'B' })).toEqual({
-      ok: false,
-      code: 'UNAUTHORIZED',
-      message: 'Sign in to continue',
+  describe('createPostAction', () => {
+    it('returns UNAUTHORIZED when signed out and does not revalidate', async () => {
+      expect(await createPostAction({ title: 'T', body: 'B' })).toEqual({
+        ok: false,
+        code: 'UNAUTHORIZED',
+        message: 'Sign in to continue',
+      })
+      expect(revalidatePath).not.toHaveBeenCalled()
+      expect(await db.post.count()).toBe(0)
     })
-    expect(revalidatePath).not.toHaveBeenCalled()
-  })
 
-  it('returns field errors for invalid input and creates nothing', async () => {
-    await signInAs(await createUser({}))
-    expect(await createPostAction({ title: ' ', body: '' })).toEqual({
-      ok: false,
-      code: 'VALIDATION',
-      message: 'Validation failed',
-      fieldErrors: { title: ['Title is required'], body: ['Body is required'] },
+    it('returns field errors for invalid input and creates nothing', async () => {
+      await signInAs(await createUser({}))
+      expect(await createPostAction({ title: ' ', body: '' })).toEqual({
+        ok: false,
+        code: 'VALIDATION',
+        message: 'Validation failed',
+        fieldErrors: { title: ['Title is required'], body: ['Body is required'] },
+      })
+      expect(await db.post.count()).toBe(0)
+      expect(revalidatePath).not.toHaveBeenCalled()
     })
-    expect(await db.post.count()).toBe(0)
-  })
 
-  it('creates a post with trimmed values and revalidates the posts layout', async () => {
-    await signInAs(await createUser({}))
-    const result = await createPostAction({ title: ' Hello ', body: 'World' })
-    expect(result.ok).toBe(true)
-    if (!result.ok) {
-      return
-    }
-    expect(result.data.title).toBe('Hello')
-    expect(result.data.createdAt).toBeInstanceOf(Date)
-    expect(revalidatePath).toHaveBeenCalledWith('/posts', 'layout')
-  })
-
-  it('rejects an empty update', async () => {
-    await signInAs(await createUser({}))
-    const result = await updatePostAction(1, { version: 1 })
-    expect(result).toMatchObject({
-      ok: false,
-      code: 'VALIDATION',
-      fieldErrors: { base: ['Provide at least one attribute'] },
+    it('creates a draft with trimmed values and revalidates the posts layout', async () => {
+      const user = await createUser({})
+      await signInAs(user)
+      const result = await createPostAction({ title: ' Hello ', body: 'World' })
+      expect(result.ok).toBe(true)
+      if (!result.ok) {
+        return
+      }
+      expect(result.data).toMatchObject({
+        title: 'Hello',
+        body: 'World',
+        published: false,
+        author: { id: user.id },
+        permissions: { update: true, delete: true },
+      })
+      expect(result.data.createdAt).toBeInstanceOf(Date)
+      expect(revalidatePath).toHaveBeenCalledTimes(1)
+      expect(revalidatePath).toHaveBeenCalledWith('/posts', 'layout')
     })
-  })
 
-  it('rejects a bad id', async () => {
-    await signInAs(await createUser({}))
-    expect(await updatePostAction(0, { version: 1, title: 'x' })).toMatchObject({
-      ok: false,
-      code: 'VALIDATION',
+    it('publishes at once when asked', async () => {
+      await signInAs(await createUser({}))
+      expect(await createPostAction({ title: 'T', body: 'B', published: true })).toMatchObject({
+        ok: true,
+        data: { published: true },
+      })
     })
-  })
 
-  it('answers UNAUTHORIZED before looking at the input when signed out', async () => {
-    expect(await updatePostAction(0, { version: 1 })).toMatchObject({
-      ok: false,
-      code: 'UNAUTHORIZED',
-    })
-  })
-
-  it('forbids an intruder from updating', async () => {
-    const owner = await createUser({})
-    const intruder = await createUser({})
-    const post = await db.post.create({ data: { userId: owner.id, title: 'T', body: 'B' } })
-    await signInAs(intruder)
-    expect(await updatePostAction(post.id, { version: 1, title: 'x' })).toMatchObject({
-      ok: false,
-      code: 'FORBIDDEN',
+    it('passes its argument to the DAL untouched, so an unexpected payload is validated there', async () => {
+      await signInAs(await createUser({}))
+      expect(await createPostAction(null as never)).toMatchObject({ ok: false, code: 'VALIDATION' })
+      expect(await createPostAction('text' as never)).toMatchObject({
+        ok: false,
+        code: 'VALIDATION',
+      })
+      expect(await db.post.count()).toBe(0)
     })
   })
 
-  it('lets the owner delete once, then reports NOT_FOUND', async () => {
-    const owner = await createUser({})
-    const post = await db.post.create({ data: { userId: owner.id, title: 'T', body: 'B' } })
-    await signInAs(owner)
-    expect(await deletePostAction(post.id)).toEqual({ ok: true, data: null })
-    expect(await db.post.count({ where: { deletedAt: null } })).toBe(0)
-    expect(await deletePostAction(post.id)).toMatchObject({ ok: false, code: 'NOT_FOUND' })
+  describe('updatePostAction', () => {
+    it('answers UNAUTHORIZED before looking at the input when signed out', async () => {
+      expect(await updatePostAction(0, {})).toMatchObject({ ok: false, code: 'UNAUTHORIZED' })
+      expect(revalidatePath).not.toHaveBeenCalled()
+    })
+
+    it('rejects an empty update', async () => {
+      await signInAs(await createUser({}))
+      expect(await updatePostAction(1, {})).toMatchObject({
+        ok: false,
+        code: 'VALIDATION',
+        fieldErrors: { base: ['Provide at least one attribute'] },
+      })
+    })
+
+    it('rejects a bad id', async () => {
+      await signInAs(await createUser({}))
+      expect(await updatePostAction(0, { title: 'x' })).toMatchObject({
+        ok: false,
+        code: 'VALIDATION',
+      })
+      expect(await updatePostAction('abc' as never, { title: 'x' })).toMatchObject({
+        ok: false,
+        code: 'VALIDATION',
+      })
+    })
+
+    it('reports NOT_FOUND for a missing post', async () => {
+      await signInAs(await createUser({}))
+      expect(await updatePostAction(999, { title: 'x' })).toMatchObject({
+        ok: false,
+        code: 'NOT_FOUND',
+        message: 'Post not found',
+      })
+    })
+
+    it('forbids an intruder from updating, draft or published', async () => {
+      const owner = await createUser({})
+      const intruder = await createUser({})
+      const post = await seedPost(owner.id)
+      const draft = await seedPost(owner.id, false)
+      await signInAs(intruder)
+      expect(await updatePostAction(post.id, { title: 'x' })).toEqual({
+        ok: false,
+        code: 'FORBIDDEN',
+        message: 'You cannot change this post',
+      })
+      expect(await updatePostAction(draft.id, { title: 'x' })).toMatchObject({
+        ok: false,
+        code: 'FORBIDDEN',
+      })
+      expect(revalidatePath).not.toHaveBeenCalled()
+    })
+
+    it('lets the owner change the fields passed and revalidates the posts layout', async () => {
+      const owner = await createUser({})
+      const post = await seedPost(owner.id, false)
+      await signInAs(owner)
+      const result = await updatePostAction(post.id, { title: ' New ', published: true })
+      expect(result).toMatchObject({
+        ok: true,
+        data: { id: post.id, title: 'New', body: 'B', published: true },
+      })
+      expect(revalidatePath).toHaveBeenCalledWith('/posts', 'layout')
+    })
+
+    it('lets an admin change someone else’s post', async () => {
+      const owner = await createUser({})
+      const admin = await createUser({ role: 'admin' })
+      const post = await seedPost(owner.id)
+      await signInAs(admin)
+      expect(await updatePostAction(post.id, { body: 'Moderated' })).toMatchObject({
+        ok: true,
+        data: { body: 'Moderated', author: { id: owner.id } },
+      })
+    })
   })
 
-  it('restores a trashed post, revalidates, and reports NOT_FOUND for a live one', async () => {
-    const owner = await createUser({})
-    const post = await db.post.create({ data: { userId: owner.id, title: 'T', body: 'B' } })
-    await signInAs(owner)
-    expect(await restorePostAction(post.id)).toMatchObject({ ok: false, code: 'NOT_FOUND' })
-    await deletePostAction(post.id)
-    vi.mocked(revalidatePath).mockClear()
-    expect(await restorePostAction(post.id)).toMatchObject({
-      ok: true,
-      data: { id: post.id, deletedAt: null },
+  describe('deletePostAction', () => {
+    it('returns UNAUTHORIZED when signed out', async () => {
+      const owner = await createUser({})
+      const post = await seedPost(owner.id)
+      expect(await deletePostAction(post.id)).toMatchObject({ ok: false, code: 'UNAUTHORIZED' })
+      expect(await db.post.count()).toBe(1)
     })
-    expect(revalidatePath).toHaveBeenCalledWith('/posts', 'layout')
-  })
 
-  it('answers CONFLICT for an edit made from a stale version', async () => {
-    const owner = await createUser({})
-    const post = await db.post.create({ data: { userId: owner.id, title: 'T', body: 'B' } })
-    await signInAs(owner)
-    expect(await updatePostAction(post.id, { version: 1, title: 'One' })).toMatchObject({
-      ok: true,
-      data: { version: 2 },
+    it('maps a bad id, a missing post and an intruder to codes without revalidating', async () => {
+      const owner = await createUser({})
+      const intruder = await createUser({})
+      const post = await seedPost(owner.id)
+      await signInAs(intruder)
+      expect(await deletePostAction(1.5)).toMatchObject({ ok: false, code: 'VALIDATION' })
+      expect(await deletePostAction(999)).toMatchObject({ ok: false, code: 'NOT_FOUND' })
+      expect(await deletePostAction(post.id)).toMatchObject({ ok: false, code: 'FORBIDDEN' })
+      expect(await db.post.count()).toBe(1)
+      expect(revalidatePath).not.toHaveBeenCalled()
     })
-    expect(await updatePostAction(post.id, { version: 1, title: 'Two' })).toMatchObject({
-      ok: false,
-      code: 'CONFLICT',
-    })
-  })
 
-  it('creates a draft with tags', async () => {
-    await signInAs(await createUser({}))
-    const result = await createPostAction({ title: 'T', body: 'B', tags: ['News'] })
-    expect(result).toMatchObject({ ok: true, data: { status: 'draft', tags: ['news'] } })
-  })
-
-  it('moves a post through the workflow and revalidates the posts layout', async () => {
-    const owner = await createUser({})
-    const post = await db.post.create({ data: { userId: owner.id, title: 'T', body: 'B' } })
-    await signInAs(owner)
-    const result = await setPostStatusAction(post.id, 'published')
-    expect(result).toMatchObject({ ok: true, data: { status: 'published' } })
-    expect(revalidatePath).toHaveBeenCalledWith('/posts', 'layout')
-  })
-
-  it('maps status failures to codes and does not revalidate', async () => {
-    const owner = await createUser({})
-    const intruder = await createUser({})
-    const post = await db.post.create({ data: { userId: owner.id, title: 'T', body: 'B' } })
-
-    expect(await setPostStatusAction(post.id, 'published')).toMatchObject({
-      ok: false,
-      code: 'UNAUTHORIZED',
+    it('lets the owner delete once, revalidating, then reports NOT_FOUND', async () => {
+      const owner = await createUser({})
+      const post = await seedPost(owner.id)
+      await signInAs(owner)
+      expect(await deletePostAction(post.id)).toEqual({ ok: true, data: null })
+      expect(await db.post.count()).toBe(0)
+      expect(revalidatePath).toHaveBeenCalledTimes(1)
+      expect(revalidatePath).toHaveBeenCalledWith('/posts', 'layout')
+      expect(await deletePostAction(post.id)).toMatchObject({ ok: false, code: 'NOT_FOUND' })
     })
-    await signInAs(intruder)
-    expect(await setPostStatusAction(post.id, 'published')).toMatchObject({
-      ok: false,
-      code: 'FORBIDDEN',
-    })
-    await signInAs(owner)
-    expect(await setPostStatusAction(post.id, 'archived')).toMatchObject({
-      ok: false,
-      code: 'VALIDATION',
-      fieldErrors: { status: ['A draft post cannot become archived'] },
-    })
-    expect(await setPostStatusAction(999, 'published')).toMatchObject({
-      ok: false,
-      code: 'NOT_FOUND',
-    })
-    expect(revalidatePath).not.toHaveBeenCalled()
   })
 })

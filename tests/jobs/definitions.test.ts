@@ -50,16 +50,15 @@ describe('job definitions', () => {
     expect(jobs['send-email'].options.deleteAfterSeconds).toBe(3600)
   })
 
-  it('requires a key for the delete-object job', () => {
-    expect(jobs['delete-object'].schema.safeParse({ key: 'avatars/u/1' }).success).toBe(true)
+  it('takes a non-empty object key for delete-object', () => {
+    expect(jobs['delete-object'].schema.safeParse({ key: 'avatars/u/x' }).success).toBe(true)
     expect(jobs['delete-object'].schema.safeParse({ key: '' }).success).toBe(false)
     expect(jobs['delete-object'].schema.safeParse({}).success).toBe(false)
+    expect(jobs['delete-object'].options.retryLimit).toBeGreaterThan(0)
   })
 
-  it('validates the send-push payload', () => {
-    const schema = jobs['send-push'].schema
-    expect(schema.safeParse({ userId: 'u1', title: 'T', body: '', url: '/x' }).success).toBe(true)
-    expect(schema.safeParse({ userId: 'u1', title: '', body: '', url: '/x' }).success).toBe(false)
-    expect(schema.safeParse({ userId: 'u1', title: 'T', body: '' }).success).toBe(false)
+  it('runs the cleanup every hour', () => {
+    expect(jobs.cleanup.cron).toBe('0 * * * *')
+    expect(jobs.cleanup.schema.safeParse({}).success).toBe(true)
   })
 })

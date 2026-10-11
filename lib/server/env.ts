@@ -4,6 +4,15 @@ import { z } from 'zod'
 /** An empty variable (`FOO=`, common in compose and CI templates) counts as unset. */
 const emptyToUndefined = (value: unknown) => (value === '' ? undefined : value)
 
+/** The variables that turn uploads on; all or none. */
+export const R2_VARIABLES = [
+  'R2_ACCOUNT_ID',
+  'R2_ACCESS_KEY_ID',
+  'R2_SECRET_ACCESS_KEY',
+  'R2_BUCKET',
+  'R2_PUBLIC_URL',
+] as const
+
 const serverEnvSchema = z
   .object({
     REDIS_URL: z.string().min(1),
@@ -11,16 +20,6 @@ const serverEnvSchema = z
     // Production refuses to send without it (see `sendMail`).
     RESEND_API_KEY: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
     EMAIL_FROM: z.string().min(1),
-    S3_ENDPOINT: z.url(),
-    S3_REGION: z.string().min(1),
-    S3_BUCKET: z.string().min(1),
-    S3_ACCESS_KEY_ID: z.string().min(1),
-    S3_SECRET_ACCESS_KEY: z.string().min(1),
-    S3_PUBLIC_URL: z.url(),
-    // Optional: the S3 endpoint as the browser reaches it, for presigned uploads. Defaults to
-    // `S3_ENDPOINT`; set it when the server talks to storage over an internal host (e.g. a container
-    // name) the browser cannot resolve.
-    S3_PUBLIC_ENDPOINT: z.preprocess(emptyToUndefined, z.url().optional()),
     // Optional: how many proxies in front of the app append the client address to
     // `x-forwarded-for`; the entry that many from the end is the client (see `getClientIp`).
     // Default 1, applied by the reader so `ServerEnv` keeps it optional.
@@ -33,17 +32,13 @@ const serverEnvSchema = z
     // half-configured provider fails at boot in production.
     GOOGLE_CLIENT_ID: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
     GOOGLE_CLIENT_SECRET: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
-    // Optional trio: Web Push is on only when all three are set (`bunx web-push generate-vapid-keys`).
-    // `VAPID_SUBJECT` is the contact the push services may use: a mailto: or https: URL.
-    VAPID_PUBLIC_KEY: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
-    VAPID_PRIVATE_KEY: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
-    VAPID_SUBJECT: z.preprocess(
-      emptyToUndefined,
-      z
-        .string()
-        .regex(/^(mailto:|https:)/, 'Must start with mailto: or https:')
-        .optional(),
-    ),
+    // Optional group: uploads (Cloudflare R2) are on only when all five are set. `R2_PUBLIC_URL`
+    // is the bucket's public origin (its `r2.dev` subdomain or a custom domain), without a path.
+    R2_ACCOUNT_ID: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
+    R2_ACCESS_KEY_ID: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
+    R2_SECRET_ACCESS_KEY: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
+    R2_BUCKET: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
+    R2_PUBLIC_URL: z.preprocess(emptyToUndefined, z.url().optional()),
   })
   .refine((env) => Boolean(env.GOOGLE_CLIENT_ID) === Boolean(env.GOOGLE_CLIENT_SECRET), {
     message: 'Set both GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET, or neither',
@@ -51,13 +46,10 @@ const serverEnvSchema = z
   })
   .refine(
     (env) => {
-      const set = [env.VAPID_PUBLIC_KEY, env.VAPID_PRIVATE_KEY, env.VAPID_SUBJECT].filter(Boolean)
-      return set.length === 0 || set.length === 3
+      const set = R2_VARIABLES.filter((name) => Boolean(env[name]))
+      return set.length === 0 || set.length === R2_VARIABLES.length
     },
-    {
-      message: 'Set VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY and VAPID_SUBJECT together, or none',
-      path: ['VAPID_PUBLIC_KEY'],
-    },
+    { message: `Set ${R2_VARIABLES.join(', ')} together, or none`, path: ['R2_ACCOUNT_ID'] },
   )
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>
@@ -66,8 +58,8 @@ let cached: ServerEnv | undefined
 
 /**
  * Validated server-side config from `process.env`, parsed on first use and memoized. It is lazy so
- * `next build` (which never touches Redis, S3, or the mailer) works without these variables.
- * Throws one readable error that lists every missing or invalid variable.
+ * `next build` (which never touches Redis or the mailer) works without these variables. Throws one
+ * readable error that lists every missing or invalid variable.
  */
 export const serverEnv = (): ServerEnv => {
   if (cached) {

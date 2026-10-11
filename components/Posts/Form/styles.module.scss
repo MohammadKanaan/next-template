@@ -4,6 +4,18 @@
   gap: 1.25rem;
 }
 
+.toggle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.hint {
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+}
+
 .actions {
   display: flex;
   justify-content: flex-end;

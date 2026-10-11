@@ -1,6 +1,5 @@
 import { z } from 'zod'
 import type { QueueOptions } from 'pg-boss'
-import { userIdSchema } from '@/lib/dto/users'
 
 const emailAddress = z.email()
 
@@ -22,6 +21,8 @@ export const sendEmailPayload = z.discriminatedUnion('template', [
     props: z.object({ name: z.string(), newEmail: emailAddress, url: z.url() }),
   }),
 ])
+
+export type SendEmailPayload = z.infer<typeof sendEmailPayload>
 
 export type JobDefinition = {
   schema: z.ZodType
@@ -52,15 +53,6 @@ export const jobs = {
   'delete-object': {
     schema: z.object({ key: z.string().min(1) }),
     options: { retryLimit: 5, retryDelay: 30, retryBackoff: true, expireInSeconds: 60 },
-  },
-  'send-push': {
-    schema: z.object({
-      userId: userIdSchema,
-      title: z.string().min(1),
-      body: z.string(),
-      url: z.string().min(1),
-    }),
-    options: { retryLimit: 2, retryDelay: 30, retryBackoff: true, expireInSeconds: 60 },
   },
   cleanup: {
     schema: z.object({}),

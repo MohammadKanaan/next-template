@@ -50,9 +50,7 @@ const eslintConfig = defineConfig([
     rules: {
       'no-restricted-imports': [
         'error',
-        {
-          patterns: [prismaImportPattern, maintenanceImportPattern],
-        },
+        { patterns: [prismaImportPattern, maintenanceImportPattern] },
       ],
     },
   },
@@ -74,14 +72,10 @@ const eslintConfig = defineConfig([
       'presenters/**/*.ts',
       'lib/client/**/*.ts',
       'lib/dto/**/*.ts',
+      'emails/**/*.ts',
     ],
     rules: {
-      'no-restricted-imports': [
-        'error',
-        {
-          patterns: [prismaImportPattern, serverImportPattern, maintenanceImportPattern],
-        },
-      ],
+      'no-restricted-imports': ['error', { patterns: [prismaImportPattern, serverImportPattern] }],
     },
   },
   // React Hook Form 7 relies on `register()` being called on every render (a reset clears its
@@ -123,8 +117,6 @@ const eslintConfig = defineConfig([
     '.claude/**',
     '.cursor/**',
     '.devin/**',
-    // Plain browser scripts (the service worker), outside the TypeScript project.
-    'public/**',
   ]),
 ])
 

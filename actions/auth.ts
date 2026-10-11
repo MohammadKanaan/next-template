@@ -43,6 +43,15 @@ export const signInAction = async (input: SignInInput): Promise<ActionResult<nul
     refresh()
     return { ok: true, data: null }
   } catch (error) {
+    // The admin plugin refuses a banned user with its `bannedUserMessage` (the reason, see
+    // `lib/data/auth.ts`); it is the one Better Auth message shown as is.
+    if (error instanceof APIError && error.body?.code === 'BANNED_USER') {
+      return {
+        ok: false,
+        code: 'FORBIDDEN',
+        message: error.body.message ?? 'Your account is banned.',
+      }
+    }
     if (error instanceof APIError) {
       return {
         ok: false,

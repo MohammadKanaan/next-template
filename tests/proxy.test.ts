@@ -10,9 +10,9 @@ const SESSION_COOKIE = 'better-auth.session_token=abc.def'
 
 describe('proxy', () => {
   it('sends signed-out visitors from private pages to login with a return path', () => {
-    const response = proxy(request('/dashboard'))
+    const response = proxy(request('/posts/mine'))
     expect(response.status).toBe(307)
-    expect(response.headers.get('location')).toBe('http://localhost/login?next=%2Fdashboard')
+    expect(response.headers.get('location')).toBe('http://localhost/login?next=%2Fposts%2Fmine')
   })
 
   it('sends signed-out visitors from the admin page to login', () => {
@@ -22,7 +22,7 @@ describe('proxy', () => {
   })
 
   it('lets a visitor with a session cookie through to private pages', () => {
-    expect(proxy(request('/dashboard', SESSION_COOKIE)).headers.get('x-middleware-next')).toBe('1')
+    expect(proxy(request('/settings', SESSION_COOKIE)).headers.get('x-middleware-next')).toBe('1')
   })
 
   it('does not redirect guest-only pages: a stale cookie must not lock anyone out', () => {
@@ -40,6 +40,8 @@ describe('proxy', () => {
   })
 
   it('lets anyone through to public pages', () => {
-    expect(proxy(request('/posts')).headers.get('x-middleware-next')).toBe('1')
+    for (const path of ['/', '/posts', '/posts/7', '/ui-kit']) {
+      expect(proxy(request(path)).headers.get('x-middleware-next')).toBe('1')
+    }
   })
 })

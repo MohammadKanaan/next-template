@@ -13,7 +13,10 @@ describe('DeleteAccountDialog', () => {
     render(<DeleteAccountDialog onConfirm={vi.fn()} />)
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     const dialog = await open()
-    expect(dialog).toHaveTextContent('permanently removes your account')
+    expect(dialog).toHaveTextContent(
+      'This permanently removes your account and your posts. It cannot be undone. Enter your password to confirm.',
+    )
+    expect(dialog).not.toHaveTextContent(/uploads/)
   })
 
   it('needs the password before it confirms', async () => {

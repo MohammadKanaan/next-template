@@ -2,26 +2,14 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/data/db'
 import {
-  ConflictError,
   ForbiddenError,
   NotFoundError,
   RateLimitedError,
   UnauthorizedError,
   ValidationError,
 } from '@/lib/data/errors'
-import {
-  createPost,
-  deletePost,
-  getPost,
-  listPosts,
-  listTags,
-  restorePost,
-  setPostStatus,
-  updatePost,
-} from '@/lib/data/posts'
-import { POSTS_TAG } from '@/lib/data/cacheTags'
+import { createPost, deletePost, getPost, listPosts, updatePost } from '@/lib/data/posts'
 import { getRedis } from '@/lib/server/redis'
-import { invalidateTags } from '@/lib/server/cache'
 import { createUser, resetDatabase, signInAs, signOut } from '../../helpers/server'
 
 const { cookieStore, requestHeaders } = await vi.hoisted(
@@ -34,13 +22,15 @@ vi.mock('next/headers', () => ({
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn(), refresh: vi.fn() }))
 
 /** Posts are drafts by default; the tests that read them back as a visitor need them published. */
-const seedPost = async (
-  userId: string,
-  title = 'Post',
-  body = 'Body',
-  status: 'draft' | 'published' | 'archived' = 'published',
-) => {
-  return db.post.create({ data: { userId, title, body, status } })
+const seedPost = async (userId: string, title = 'Post', body = 'Body', published = true) => {
+  return db.post.create({ data: { userId, title, body, published } })
+}
+
+const cachedKeys = () => getRedis().keys('cache:v:*')
+
+const titles = async (params: Partial<Parameters<typeof listPosts>[0]> = {}) => {
+  const page = await listPosts({ page: 1, perPage: 10, ...params })
+  return page.items.map((post) => post.title)
 }
 
 describe('posts DAL', () => {
@@ -54,150 +44,223 @@ describe('posts DAL', () => {
     vi.unstubAllEnvs()
   })
 
-  it('lists newest first as a Page of summaries with an excerpt and author', async () => {
-    const author = await createUser({ name: 'Leanne Graham' })
-    for (const n of [1, 2, 3]) {
-      await seedPost(author.id, `Post ${n}`, 'x'.repeat(200))
-    }
-    const page = await listPosts({ page: 1, perPage: 2 })
-    expect(page).toMatchObject({ page: 1, perPage: 2, totalItems: 3, totalPages: 2 })
-    expect(page.items.map((post) => post.title)).toEqual(['Post 3', 'Post 2'])
-    expect(page.items[0].excerpt).toBe(`${'x'.repeat(160)}…`)
-    expect(page.items[0].createdAt).toBeInstanceOf(Date)
-    expect(page.items[0].author).toEqual({
-      id: author.id,
-      name: 'Leanne Graham',
-      username: author.username,
-      website: null,
+  describe('listPosts', () => {
+    it('lists newest first as a Page of summaries with an excerpt and author', async () => {
+      const author = await createUser({ name: 'Leanne Graham' })
+      for (const n of [1, 2, 3]) {
+        await seedPost(author.id, `Post ${n}`, 'x'.repeat(200))
+      }
+      const page = await listPosts({ page: 1, perPage: 2 })
+      expect(page).toMatchObject({ page: 1, perPage: 2, totalItems: 3, totalPages: 2 })
+      expect(page.items.map((post) => post.title)).toEqual(['Post 3', 'Post 2'])
+      expect(page.items[0].excerpt).toBe(`${'x'.repeat(160)}…`)
+      expect(page.items[0].published).toBe(true)
+      expect(page.items[0].createdAt).toBeInstanceOf(Date)
+      expect(page.items[0].author).toEqual({
+        id: author.id,
+        name: 'Leanne Graham',
+        username: author.username,
+        website: null,
+      })
+      expect(page.items[0]).not.toHaveProperty('body')
+      expect(page.items[0]).not.toHaveProperty('permissions')
     })
-    expect(page.items[0]).not.toHaveProperty('body')
-  })
 
-  it('filters by author', async () => {
-    const a = await createUser({})
-    const b = await createUser({})
-    await seedPost(a.id)
-    await seedPost(b.id)
-    const page = await listPosts({ page: 1, perPage: 10, authorId: b.id })
-    expect(page.items.map((post) => post.author.id)).toEqual([b.id])
-  })
-
-  it('sorts oldest first when asked, newest first by default', async () => {
-    const author = await createUser({})
-    for (const n of [1, 2, 3]) {
-      await seedPost(author.id, `Post ${n}`)
-    }
-    const titles = async (sort?: 'newest' | 'oldest') =>
-      (await listPosts({ page: 1, perPage: 10, sort })).items.map((post) => post.title)
-    expect(await titles('oldest')).toEqual(['Post 1', 'Post 2', 'Post 3'])
-    expect(await titles('newest')).toEqual(['Post 3', 'Post 2', 'Post 1'])
-    expect(await titles()).toEqual(['Post 3', 'Post 2', 'Post 1'])
-  })
-
-  it('does not serve one sort order from the other order cache entry', async () => {
-    const author = await createUser({})
-    await seedPost(author.id, 'First')
-    await seedPost(author.id, 'Second')
-    const newest = await listPosts({ page: 1, perPage: 10, sort: 'newest' })
-    const oldest = await listPosts({ page: 1, perPage: 10, sort: 'oldest' })
-    expect(newest.items.map((post) => post.title)).toEqual(['Second', 'First'])
-    expect(oldest.items.map((post) => post.title)).toEqual(['First', 'Second'])
-  })
-
-  it('searches titles case-insensitively and counts only the matches', async () => {
-    const author = await createUser({})
-    await seedPost(author.id, 'Learning TypeScript')
-    await seedPost(author.id, 'Cooking pasta')
-    await seedPost(author.id, 'typescript tips')
-    const page = await listPosts({ page: 1, perPage: 10, q: 'TYPESCRIPT' })
-    expect(page.items.map((post) => post.title)).toEqual(['typescript tips', 'Learning TypeScript'])
-    expect(page.totalItems).toBe(2)
-  })
-
-  it('treats punctuation in a search as text, never as a pattern', async () => {
-    const author = await createUser({})
-    await seedPost(author.id, '100% done')
-    await seedPost(author.id, 'Plain title')
-    expect((await listPosts({ page: 1, perPage: 10, q: '%' })).items).toEqual([])
-    expect((await listPosts({ page: 1, perPage: 10, q: '_' })).totalItems).toBe(0)
-    const percent = await listPosts({ page: 1, perPage: 10, q: '100%' })
-    expect(percent.items.map((post) => post.title)).toEqual(['100% done'])
-  })
-
-  it('combines search with sort and author filter', async () => {
-    const a = await createUser({})
-    const b = await createUser({})
-    await seedPost(a.id, 'alpha one')
-    await seedPost(b.id, 'alpha two')
-    await seedPost(a.id, 'alpha three')
-    const page = await listPosts({
-      page: 1,
-      perPage: 10,
-      q: 'alpha',
-      authorId: a.id,
-      sort: 'oldest',
+    it('keeps a short body whole as the excerpt', async () => {
+      const author = await createUser({})
+      await seedPost(author.id, 'Short', 'Just a line')
+      expect((await listPosts({ page: 1, perPage: 10 })).items[0].excerpt).toBe('Just a line')
     })
-    expect(page.items.map((post) => post.title)).toEqual(['alpha one', 'alpha three'])
-  })
 
-  it('caches unfiltered lists but never a search', async () => {
-    const author = await createUser({})
-    await seedPost(author.id, 'Findable')
-    await listPosts({ page: 1, perPage: 10, q: 'findable' })
-    expect(await getRedis().keys('cache:v:*')).toEqual([])
+    it('pages through the list', async () => {
+      const author = await createUser({})
+      for (const n of [1, 2, 3]) {
+        await seedPost(author.id, `Post ${n}`)
+      }
+      const last = await listPosts({ page: 2, perPage: 2 })
+      expect(last.items.map((post) => post.title)).toEqual(['Post 1'])
+      expect(last).toMatchObject({ page: 2, totalPages: 2 })
+      expect((await listPosts({ page: 3, perPage: 2 })).items).toEqual([])
+    })
 
-    await listPosts({ page: 1, perPage: 10 })
-    expect(await getRedis().keys('cache:v:*')).toHaveLength(1)
+    it('filters by author', async () => {
+      const a = await createUser({})
+      const b = await createUser({})
+      await seedPost(a.id)
+      await seedPost(b.id)
+      const page = await listPosts({ page: 1, perPage: 10, authorId: b.id })
+      expect(page.items.map((post) => post.author.id)).toEqual([b.id])
+      expect(page.totalItems).toBe(1)
+    })
 
-    // A search sees a new post at once: nothing cached could hide it.
-    await seedPost(author.id, 'Findable too')
-    const page = await listPosts({ page: 1, perPage: 10, q: 'findable' })
-    expect(page.totalItems).toBe(2)
-  })
+    it('sorts oldest first when asked, newest first by default', async () => {
+      const author = await createUser({})
+      for (const n of [1, 2, 3]) {
+        await seedPost(author.id, `Post ${n}`)
+      }
+      expect(await titles({ sort: 'oldest' })).toEqual(['Post 1', 'Post 2', 'Post 3'])
+      expect(await titles({ sort: 'newest' })).toEqual(['Post 3', 'Post 2', 'Post 1'])
+      expect(await titles()).toEqual(['Post 3', 'Post 2', 'Post 1'])
+    })
 
-  it('throws NotFoundError for a missing post', async () => {
-    await expect(getPost(999)).rejects.toBeInstanceOf(NotFoundError)
-  })
+    it('does not serve one sort order from the other order cache entry', async () => {
+      const author = await createUser({})
+      await seedPost(author.id, 'First')
+      await seedPost(author.id, 'Second')
+      expect(await titles({ sort: 'newest' })).toEqual(['Second', 'First'])
+      expect(await titles({ sort: 'oldest' })).toEqual(['First', 'Second'])
+      expect(await cachedKeys()).toHaveLength(2)
+    })
 
-  it('rate limits changes to existing posts per user in production', async () => {
-    const author = await createUser({})
-    const post = await seedPost(author.id, 'Title 0')
-    await signInAs(author)
-    vi.stubEnv('NODE_ENV', 'production')
-    for (let n = 1; n <= 60; n++) {
-      await updatePost(post.id, { version: n, title: `Title ${n}` })
-    }
-    await expect(
-      updatePost(post.id, { version: 61, title: 'One too many' }),
-    ).rejects.toBeInstanceOf(RateLimitedError)
-    expect((await db.post.findUniqueOrThrow({ where: { id: post.id } })).title).toBe('Title 60')
-  })
+    it('searches titles case-insensitively and counts only the matches', async () => {
+      const author = await createUser({})
+      await seedPost(author.id, 'Learning TypeScript')
+      await seedPost(author.id, 'Cooking pasta', 'typescript in the body does not count')
+      await seedPost(author.id, 'typescript tips')
+      const page = await listPosts({ page: 1, perPage: 10, q: 'TYPESCRIPT' })
+      expect(page.items.map((post) => post.title)).toEqual([
+        'typescript tips',
+        'Learning TypeScript',
+      ])
+      expect(page.totalItems).toBe(2)
+    })
 
-  it('rate limits post creation per user in production', async () => {
-    const [first, second] = [await createUser({}), await createUser({})]
-    await signInAs(first)
-    vi.stubEnv('NODE_ENV', 'production')
-    for (let n = 0; n < 20; n++) {
-      await createPost({ title: `Post ${n}`, body: 'Body' })
-    }
-    await expect(createPost({ title: 'One too many', body: 'Body' })).rejects.toBeInstanceOf(
-      RateLimitedError,
-    )
-    expect(await db.post.count({ where: { userId: first.id } })).toBe(20)
+    it('matches a search anywhere in the title, trimmed', async () => {
+      const author = await createUser({})
+      await seedPost(author.id, 'Notes on cats and dogs')
+      expect(await titles({ q: '  cats  ' })).toEqual(['Notes on cats and dogs'])
+      expect(await titles({ q: 'and dogs' })).toEqual(['Notes on cats and dogs'])
+      expect(await titles({ q: 'birds' })).toEqual([])
+    })
 
-    await signInAs(second)
-    await expect(createPost({ title: 'Mine', body: 'Body' })).resolves.toMatchObject({
-      title: 'Mine',
+    it('treats punctuation in a search as text, never as a pattern', async () => {
+      const author = await createUser({})
+      await seedPost(author.id, '100% done')
+      await seedPost(author.id, 'snake_case')
+      await seedPost(author.id, 'back\\slash')
+      await seedPost(author.id, 'Plain title')
+      expect(await titles({ q: '%' })).toEqual(['100% done'])
+      expect(await titles({ q: '_' })).toEqual(['snake_case'])
+      expect(await titles({ q: '\\' })).toEqual(['back\\slash'])
+      expect(await titles({ q: '100%' })).toEqual(['100% done'])
+      // As wildcards these would match 'snake_case'; as text they match nothing.
+      expect(await titles({ q: 'sn_ke' })).toEqual([])
+      expect(await titles({ q: 'e%c' })).toEqual([])
+      expect((await listPosts({ page: 1, perPage: 10, q: '%' })).totalItems).toBe(1)
+    })
+
+    it('combines search with sort and author filter', async () => {
+      const a = await createUser({})
+      const b = await createUser({})
+      await seedPost(a.id, 'alpha one')
+      await seedPost(b.id, 'alpha two')
+      await seedPost(a.id, 'alpha three')
+      expect(await titles({ q: 'alpha', authorId: a.id, sort: 'oldest' })).toEqual([
+        'alpha one',
+        'alpha three',
+      ])
+    })
+
+    it('keeps an author filter that spells "all" apart from the unfiltered list', async () => {
+      const author = await createUser({})
+      await seedPost(author.id, 'Visible')
+      expect(await titles({ authorId: 'all' })).toEqual([])
+      expect(await titles()).toEqual(['Visible'])
+    })
+
+    it('answers an empty page, never an error, for an unknown author', async () => {
+      expect(await listPosts({ page: 1, perPage: 10, authorId: crypto.randomUUID() })).toEqual({
+        items: [],
+        page: 1,
+        perPage: 10,
+        totalItems: 0,
+        totalPages: 1,
+      })
+    })
+
+    it('validates its query itself', async () => {
+      await expect(listPosts({ page: 1, perPage: 101 })).rejects.toBeInstanceOf(ValidationError)
+      await expect(listPosts({ page: 0, perPage: 10 })).rejects.toBeInstanceOf(ValidationError)
+      await expect(listPosts({ page: 1001, perPage: 10 })).rejects.toBeInstanceOf(ValidationError)
+      await expect(listPosts({ page: 1, perPage: 10, authorId: 'a b' })).rejects.toBeInstanceOf(
+        ValidationError,
+      )
+      await expect(
+        listPosts({ page: 1, perPage: 10, sort: 'garbage' as never }),
+      ).rejects.toBeInstanceOf(ValidationError)
+      await expect(listPosts({ page: 1, perPage: 10, q: 'x'.repeat(101) })).rejects.toBeInstanceOf(
+        ValidationError,
+      )
+      await expect(
+        listPosts({ page: 1, perPage: 10, published: 'maybe' as never }),
+      ).rejects.toBeInstanceOf(ValidationError)
+    })
+
+    it('applies the defaults of the query: page 1, ten per page, newest first', async () => {
+      const author = await createUser({})
+      await seedPost(author.id, 'First')
+      await seedPost(author.id, 'Second')
+      const page = await listPosts({})
+      expect(page).toMatchObject({ page: 1, perPage: 10, totalItems: 2 })
+      expect(page.items.map((post) => post.title)).toEqual(['Second', 'First'])
     })
   })
 
-  describe('input validation', () => {
+  describe('getPost', () => {
+    it('throws NotFoundError for a missing post', async () => {
+      await expect(getPost(999)).rejects.toBeInstanceOf(NotFoundError)
+    })
+
     it('accepts a route param as the id and treats a malformed one as not found', async () => {
       const author = await createUser({})
       const post = await seedPost(author.id, 'By param')
       expect((await getPost(String(post.id))).title).toBe('By param')
       await expect(getPost('abc')).rejects.toBeInstanceOf(NotFoundError)
       await expect(getPost(-1)).rejects.toBeInstanceOf(NotFoundError)
+      await expect(getPost('1.5')).rejects.toBeInstanceOf(NotFoundError)
+      await expect(getPost('2147483648')).rejects.toBeInstanceOf(NotFoundError)
+    })
+
+    it('returns the detail: full body, timestamps, author and permissions', async () => {
+      const author = await createUser({ name: 'Leanne Graham' })
+      const post = await seedPost(author.id, 'Title', 'x'.repeat(400))
+      signOut()
+      const detail = await getPost(post.id)
+      expect(detail).toEqual({
+        id: post.id,
+        title: 'Title',
+        body: 'x'.repeat(400),
+        published: true,
+        createdAt: post.createdAt,
+        updatedAt: post.updatedAt,
+        author: { id: author.id, name: 'Leanne Graham', username: author.username, website: null },
+        permissions: { update: false, delete: false },
+      })
+      expect(detail.createdAt).toBeInstanceOf(Date)
+      expect(detail.updatedAt).toBeInstanceOf(Date)
+    })
+
+    it('computes permissions for anonymous, other, owner, and admin viewers', async () => {
+      const owner = await createUser({})
+      const other = await createUser({})
+      const admin = await createUser({ role: 'admin' })
+      const post = await seedPost(owner.id)
+
+      signOut()
+      expect((await getPost(post.id)).permissions).toEqual({ update: false, delete: false })
+      await signInAs(other)
+      expect((await getPost(post.id)).permissions).toEqual({ update: false, delete: false })
+      await signInAs(owner)
+      expect((await getPost(post.id)).permissions).toEqual({ update: true, delete: true })
+      await signInAs(admin)
+      expect((await getPost(post.id)).permissions).toEqual({ update: true, delete: true })
+    })
+  })
+
+  describe('createPost', () => {
+    it('checks the session before the input', async () => {
+      await expect(createPost({ title: '', body: '' })).rejects.toBeInstanceOf(UnauthorizedError)
+      expect(await db.post.count()).toBe(0)
     })
 
     it('validates a new post itself, so a caller that skips the schema cannot write bad data', async () => {
@@ -208,119 +271,379 @@ describe('posts DAL', () => {
         title: ['Title is required'],
         body: ['Body must be 5000 characters or fewer'],
       })
+      await expect(
+        createPost({ title: 'T', body: 'B', published: 'true' as never }),
+      ).rejects.toBeInstanceOf(ValidationError)
       expect(await db.post.count()).toBe(0)
-      expect((await createPost({ title: '  Trimmed  ', body: 'Body' })).title).toBe('Trimmed')
+      expect((await createPost({ title: '  Trimmed  ', body: ' Body ' })).title).toBe('Trimmed')
     })
 
-    it('validates an update and its id', async () => {
+    it('creates as the viewer, a draft by default, with the owner permissions', async () => {
+      const user = await createUser({})
+      await signInAs(user)
+      const post = await createPost({ title: 'T', body: 'B' })
+      expect(post).toMatchObject({
+        title: 'T',
+        body: 'B',
+        published: false,
+        author: { id: user.id },
+        permissions: { update: true, delete: true },
+      })
+      expect(post.createdAt).toBeInstanceOf(Date)
+      const row = await db.post.findUniqueOrThrow({ where: { id: post.id } })
+      expect(row).toMatchObject({ userId: user.id, published: false })
+    })
+
+    it('publishes at once when asked', async () => {
+      await signInAs(await createUser({}))
+      const post = await createPost({ title: 'Live', body: 'B', published: true })
+      expect(post.published).toBe(true)
+      signOut()
+      expect((await getPost(post.id)).title).toBe('Live')
+    })
+
+    it('cannot set the author through the input', async () => {
+      const author = await createUser({})
+      const other = await createUser({})
+      await signInAs(author)
+      const post = await createPost({ title: 'T', body: 'B', userId: other.id } as never)
+      expect(post.author.id).toBe(author.id)
+    })
+
+    it('rate limits post creation per user in production', async () => {
+      const [first, second] = [await createUser({}), await createUser({})]
+      await signInAs(first)
+      vi.stubEnv('NODE_ENV', 'production')
+      for (let n = 0; n < 20; n++) {
+        await createPost({ title: `Post ${n}`, body: 'Body' })
+      }
+      await expect(createPost({ title: 'One too many', body: 'Body' })).rejects.toBeInstanceOf(
+        RateLimitedError,
+      )
+      // The limit comes right after the session check, before the input is looked at.
+      await expect(createPost({ title: '', body: '' })).rejects.toBeInstanceOf(RateLimitedError)
+      expect(await db.post.count({ where: { userId: first.id } })).toBe(20)
+
+      await signInAs(second)
+      await expect(createPost({ title: 'Mine', body: 'Body' })).resolves.toMatchObject({
+        title: 'Mine',
+      })
+    })
+
+    it('counts nothing outside production', async () => {
+      await signInAs(await createUser({}))
+      for (let n = 0; n < 21; n++) {
+        await createPost({ title: `Post ${n}`, body: 'Body' })
+      }
+      expect(await db.post.count()).toBe(21)
+      expect(await getRedis().keys('ratelimit:*')).toEqual([])
+    })
+  })
+
+  describe('updatePost', () => {
+    it('checks session, then input, then existence, then ownership', async () => {
+      const owner = await createUser({})
+      const intruder = await createUser({})
+      const post = await seedPost(owner.id)
+
+      signOut()
+      await expect(updatePost('abc', {})).rejects.toBeInstanceOf(UnauthorizedError)
+      await expect(updatePost(post.id, { title: 'x' })).rejects.toBeInstanceOf(UnauthorizedError)
+
+      await signInAs(intruder)
+      await expect(updatePost('abc', { title: 'x' })).rejects.toBeInstanceOf(ValidationError)
+      await expect(updatePost(0, { title: 'x' })).rejects.toBeInstanceOf(ValidationError)
+      await expect(updatePost(999, {})).rejects.toBeInstanceOf(ValidationError)
+      await expect(updatePost(999, { title: 'x' })).rejects.toBeInstanceOf(NotFoundError)
+      await expect(updatePost(post.id, { title: 'x' })).rejects.toBeInstanceOf(ForbiddenError)
+
+      await signInAs(owner)
+      expect(await updatePost(post.id, { title: 'Renamed' })).toMatchObject({
+        title: 'Renamed',
+        body: 'Body',
+        permissions: { update: true, delete: true },
+      })
+    })
+
+    it('answers 403, not 404, to a stranger who tries to change a draft', async () => {
+      const owner = await createUser({})
+      const intruder = await createUser({})
+      const draft = await seedPost(owner.id, 'Draft', 'B', false)
+      await signInAs(intruder)
+      await expect(updatePost(draft.id, { title: 'x' })).rejects.toBeInstanceOf(ForbiddenError)
+      await expect(deletePost(draft.id)).rejects.toBeInstanceOf(ForbiddenError)
+    })
+
+    it('validates the update and reports each field', async () => {
       const author = await createUser({})
       const post = await seedPost(author.id)
       await signInAs(author)
-      await expect(updatePost(post.id, { version: 1 })).rejects.toBeInstanceOf(ValidationError)
-      await expect(updatePost(post.id, { version: 1, title: '' })).rejects.toBeInstanceOf(
+      const empty = await updatePost(post.id, {}).catch((e) => e)
+      expect(empty).toBeInstanceOf(ValidationError)
+      expect(empty.fieldErrors).toEqual({ base: ['Provide at least one attribute'] })
+      await expect(updatePost(post.id, { title: undefined })).rejects.toBeInstanceOf(
         ValidationError,
       )
-      await expect(updatePost(0, { version: 1, title: 'x' })).rejects.toBeInstanceOf(
-        ValidationError,
+      const invalid = await updatePost(post.id, { title: '', body: 'x'.repeat(5001) }).catch(
+        (e) => e,
       )
+      expect(invalid.fieldErrors).toEqual({
+        title: ['Title is required'],
+        body: ['Body must be 5000 characters or fewer'],
+      })
+      expect((await db.post.findUniqueOrThrow({ where: { id: post.id } })).title).toBe('Post')
+    })
+
+    it('changes only the fields passed, trimmed, and moves updatedAt', async () => {
+      const author = await createUser({})
+      const post = await seedPost(author.id, 'Title', 'Body')
+      await signInAs(author)
+      const updated = await updatePost(String(post.id), { body: '  Changed  ' })
+      expect(updated).toMatchObject({ title: 'Title', body: 'Changed', published: true })
+      expect(updated.updatedAt.getTime()).toBeGreaterThan(post.updatedAt.getTime())
+      expect(updated.createdAt).toEqual(post.createdAt)
+    })
+
+    it('publishes and unpublishes through the published flag', async () => {
+      const author = await createUser({})
+      const draft = await seedPost(author.id, 'Draft', 'B', false)
+      await signInAs(author)
+      expect((await updatePost(draft.id, { published: true })).published).toBe(true)
+      signOut()
+      expect((await getPost(draft.id)).published).toBe(true)
+      await signInAs(author)
+      expect((await updatePost(draft.id, { published: false })).published).toBe(false)
+      signOut()
+      await expect(getPost(draft.id)).rejects.toBeInstanceOf(NotFoundError)
+    })
+
+    it('ignores fields the input does not know', async () => {
+      const author = await createUser({})
+      const other = await createUser({})
+      const post = await seedPost(author.id)
+      await signInAs(author)
+      const updated = await updatePost(post.id, { title: 'Kept', userId: other.id } as never)
+      expect(updated.author.id).toBe(author.id)
+      expect((await db.post.findUniqueOrThrow({ where: { id: post.id } })).userId).toBe(author.id)
+    })
+
+    it('lets an admin update and delete someone else’s post', async () => {
+      const owner = await createUser({})
+      const admin = await createUser({ role: 'admin' })
+      const post = await seedPost(owner.id)
+      await signInAs(admin)
+      const moderated = await updatePost(post.id, { body: 'Moderated' })
+      expect(moderated.body).toBe('Moderated')
+      expect(moderated.author.id).toBe(owner.id)
+      expect(moderated.permissions).toEqual({ update: true, delete: true })
+      await deletePost(post.id)
+      expect(await db.post.count()).toBe(0)
+    })
+  })
+
+  describe('deletePost', () => {
+    it('checks session, then input, then existence, then ownership', async () => {
+      const owner = await createUser({})
+      const intruder = await createUser({})
+      const post = await seedPost(owner.id)
+
+      signOut()
+      await expect(deletePost('abc')).rejects.toBeInstanceOf(UnauthorizedError)
+      await expect(deletePost(post.id)).rejects.toBeInstanceOf(UnauthorizedError)
+
+      await signInAs(intruder)
+      await expect(deletePost('abc')).rejects.toBeInstanceOf(ValidationError)
       await expect(deletePost(1.5)).rejects.toBeInstanceOf(ValidationError)
-    })
+      await expect(deletePost(999)).rejects.toBeInstanceOf(NotFoundError)
+      await expect(deletePost(post.id)).rejects.toBeInstanceOf(ForbiddenError)
+      expect(await db.post.count()).toBe(1)
 
-    it('checks the session before the input', async () => {
-      await expect(createPost({ title: '', body: '' })).rejects.toBeInstanceOf(UnauthorizedError)
-    })
-
-    it('bounds list queries', async () => {
-      await expect(listPosts({ page: 1, perPage: 101 })).rejects.toBeInstanceOf(ValidationError)
-      await expect(listPosts({ page: 0, perPage: 10 })).rejects.toBeInstanceOf(ValidationError)
-    })
-  })
-
-  it('computes permissions for anonymous, other, owner, and admin viewers', async () => {
-    const owner = await createUser({})
-    const other = await createUser({})
-    const admin = await createUser({ role: 'admin' })
-    const post = await seedPost(owner.id)
-
-    signOut()
-    expect((await getPost(post.id)).permissions).toEqual({
-      update: false,
-      delete: false,
-      restore: false,
-    })
-    await signInAs(other)
-    expect((await getPost(post.id)).permissions).toEqual({
-      update: false,
-      delete: false,
-      restore: false,
-    })
-    await signInAs(owner)
-    expect((await getPost(post.id)).permissions).toEqual({
-      update: true,
-      delete: true,
-      restore: false,
-    })
-    await signInAs(admin)
-    expect((await getPost(post.id)).permissions).toEqual({
-      update: true,
-      delete: true,
-      restore: false,
+      await signInAs(owner)
+      await expect(deletePost(String(post.id))).resolves.toBeUndefined()
+      expect(await db.post.count()).toBe(0)
+      await expect(deletePost(post.id)).rejects.toBeInstanceOf(NotFoundError)
     })
   })
 
-  it('requires a session to create, and creates as the viewer', async () => {
-    await expect(createPost({ title: 'T', body: 'B' })).rejects.toBeInstanceOf(UnauthorizedError)
-    const user = await createUser({})
-    await signInAs(user)
-    const post = await createPost({ title: 'T', body: 'B' })
-    expect(post).toMatchObject({
-      title: 'T',
-      author: { id: user.id },
-      permissions: { update: true },
+  describe('a post that vanishes between the access check and the write', () => {
+    it('is reported as not found', async () => {
+      const owner = await createUser({})
+      const post = await seedPost(owner.id)
+      await signInAs(owner)
+      // A genuine P2025 from Prisma: deleting a row that does not exist.
+      const vanished = await db.post
+        .delete({ where: { id: 999_999 } })
+        .catch((error: unknown) => error)
+      vi.spyOn(db.post, 'update').mockImplementation(() => Promise.reject(vanished) as never)
+      await expect(updatePost(post.id, { title: 'x' })).rejects.toBeInstanceOf(NotFoundError)
+      vi.spyOn(db.post, 'delete').mockImplementation(() => Promise.reject(vanished) as never)
+      await expect(deletePost(post.id)).rejects.toBeInstanceOf(NotFoundError)
+    })
+
+    it('rethrows other database errors', async () => {
+      const owner = await createUser({})
+      const post = await seedPost(owner.id)
+      await signInAs(owner)
+      vi.spyOn(db.post, 'delete').mockImplementation(
+        () => Promise.reject(new Error('boom')) as never,
+      )
+      await expect(deletePost(post.id)).rejects.toThrow('boom')
+      vi.spyOn(db.post, 'update').mockImplementation(
+        () => Promise.reject(new Error('bang')) as never,
+      )
+      await expect(updatePost(post.id, { title: 'x' })).rejects.toThrow('bang')
     })
   })
 
-  it('checks session, then existence, then ownership on update', async () => {
-    const owner = await createUser({})
-    const intruder = await createUser({})
-    const post = await seedPost(owner.id)
+  describe('visibility', () => {
+    it('shows a draft only to its author and admins', async () => {
+      const owner = await createUser({})
+      const other = await createUser({})
+      const admin = await createUser({ role: 'admin' })
+      const draft = await seedPost(owner.id, 'Draft', 'B', false)
+      const published = await seedPost(owner.id, 'Published')
 
-    signOut()
-    await expect(updatePost(999, { version: 1, title: 'x' })).rejects.toBeInstanceOf(
-      UnauthorizedError,
-    )
-    await signInAs(intruder)
-    await expect(updatePost(999, { version: 1, title: 'x' })).rejects.toBeInstanceOf(NotFoundError)
-    await expect(updatePost(post.id, { version: 1, title: 'x' })).rejects.toBeInstanceOf(
-      ForbiddenError,
-    )
-    await signInAs(owner)
-    expect(await updatePost(post.id, { version: 1, title: 'Renamed' })).toMatchObject({
-      title: 'Renamed',
-      body: 'Body',
+      signOut()
+      await expect(getPost(draft.id)).rejects.toBeInstanceOf(NotFoundError)
+      await signInAs(other)
+      await expect(getPost(draft.id)).rejects.toBeInstanceOf(NotFoundError)
+      await signInAs(owner)
+      expect(await getPost(draft.id)).toMatchObject({
+        published: false,
+        permissions: { update: true, delete: true },
+      })
+      await signInAs(admin)
+      expect(await getPost(draft.id)).toMatchObject({
+        published: false,
+        permissions: { update: true, delete: true },
+      })
+      signOut()
+      expect((await getPost(published.id)).published).toBe(true)
+    })
+
+    it('answers a hidden post exactly like a missing one', async () => {
+      const owner = await createUser({})
+      const draft = await seedPost(owner.id, 'Draft', 'B', false)
+      signOut()
+      const hidden = await getPost(draft.id).catch((error: unknown) => error)
+      const missing = await getPost(draft.id + 100).catch((error: unknown) => error)
+      expect(hidden).toBeInstanceOf(NotFoundError)
+      expect((hidden as Error).message).toBe((missing as Error).message)
+    })
+
+    it('still applies the check when the detail was cached by someone who may see it', async () => {
+      const owner = await createUser({})
+      const other = await createUser({})
+      const draft = await seedPost(owner.id, 'Draft', 'B', false)
+      await signInAs(owner)
+      await getPost(draft.id)
+      expect(await getRedis().keys(`cache:v:post:${draft.id}|*`)).toHaveLength(1)
+      const findUnique = vi.spyOn(db.post, 'findUnique')
+      await signInAs(other)
+      await expect(getPost(draft.id)).rejects.toBeInstanceOf(NotFoundError)
+      signOut()
+      await expect(getPost(draft.id)).rejects.toBeInstanceOf(NotFoundError)
+      // Both answers came from the cached copy; the check runs on it, not on the database.
+      expect(findUnique).not.toHaveBeenCalled()
+    })
+
+    it('lists only published posts to visitors and other users, even by author', async () => {
+      const owner = await createUser({})
+      const other = await createUser({})
+      await seedPost(owner.id, 'Draft', 'B', false)
+      await seedPost(owner.id, 'Published')
+
+      signOut()
+      expect(await titles()).toEqual(['Published'])
+      expect(await titles({ authorId: owner.id })).toEqual(['Published'])
+      await signInAs(other)
+      expect(await titles()).toEqual(['Published'])
+      expect(await titles({ authorId: owner.id })).toEqual(['Published'])
+    })
+
+    it('lets an author see their drafts in their own list only', async () => {
+      const owner = await createUser({})
+      await seedPost(owner.id, 'Draft', 'B', false)
+      await seedPost(owner.id, 'Published')
+      await signInAs(owner)
+      expect(await titles({ authorId: owner.id })).toEqual(['Published', 'Draft'])
+      // Without the author filter the author is just another reader.
+      expect(await titles()).toEqual(['Published'])
+    })
+
+    it('lets an admin see every draft, in any list', async () => {
+      const a = await createUser({})
+      const b = await createUser({})
+      const admin = await createUser({ role: 'admin' })
+      await seedPost(a.id, 'A draft', 'B', false)
+      await seedPost(b.id, 'B draft', 'B', false)
+      await seedPost(b.id, 'B live')
+      await seedPost(admin.id, 'Admin draft', 'B', false)
+      await signInAs(admin)
+      expect(await titles({ sort: 'oldest' })).toEqual([
+        'A draft',
+        'B draft',
+        'B live',
+        'Admin draft',
+      ])
+      expect(await titles({ authorId: b.id, sort: 'oldest' })).toEqual(['B draft', 'B live'])
+      expect(await titles({ authorId: admin.id })).toEqual(['Admin draft'])
+    })
+
+    it('counts only what the viewer may see', async () => {
+      const owner = await createUser({})
+      await seedPost(owner.id, 'Draft', 'B', false)
+      await seedPost(owner.id, 'Published')
+      signOut()
+      expect((await listPosts({ page: 1, perPage: 10 })).totalItems).toBe(1)
+      await signInAs(owner)
+      expect((await listPosts({ page: 1, perPage: 10, authorId: owner.id })).totalItems).toBe(2)
+    })
+
+    describe('the published filter', () => {
+      it('lets an author narrow their own list to drafts or to published posts', async () => {
+        const owner = await createUser({})
+        await seedPost(owner.id, 'Draft', 'B', false)
+        await seedPost(owner.id, 'Published')
+        await signInAs(owner)
+        expect(await titles({ authorId: owner.id, published: false })).toEqual(['Draft'])
+        expect(await titles({ authorId: owner.id, published: true })).toEqual(['Published'])
+        expect(await titles({ authorId: owner.id, published: 'false' })).toEqual(['Draft'])
+        expect(await titles({ authorId: owner.id })).toEqual(['Published', 'Draft'])
+      })
+
+      it('lets an admin pick drafts across every author', async () => {
+        const a = await createUser({})
+        const b = await createUser({})
+        const admin = await createUser({ role: 'admin' })
+        await seedPost(a.id, 'A draft', 'B', false)
+        await seedPost(b.id, 'B draft', 'B', false)
+        await seedPost(b.id, 'B live')
+        await signInAs(admin)
+        expect(await titles({ published: false, sort: 'oldest' })).toEqual(['A draft', 'B draft'])
+        expect(await titles({ published: false, authorId: b.id })).toEqual(['B draft'])
+        expect(await titles({ published: true })).toEqual(['B live'])
+      })
+
+      it('is forced to published for visitors and other users', async () => {
+        const owner = await createUser({})
+        const other = await createUser({})
+        await seedPost(owner.id, 'Draft', 'B', false)
+        await seedPost(owner.id, 'Published')
+        signOut()
+        expect(await titles({ published: false })).toEqual(['Published'])
+        expect(await titles({ published: false, authorId: owner.id })).toEqual(['Published'])
+        await signInAs(other)
+        expect(await titles({ published: false })).toEqual(['Published'])
+        expect(await titles({ published: false, authorId: owner.id })).toEqual(['Published'])
+        // An author asking about drafts in a list that is not theirs is a reader too.
+        await signInAs(owner)
+        expect(await titles({ published: false })).toEqual(['Published'])
+      })
     })
   })
 
-  it('lets an admin update and delete someone else’s post', async () => {
-    const owner = await createUser({})
-    const admin = await createUser({ role: 'admin' })
-    const post = await seedPost(owner.id)
-    await signInAs(admin)
-    expect((await updatePost(post.id, { version: 1, body: 'Moderated' })).body).toBe('Moderated')
-    await deletePost(post.id)
-    expect(await db.post.count({ where: { deletedAt: null } })).toBe(0)
-  })
-
-  it('forbids a non-owner from deleting', async () => {
-    const owner = await createUser({})
-    const intruder = await createUser({})
-    const post = await seedPost(owner.id)
-    await signInAs(intruder)
-    await expect(deletePost(post.id)).rejects.toBeInstanceOf(ForbiddenError)
-    expect(await db.post.count()).toBe(1)
-  })
-
-  describe('cache invalidation', () => {
+  describe('caching', () => {
     it('serves repeated list and detail reads from Redis', async () => {
       const author = await createUser({})
       const post = await seedPost(author.id)
@@ -334,49 +657,142 @@ describe('posts DAL', () => {
       expect(findUnique).toHaveBeenCalledTimes(1)
     })
 
-    it('keeps an author filter that spells "all" apart from the unfiltered list', async () => {
+    it('caches the published list under page, perPage and sort', async () => {
       const author = await createUser({})
-      await seedPost(author.id, 'Visible')
-      expect((await listPosts({ page: 1, perPage: 10, authorId: 'all' })).items).toEqual([])
-      expect((await listPosts({ page: 1, perPage: 10 })).items.map((post) => post.title)).toEqual([
-        'Visible',
-      ])
+      await seedPost(author.id)
+      await listPosts({ page: 1, perPage: 10 })
+      await listPosts({ page: 1, perPage: 10 })
+      await listPosts({ page: 2, perPage: 10 })
+      await listPosts({ page: 1, perPage: 5 })
+      await listPosts({ page: 1, perPage: 10, sort: 'oldest' })
+      const keys = await cachedKeys()
+      expect(keys).toHaveLength(4)
+      expect(keys.every((key) => key.includes('posts:list'))).toBe(true)
     })
 
-    it('createPost invalidates the cached list (the new draft stays out of it)', async () => {
+    it('caches the detail under post:<id>', async () => {
+      const author = await createUser({})
+      const post = await seedPost(author.id)
+      await getPost(post.id)
+      const keys = await cachedKeys()
+      expect(keys).toHaveLength(1)
+      expect(keys[0]).toMatch(new RegExp(`^cache:v:post:${post.id}\\|`))
+    })
+
+    it('never caches a search', async () => {
+      const author = await createUser({})
+      await seedPost(author.id, 'Findable')
+      await titles({ q: 'findable' })
+      expect(await cachedKeys()).toEqual([])
+
+      await titles()
+      expect(await cachedKeys()).toHaveLength(1)
+
+      // A search sees a new post at once: nothing cached could hide it.
+      await seedPost(author.id, 'Findable too')
+      expect((await listPosts({ page: 1, perPage: 10, q: 'findable' })).totalItems).toBe(2)
+    })
+
+    it('never caches an author list, whoever asks', async () => {
+      const author = await createUser({})
+      await seedPost(author.id, 'Mine')
+      expect(await titles({ authorId: author.id })).toEqual(['Mine'])
+      expect(await titles({ authorId: crypto.randomUUID() })).toEqual([])
+      await signInAs(author)
+      expect(await titles({ authorId: author.id })).toEqual(['Mine'])
+      expect(await cachedKeys()).toEqual([])
+    })
+
+    it('never caches a list that shows drafts', async () => {
+      const owner = await createUser({})
+      const admin = await createUser({ role: 'admin' })
+      await seedPost(owner.id, 'Draft', 'B', false)
+      await signInAs(owner)
+      await titles({ authorId: owner.id })
+      await titles({ authorId: owner.id, published: false })
+      await signInAs(admin)
+      await titles()
+      await titles({ published: false })
+      expect(await cachedKeys()).toEqual([])
+    })
+
+    it('shares the cached published list between viewers who ask for published', async () => {
+      const owner = await createUser({})
+      const admin = await createUser({ role: 'admin' })
+      await seedPost(owner.id, 'Draft', 'B', false)
+      await seedPost(owner.id, 'Live')
+      signOut()
+      expect(await titles()).toEqual(['Live'])
+      const findMany = vi.spyOn(db.post, 'findMany')
+      await signInAs(owner)
+      expect(await titles({ published: true })).toEqual(['Live'])
+      await signInAs(admin)
+      // The admin asking for published explicitly gets the same, safe-to-share result.
+      expect(await titles({ published: true })).toEqual(['Live'])
+      expect(await cachedKeys()).toHaveLength(1)
+      expect(findMany).not.toHaveBeenCalled()
+    })
+
+    it('does not serve an author their drafts to a visitor through the cache', async () => {
+      const owner = await createUser({})
+      await seedPost(owner.id, 'Draft', 'B', false)
+      await signInAs(owner)
+      expect(await titles({ authorId: owner.id })).toEqual(['Draft'])
+      signOut()
+      expect(await titles({ authorId: owner.id })).toEqual([])
+      expect(await titles()).toEqual([])
+      // Nothing cached for the visitor reaches the author either.
+      await signInAs(owner)
+      expect(await titles({ authorId: owner.id })).toEqual(['Draft'])
+    })
+
+    it('createPost invalidates the cached list (a new draft stays out, a published post shows)', async () => {
       const author = await createUser({})
       await seedPost(author.id, 'Old')
-      expect((await listPosts({ page: 1, perPage: 10 })).totalItems).toBe(1)
+      expect(await titles()).toEqual(['Old'])
       await signInAs(author)
-      await createPost({ title: 'New', body: 'B' })
+      await createPost({ title: 'New draft', body: 'B' })
       const findMany = vi.spyOn(db.post, 'findMany')
-      const page = await listPosts({ page: 1, perPage: 10 })
       // The cached entry was dropped (a fresh query ran), and a draft is not public.
+      expect(await titles()).toEqual(['Old'])
       expect(findMany).toHaveBeenCalledTimes(1)
-      expect(page.items.map((post) => post.title)).toEqual(['Old'])
+      await createPost({ title: 'New live', body: 'B', published: true })
+      expect(await titles()).toEqual(['New live', 'Old'])
     })
 
     it('updatePost invalidates the cached list and detail', async () => {
       const author = await createUser({})
       const post = await seedPost(author.id, 'Before')
-      await listPosts({ page: 1, perPage: 10 })
+      await titles()
       await getPost(post.id)
       await signInAs(author)
-      await updatePost(post.id, { version: 1, title: 'After' })
-      expect((await listPosts({ page: 1, perPage: 10 })).items[0].title).toBe('After')
+      await updatePost(post.id, { title: 'After' })
+      signOut()
+      expect(await titles()).toEqual(['After'])
       expect((await getPost(post.id)).title).toBe('After')
+    })
+
+    it('updatePost leaves the cached details of other posts alone', async () => {
+      const author = await createUser({})
+      const changed = await seedPost(author.id, 'Changed')
+      const untouched = await seedPost(author.id, 'Untouched')
+      await getPost(untouched.id)
+      await signInAs(author)
+      await updatePost(changed.id, { title: 'Changed!' })
+      // The posts tag moved, so the untouched detail is re-read too; only the data is the same.
+      expect((await getPost(untouched.id)).title).toBe('Untouched')
+      expect((await getPost(changed.id)).title).toBe('Changed!')
     })
 
     it('deletePost invalidates the cached list and detail', async () => {
       const author = await createUser({})
       const post = await seedPost(author.id)
-      await listPosts({ page: 1, perPage: 10 })
+      await titles()
       await getPost(post.id)
       await signInAs(author)
       await deletePost(post.id)
-      expect((await listPosts({ page: 1, perPage: 10 })).items).toEqual([])
-      // The author can still read it (to restore it); the cached detail must not reach a visitor.
-      expect((await getPost(post.id)).deletedAt).toBeInstanceOf(Date)
+      expect(await titles()).toEqual([])
+      await expect(getPost(post.id)).rejects.toBeInstanceOf(NotFoundError)
       signOut()
       await expect(getPost(post.id)).rejects.toBeInstanceOf(NotFoundError)
     })
@@ -386,957 +802,34 @@ describe('posts DAL', () => {
       const other = await createUser({})
       const post = await seedPost(owner.id)
       await signInAs(owner)
-      expect((await getPost(post.id)).permissions).toEqual({
-        update: true,
-        delete: true,
-        restore: false,
-      })
+      expect((await getPost(post.id)).permissions).toEqual({ update: true, delete: true })
+      const findUnique = vi.spyOn(db.post, 'findUnique')
       await signInAs(other)
-      expect((await getPost(post.id)).permissions).toEqual({
-        update: false,
-        delete: false,
-        restore: false,
-      })
+      expect((await getPost(post.id)).permissions).toEqual({ update: false, delete: false })
       signOut()
-      expect((await getPost(post.id)).permissions).toEqual({
-        update: false,
-        delete: false,
-        restore: false,
-      })
+      expect((await getPost(post.id)).permissions).toEqual({ update: false, delete: false })
+      expect(findUnique).not.toHaveBeenCalled()
+    })
+
+    it('revives the dates of a cached detail and list', async () => {
+      const author = await createUser({})
+      const post = await seedPost(author.id)
+      await getPost(post.id)
+      await titles()
+      const detail = await getPost(post.id)
+      expect(detail.createdAt).toBeInstanceOf(Date)
+      expect(detail.updatedAt).toBeInstanceOf(Date)
+      expect((await listPosts({ page: 1, perPage: 10 })).items[0].createdAt).toBeInstanceOf(Date)
     })
 
     it('does not cache a missing post', async () => {
       await expect(getPost(999)).rejects.toBeInstanceOf(NotFoundError)
+      expect(await cachedKeys()).toEqual([])
       const author = await createUser({})
       await db.post.create({
-        data: { id: 999, userId: author.id, title: 'Late', body: 'B', status: 'published' },
+        data: { id: 999, userId: author.id, title: 'Late', body: 'B', published: true },
       })
       expect((await getPost(999)).title).toBe('Late')
-    })
-  })
-
-  it('reports a post that vanishes between the access check and the write as not found', async () => {
-    const owner = await createUser({})
-    const post = await seedPost(owner.id)
-    await signInAs(owner)
-    // A genuine P2025 from Prisma: deleting a row that does not exist.
-    const vanished = await db.post
-      .delete({ where: { id: 999_999 } })
-      .catch((error: unknown) => error)
-    // `updatePost` reads the detail back after its transaction, so that is where the failure
-    // surfaces (the post was purged in between).
-    vi.spyOn(db.post, 'findUniqueOrThrow').mockImplementation(
-      () => Promise.reject(vanished) as never,
-    )
-    await expect(updatePost(post.id, { version: 1, title: 'x' })).rejects.toBeInstanceOf(
-      NotFoundError,
-    )
-    vi.spyOn(db.post, 'updateMany').mockImplementation(() => Promise.resolve({ count: 0 }) as never)
-    await expect(deletePost(post.id)).rejects.toBeInstanceOf(NotFoundError)
-  })
-
-  it('rethrows other database errors', async () => {
-    const owner = await createUser({})
-    const post = await seedPost(owner.id)
-    await signInAs(owner)
-    vi.spyOn(db.post, 'updateMany').mockImplementation(
-      () => Promise.reject(new Error('boom')) as never,
-    )
-    await expect(deletePost(post.id)).rejects.toThrow('boom')
-  })
-
-  describe('visibility', () => {
-    it('shows a draft or archived post only to its author and admins', async () => {
-      const owner = await createUser({})
-      const other = await createUser({})
-      const admin = await createUser({ role: 'admin' })
-      const draft = await seedPost(owner.id, 'Draft', 'B', 'draft')
-      const archived = await seedPost(owner.id, 'Archived', 'B', 'archived')
-      const published = await seedPost(owner.id, 'Published')
-
-      for (const hidden of [draft, archived]) {
-        signOut()
-        await expect(getPost(hidden.id)).rejects.toBeInstanceOf(NotFoundError)
-        await signInAs(other)
-        await expect(getPost(hidden.id)).rejects.toBeInstanceOf(NotFoundError)
-        await signInAs(owner)
-        expect((await getPost(hidden.id)).status).toBe(hidden.status)
-        await signInAs(admin)
-        expect((await getPost(hidden.id)).status).toBe(hidden.status)
-      }
-      signOut()
-      expect((await getPost(published.id)).status).toBe('published')
-    })
-
-    it('answers a hidden post exactly like a missing one', async () => {
-      const owner = await createUser({})
-      const draft = await seedPost(owner.id, 'Draft', 'B', 'draft')
-      signOut()
-      const hidden = await getPost(draft.id).catch((error: unknown) => error)
-      const missing = await getPost(draft.id + 100).catch((error: unknown) => error)
-      expect(hidden).toBeInstanceOf(NotFoundError)
-      expect((hidden as Error).message).toBe((missing as Error).message)
-    })
-
-    it('still applies the check when the detail was cached by someone who may see it', async () => {
-      const owner = await createUser({})
-      const other = await createUser({})
-      const draft = await seedPost(owner.id, 'Draft', 'B', 'draft')
-      await signInAs(owner)
-      await getPost(draft.id)
-      expect(await getRedis().keys(`cache:v:post:${draft.id}|*`)).toHaveLength(1)
-      await signInAs(other)
-      await expect(getPost(draft.id)).rejects.toBeInstanceOf(NotFoundError)
-    })
-
-    it('lists only published posts to visitors and other users', async () => {
-      const owner = await createUser({})
-      const other = await createUser({})
-      await seedPost(owner.id, 'Draft', 'B', 'draft')
-      await seedPost(owner.id, 'Archived', 'B', 'archived')
-      await seedPost(owner.id, 'Published')
-      const titles = async (authorId?: string) =>
-        (await listPosts({ page: 1, perPage: 10, authorId })).items.map((post) => post.title)
-
-      signOut()
-      expect(await titles()).toEqual(['Published'])
-      expect(await titles(owner.id)).toEqual(['Published'])
-      await signInAs(other)
-      expect(await titles()).toEqual(['Published'])
-      expect(await titles(owner.id)).toEqual(['Published'])
-    })
-
-    it('lets an author list every status of their own posts; everyone else, admins too, gets published', async () => {
-      const owner = await createUser({})
-      const admin = await createUser({ role: 'admin' })
-      await seedPost(owner.id, 'Draft', 'B', 'draft')
-      await seedPost(owner.id, 'Archived', 'B', 'archived')
-      await seedPost(owner.id, 'Published')
-      const statuses = async (authorId?: string) =>
-        (await listPosts({ page: 1, perPage: 10, authorId })).items.map((post) => post.status)
-
-      await signInAs(owner)
-      expect(await statuses(owner.id)).toEqual(['published', 'archived', 'draft'])
-      // Without the author filter the author is just another reader.
-      expect(await statuses()).toEqual(['published'])
-      await signInAs(admin)
-      expect(await statuses()).toEqual(['published'])
-      expect(await statuses(owner.id)).toEqual(['published'])
-    })
-
-    it('lets an admin list their own posts of every status', async () => {
-      const admin = await createUser({ role: 'admin' })
-      await seedPost(admin.id, 'Draft', 'B', 'draft')
-      await seedPost(admin.id, 'Published')
-      await signInAs(admin)
-      const page = await listPosts({ page: 1, perPage: 10, authorId: admin.id })
-      expect(page.items.map((post) => post.status)).toEqual(['published', 'draft'])
-    })
-
-    it('never caches an author list, and a visitor still sees only the published posts', async () => {
-      const owner = await createUser({})
-      await seedPost(owner.id, 'Draft', 'B', 'draft')
-      await seedPost(owner.id, 'Published')
-      await signInAs(owner)
-      expect((await listPosts({ page: 1, perPage: 10, authorId: owner.id })).totalItems).toBe(2)
-      expect(await getRedis().keys('cache:v:*')).toEqual([])
-
-      signOut()
-      expect((await listPosts({ page: 1, perPage: 10, authorId: owner.id })).totalItems).toBe(1)
-      expect(await getRedis().keys('cache:v:*')).toEqual([])
-      // Nothing cached for the visitor reaches the author.
-      await signInAs(owner)
-      expect((await listPosts({ page: 1, perPage: 10, authorId: owner.id })).totalItems).toBe(2)
-    })
-
-    it('counts only what the viewer may see', async () => {
-      const owner = await createUser({})
-      await seedPost(owner.id, 'Draft', 'B', 'draft')
-      await seedPost(owner.id, 'Published')
-      signOut()
-      expect((await listPosts({ page: 1, perPage: 10 })).totalItems).toBe(1)
-    })
-  })
-
-  describe('filters', () => {
-    const titles = async (params: Partial<Parameters<typeof listPosts>[0]> = {}) => {
-      const page = await listPosts({ page: 1, perPage: 10, sort: 'oldest', ...params })
-      return page.items.map((post) => post.title)
-    }
-
-    const tagPost = async (postId: number, ...names: string[]) => {
-      for (const name of names) {
-        const tag = await db.tag.upsert({ where: { name }, create: { name }, update: {} })
-        await db.postTag.create({ data: { postId, tagId: tag.id } })
-      }
-    }
-
-    describe('status', () => {
-      it('lets an author narrow their own list to one status', async () => {
-        const owner = await createUser({})
-        await seedPost(owner.id, 'Draft', 'B', 'draft')
-        await seedPost(owner.id, 'Archived', 'B', 'archived')
-        await seedPost(owner.id, 'Published')
-        await signInAs(owner)
-        expect(await titles({ authorId: owner.id, status: 'draft' })).toEqual(['Draft'])
-        expect(await titles({ authorId: owner.id, status: 'archived' })).toEqual(['Archived'])
-        expect(await titles({ authorId: owner.id, status: 'published' })).toEqual(['Published'])
-      })
-
-      it('lets an admin pick a status across every author', async () => {
-        const a = await createUser({})
-        const b = await createUser({})
-        const admin = await createUser({ role: 'admin' })
-        await seedPost(a.id, 'A draft', 'B', 'draft')
-        await seedPost(b.id, 'B draft', 'B', 'draft')
-        await seedPost(b.id, 'B live')
-        await signInAs(admin)
-        expect(await titles({ status: 'draft' })).toEqual(['A draft', 'B draft'])
-        expect(await titles({ status: 'draft', authorId: b.id })).toEqual(['B draft'])
-        expect(await titles()).toEqual(['B live'])
-      })
-
-      it('ignores a status that is not published for anyone else', async () => {
-        const owner = await createUser({})
-        const other = await createUser({})
-        await seedPost(owner.id, 'Draft', 'B', 'draft')
-        await seedPost(owner.id, 'Archived', 'B', 'archived')
-        await seedPost(owner.id, 'Published')
-        for (const viewer of [null, other]) {
-          if (viewer) {
-            await signInAs(viewer)
-          } else {
-            signOut()
-          }
-          expect(await titles({ status: 'draft' })).toEqual(['Published'])
-          expect(await titles({ status: 'archived', authorId: owner.id })).toEqual(['Published'])
-        }
-      })
-
-      it('rejects an unknown status', async () => {
-        await expect(
-          listPosts({ page: 1, perPage: 10, status: 'deleted' as never }),
-        ).rejects.toBeInstanceOf(ValidationError)
-      })
-    })
-
-    describe('tag', () => {
-      it('lists only posts that carry the tag, whatever its case', async () => {
-        const author = await createUser({})
-        const a = await seedPost(author.id, 'Both')
-        const b = await seedPost(author.id, 'News only')
-        await seedPost(author.id, 'Untagged')
-        await tagPost(a.id, 'news', 'tips')
-        await tagPost(b.id, 'news')
-        expect(await titles({ tag: 'news' })).toEqual(['Both', 'News only'])
-        expect(await titles({ tag: ' TIPS ' })).toEqual(['Both'])
-        expect(await titles({ tag: 'missing' })).toEqual([])
-        expect((await listPosts({ page: 1, perPage: 1, tag: 'news' })).totalItems).toBe(2)
-      })
-
-      it('does not list a draft under its tag for a visitor', async () => {
-        const author = await createUser({})
-        const draft = await seedPost(author.id, 'Hidden', 'B', 'draft')
-        await tagPost(draft.id, 'news')
-        expect(await titles({ tag: 'news' })).toEqual([])
-      })
-
-      it('rejects a tag that is empty or too long', async () => {
-        for (const tag of ['', 'x'.repeat(31)]) {
-          await expect(listPosts({ page: 1, perPage: 10, tag })).rejects.toBeInstanceOf(
-            ValidationError,
-          )
-        }
-      })
-    })
-
-    describe('date range', () => {
-      const seedDated = async (userId: string, title: string, createdAt: string) => {
-        return db.post.create({
-          data: { userId, title, body: 'B', status: 'published', createdAt: new Date(createdAt) },
-        })
-      }
-
-      it('includes both end days in full and excludes the days around them', async () => {
-        const author = await createUser({})
-        await seedDated(author.id, 'Before', '2026-09-30T23:59:59.999Z')
-        await seedDated(author.id, 'First day start', '2026-10-01T00:00:00.000Z')
-        await seedDated(author.id, 'Middle', '2026-10-03T12:00:00.000Z')
-        await seedDated(author.id, 'Last day end', '2026-10-05T23:59:59.999Z')
-        await seedDated(author.id, 'After', '2026-10-06T00:00:00.000Z')
-        expect(await titles({ from: '2026-10-01', to: '2026-10-05' })).toEqual([
-          'First day start',
-          'Middle',
-          'Last day end',
-        ])
-      })
-
-      it('supports an open start or end, and a single day', async () => {
-        const author = await createUser({})
-        await seedDated(author.id, 'Old', '2026-01-10T10:00:00.000Z')
-        await seedDated(author.id, 'New', '2026-10-10T10:00:00.000Z')
-        expect(await titles({ from: '2026-10-01' })).toEqual(['New'])
-        expect(await titles({ to: '2026-01-10' })).toEqual(['Old'])
-        expect(await titles({ from: '2026-10-10', to: '2026-10-10' })).toEqual(['New'])
-        expect(await titles({ from: '2026-10-11', to: '2026-10-01' })).toEqual([])
-      })
-
-      it('rejects a day that does not exist', async () => {
-        await expect(
-          listPosts({ page: 1, perPage: 10, from: '2026-02-30' }),
-        ).rejects.toBeInstanceOf(ValidationError)
-      })
-    })
-
-    it('combines every filter with the author, search and sort', async () => {
-      const a = await createUser({})
-      const b = await createUser({})
-      const mk = (userId: string, title: string, createdAt: string) =>
-        db.post.create({
-          data: { userId, title, body: 'B', status: 'published', createdAt: new Date(createdAt) },
-        })
-      const hit1 = await mk(a.id, 'Cats 1', '2026-10-02T00:00:00Z')
-      const hit2 = await mk(a.id, 'Cats 2', '2026-10-03T00:00:00Z')
-      const wrongTag = await mk(a.id, 'Cats 3', '2026-10-03T00:00:00Z')
-      const wrongAuthor = await mk(b.id, 'Cats 4', '2026-10-03T00:00:00Z')
-      const wrongDate = await mk(a.id, 'Cats 5', '2026-11-03T00:00:00Z')
-      const wrongTitle = await mk(a.id, 'Dogs', '2026-10-03T00:00:00Z')
-      for (const post of [hit1, hit2, wrongAuthor, wrongDate, wrongTitle]) {
-        await tagPost(post.id, 'pets')
-      }
-      await tagPost(wrongTag.id, 'other')
-      const params = {
-        authorId: a.id,
-        q: 'cats',
-        tag: 'pets',
-        from: '2026-10-01',
-        to: '2026-10-31',
-      }
-      expect(await titles(params)).toEqual(['Cats 1', 'Cats 2'])
-      expect(await titles({ ...params, sort: 'newest' })).toEqual(['Cats 2', 'Cats 1'])
-      expect((await listPosts({ page: 1, perPage: 1, ...params })).totalItems).toBe(2)
-    })
-
-    describe('caching', () => {
-      const cachedKeys = () => getRedis().keys('cache:v:*')
-
-      it('caches a tag list under its own key, apart from the unfiltered list', async () => {
-        const author = await createUser({})
-        const post = await seedPost(author.id, 'Tagged')
-        await seedPost(author.id, 'Plain')
-        await tagPost(post.id, 'news')
-        // The list itself and the tag list that vouches for the tag.
-        expect(await titles({ tag: 'news' })).toEqual(['Tagged'])
-        expect(await cachedKeys()).toHaveLength(2)
-        expect(await titles()).toEqual(['Tagged', 'Plain'])
-        expect(await cachedKeys()).toHaveLength(3)
-        expect(await titles({ tag: 'news' })).toEqual(['Tagged'])
-      })
-
-      it('invalidates a cached tag list when a post changes', async () => {
-        const author = await createUser({})
-        const post = await seedPost(author.id, 'Tagged')
-        await tagPost(post.id, 'news')
-        await signInAs(author)
-        expect(await titles({ tag: 'news' })).toEqual(['Tagged'])
-        await updatePost(post.id, { version: 1, tags: [] })
-        expect(await titles({ tag: 'news' })).toEqual([])
-      })
-
-      it('never caches a search, a date range or either end of one', async () => {
-        const author = await createUser({})
-        await seedPost(author.id, 'Findable')
-        await titles({ q: 'findable' })
-        await titles({ from: '2020-01-01' })
-        await titles({ to: '2099-01-01' })
-        await titles({ from: '2020-01-01', to: '2099-01-01', tag: 'news' })
-        expect(await cachedKeys()).toEqual([])
-      })
-
-      it('never caches a list for an unknown tag, so invented tags cannot mint keys', async () => {
-        const author = await createUser({})
-        const post = await seedPost(author.id, 'Tagged')
-        await tagPost(post.id, 'news')
-        expect(await titles({ tag: 'invented' })).toEqual([])
-        const keys = await cachedKeys()
-        // Only the tag list that the lookup itself caches; no entry for the invented tag.
-        expect(keys).toHaveLength(1)
-        expect(keys[0]).toContain('posts:tags')
-      })
-
-      it('never caches an author list, whoever asks', async () => {
-        const author = await createUser({})
-        await seedPost(author.id, 'Mine')
-        expect(await titles({ authorId: author.id })).toEqual(['Mine'])
-        expect(await titles({ authorId: crypto.randomUUID() })).toEqual([])
-        expect(await cachedKeys()).toEqual([])
-      })
-
-      it('never caches a status that the viewer chose', async () => {
-        const owner = await createUser({})
-        const admin = await createUser({ role: 'admin' })
-        await seedPost(owner.id, 'Draft', 'B', 'draft')
-        await signInAs(owner)
-        await titles({ authorId: owner.id, status: 'draft' })
-        await titles({ authorId: owner.id })
-        await signInAs(admin)
-        await titles({ status: 'draft' })
-        expect(await cachedKeys()).toEqual([])
-      })
-
-      it('shares the cached published list between viewers who ask for published', async () => {
-        const owner = await createUser({})
-        await seedPost(owner.id, 'Draft', 'B', 'draft')
-        await seedPost(owner.id, 'Live')
-        signOut()
-        await titles()
-        await signInAs(owner)
-        // The owner asking for published explicitly gets the same, safe-to-share result.
-        expect(await titles({ status: 'published' })).toEqual(['Live'])
-        expect(await cachedKeys()).toHaveLength(1)
-      })
-
-      it('does not serve a visitor the author their drafts through the cache', async () => {
-        const owner = await createUser({})
-        await seedPost(owner.id, 'Draft', 'B', 'draft')
-        await signInAs(owner)
-        expect(await titles({ authorId: owner.id, status: 'draft' })).toEqual(['Draft'])
-        signOut()
-        expect(await titles({ authorId: owner.id, status: 'draft' })).toEqual([])
-      })
-    })
-  })
-
-  describe('tags', () => {
-    it('stores lowercased, trimmed, de-duplicated tags and returns them alphabetically', async () => {
-      await signInAs(await createUser({}))
-      const post = await createPost({ title: 'T', body: 'B', tags: [' Zeta ', 'ALPHA', 'alpha'] })
-      expect(post.tags).toEqual(['alpha', 'zeta'])
-      expect(await db.tag.findMany({ orderBy: { name: 'asc' } })).toMatchObject([
-        { name: 'alpha' },
-        { name: 'zeta' },
-      ])
-    })
-
-    it('shares one tag row between posts', async () => {
-      await signInAs(await createUser({}))
-      await createPost({ title: 'One', body: 'B', tags: ['shared'] })
-      await createPost({ title: 'Two', body: 'B', tags: ['Shared'] })
-      expect(await db.tag.count()).toBe(1)
-      expect(await db.postTag.count()).toBe(2)
-    })
-
-    it('survives concurrent creates that share a brand-new tag', async () => {
-      await signInAs(await createUser({}))
-      const results = await Promise.allSettled(
-        Array.from({ length: 8 }, (_, n) =>
-          createPost({ title: `Post ${n}`, body: 'B', tags: ['fresh', `own${n}`] }),
-        ),
-      )
-      expect(results.map((result) => result.status)).toEqual(Array(8).fill('fulfilled'))
-      expect(await db.post.count()).toBe(8)
-      expect(await db.tag.count({ where: { name: 'fresh' } })).toBe(1)
-      expect(await db.postTag.count({ where: { tag: { name: 'fresh' } } })).toBe(8)
-    })
-
-    it('creates a post without tags when none are given', async () => {
-      await signInAs(await createUser({}))
-      expect((await createPost({ title: 'T', body: 'B' })).tags).toEqual([])
-    })
-
-    it('rejects more than five tags and creates nothing', async () => {
-      await signInAs(await createUser({}))
-      const tags = ['a', 'b', 'c', 'd', 'e', 'f']
-      const error = await createPost({ title: 'T', body: 'B', tags }).catch((e) => e)
-      expect(error).toBeInstanceOf(ValidationError)
-      expect(error.fieldErrors).toEqual({ tags: ['Use at most 5 tags'] })
-      expect(await db.post.count()).toBe(0)
-    })
-
-    it('writes the post and its tags in one transaction: a failing tag leaves no post', async () => {
-      await signInAs(await createUser({}))
-      // Valid for the DTO, rejected by Postgres (a text value cannot hold a NUL byte).
-      await expect(
-        createPost({ title: 'T', body: 'B', tags: ['fine', 'bad\u0000tag'] }),
-      ).rejects.toThrow()
-      expect(await db.post.count()).toBe(0)
-      expect(await db.tag.count()).toBe(0)
-      expect(await db.postTag.count()).toBe(0)
-    })
-
-    it('replaces the tags on update, leaves them alone when omitted, and clears them with []', async () => {
-      const author = await createUser({})
-      await signInAs(author)
-      const post = await createPost({ title: 'T', body: 'B', tags: ['one', 'two'] })
-
-      expect((await updatePost(post.id, { version: 1, tags: ['two', 'three'] })).tags).toEqual([
-        'three',
-        'two',
-      ])
-      expect((await updatePost(post.id, { version: 2, title: 'Renamed' })).tags).toEqual([
-        'three',
-        'two',
-      ])
-      expect((await updatePost(post.id, { version: 3, tags: [] })).tags).toEqual([])
-      expect(await db.postTag.count()).toBe(0)
-    })
-
-    it('moves updatedAt when only the tags change', async () => {
-      await signInAs(await createUser({}))
-      const post = await createPost({ title: 'T', body: 'B' })
-      await new Promise((resolve) => setTimeout(resolve, 15))
-      const updated = await updatePost(post.id, { version: 1, tags: ['new'] })
-      expect(updated.updatedAt.getTime()).toBeGreaterThan(post.updatedAt.getTime())
-    })
-
-    it('rolls back an update whose tags fail', async () => {
-      await signInAs(await createUser({}))
-      const post = await createPost({ title: 'Before', body: 'B', tags: ['keep'] })
-      await expect(
-        updatePost(post.id, { version: 1, title: 'After', tags: ['bad\u0000tag'] }),
-      ).rejects.toThrow()
-      expect((await getPost(post.id)).title).toBe('Before')
-      expect((await getPost(post.id)).tags).toEqual(['keep'])
-    })
-
-    it('shows the tags in lists and invalidates cached lists and details when they change', async () => {
-      const author = await createUser({})
-      await signInAs(author)
-      const post = await createPost({ title: 'T', body: 'B' })
-      await setPostStatus(post.id, 'published')
-      expect((await listPosts({ page: 1, perPage: 10 })).items[0].tags).toEqual([])
-      await getPost(post.id)
-      await updatePost(post.id, { version: 1, tags: ['fresh'] })
-      expect((await listPosts({ page: 1, perPage: 10 })).items[0].tags).toEqual(['fresh'])
-      expect((await getPost(post.id)).tags).toEqual(['fresh'])
-    })
-
-    it('lists tags with their published-post counts, cached and refreshed on change', async () => {
-      const author = await createUser({})
-      await signInAs(author)
-      const a = await createPost({ title: 'A', body: 'B', tags: ['news', 'tech'] })
-      await createPost({ title: 'B', body: 'B', tags: ['news'] })
-      // Drafts do not count: nothing is published yet.
-      expect(await listTags()).toEqual([])
-
-      await setPostStatus(a.id, 'published')
-      expect(await listTags()).toEqual([
-        { name: 'news', postCount: 1 },
-        { name: 'tech', postCount: 1 },
-      ])
-      await setPostStatus(a.id, 'archived')
-      expect(await listTags()).toEqual([])
-    })
-
-    it('serves the tag list from Redis', async () => {
-      const author = await createUser({})
-      await signInAs(author)
-      const post = await createPost({ title: 'A', body: 'B', tags: ['news'] })
-      await setPostStatus(post.id, 'published')
-      const findMany = vi.spyOn(db.tag, 'findMany')
-      await listTags()
-      await listTags()
-      expect(findMany).toHaveBeenCalledTimes(1)
-    })
-  })
-
-  describe('status workflow', () => {
-    it('starts every new post as a draft', async () => {
-      await signInAs(await createUser({}))
-      const post = await createPost({ title: 'T', body: 'B' })
-      expect(post).toMatchObject({ status: 'draft', publishedAt: null })
-    })
-
-    it('walks the allowed transitions and stamps publishedAt on the first publication only', async () => {
-      await signInAs(await createUser({}))
-      const post = await createPost({ title: 'T', body: 'B' })
-
-      const published = await setPostStatus(post.id, 'published')
-      expect(published.status).toBe('published')
-      expect(published.publishedAt).toBeInstanceOf(Date)
-      const firstPublishedAt = published.publishedAt
-
-      expect((await setPostStatus(post.id, 'draft')).publishedAt).toEqual(firstPublishedAt)
-      expect((await setPostStatus(post.id, 'published')).publishedAt).toEqual(firstPublishedAt)
-      expect((await setPostStatus(post.id, 'archived')).status).toBe('archived')
-      expect((await setPostStatus(post.id, 'published')).publishedAt).toEqual(firstPublishedAt)
-    })
-
-    it.each([
-      ['draft', 'archived'],
-      ['draft', 'draft'],
-      ['published', 'published'],
-      ['archived', 'draft'],
-      ['archived', 'archived'],
-    ] as const)('refuses %s -> %s with a field error on status', async (from, to) => {
-      const author = await createUser({})
-      const post = await seedPost(author.id, 'T', 'B', from)
-      await signInAs(author)
-      const error = await setPostStatus(post.id, to).catch((e) => e)
-      expect(error).toBeInstanceOf(ValidationError)
-      expect(error.fieldErrors.status).toHaveLength(1)
-      expect((await db.post.findUniqueOrThrow({ where: { id: post.id } })).status).toBe(from)
-    })
-
-    it('checks session, then existence, then permission, then the transition', async () => {
-      const owner = await createUser({})
-      const intruder = await createUser({})
-      const admin = await createUser({ role: 'admin' })
-      const post = await seedPost(owner.id, 'T', 'B', 'draft')
-
-      signOut()
-      await expect(setPostStatus(999, 'published')).rejects.toBeInstanceOf(UnauthorizedError)
-      await signInAs(intruder)
-      await expect(setPostStatus(999, 'published')).rejects.toBeInstanceOf(NotFoundError)
-      await expect(setPostStatus(post.id, 'published')).rejects.toBeInstanceOf(ForbiddenError)
-      // A forbidden viewer learns nothing about the transition rules.
-      await expect(setPostStatus(post.id, 'archived')).rejects.toBeInstanceOf(ForbiddenError)
-      await signInAs(admin)
-      expect((await setPostStatus(post.id, 'published')).status).toBe('published')
-    })
-
-    it('validates its input', async () => {
-      await signInAs(await createUser({}))
-      await expect(setPostStatus(0, 'published')).rejects.toBeInstanceOf(ValidationError)
-      await expect(setPostStatus(1, 'deleted' as never)).rejects.toBeInstanceOf(ValidationError)
-    })
-
-    it('makes a published post public and hides it again when unpublished or archived', async () => {
-      const owner = await createUser({})
-      await signInAs(owner)
-      const post = await createPost({ title: 'T', body: 'B' })
-      signOut()
-      await expect(getPost(post.id)).rejects.toBeInstanceOf(NotFoundError)
-
-      await signInAs(owner)
-      await setPostStatus(post.id, 'published')
-      signOut()
-      expect((await getPost(post.id)).status).toBe('published')
-      expect((await listPosts({ page: 1, perPage: 10 })).totalItems).toBe(1)
-
-      await signInAs(owner)
-      await setPostStatus(post.id, 'archived')
-      signOut()
-      await expect(getPost(post.id)).rejects.toBeInstanceOf(NotFoundError)
-      expect((await listPosts({ page: 1, perPage: 10 })).totalItems).toBe(0)
-    })
-
-    it('does not let two concurrent moves from the same status both succeed', async () => {
-      const owner = await createUser({})
-      const post = await seedPost(owner.id, 'T', 'B', 'published')
-      await signInAs(owner)
-      const results = await Promise.allSettled([
-        setPostStatus(post.id, 'archived'),
-        setPostStatus(post.id, 'draft'),
-      ])
-      expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1)
-    })
-
-    it('answers a conflict when another move got there first', async () => {
-      const owner = await createUser({})
-      const post = await seedPost(owner.id, 'T', 'B', 'draft')
-      await signInAs(owner)
-      vi.spyOn(db.post, 'updateMany').mockImplementation(
-        () =>
-          db.post
-            .update({ where: { id: post.id }, data: { status: 'archived' } })
-            .then(() => ({ count: 0 })) as never,
-      )
-      // The status changed after the checks, so the guarded write matches nothing.
-      await expect(setPostStatus(post.id, 'published')).rejects.toBeInstanceOf(ConflictError)
-    })
-
-    it('answers not found, as an update does, when the post was trashed after the checks', async () => {
-      const owner = await createUser({})
-      const post = await seedPost(owner.id, 'T', 'B', 'draft')
-      await signInAs(owner)
-      vi.spyOn(db.post, 'updateMany').mockImplementation(
-        () =>
-          db.post
-            .update({ where: { id: post.id }, data: { deletedAt: new Date() } })
-            .then(() => ({ count: 0 })) as never,
-      )
-      await expect(setPostStatus(post.id, 'published')).rejects.toBeInstanceOf(NotFoundError)
-    })
-  })
-
-  describe('trash', () => {
-    const trashedNow = (id: number, deletedAt = new Date()) => {
-      return db.post.update({ where: { id }, data: { deletedAt } })
-    }
-
-    it('moves a post to the trash instead of deleting the row', async () => {
-      const author = await createUser({})
-      const post = await seedPost(author.id)
-      await signInAs(author)
-      await deletePost(post.id)
-      const row = await db.post.findUniqueOrThrow({ where: { id: post.id } })
-      expect(row.deletedAt).toBeInstanceOf(Date)
-    })
-
-    it('hides a trashed post from every public read', async () => {
-      const author = await createUser({})
-      const viewer = await createUser({})
-      const post = await seedPost(author.id)
-      await db.tag.create({ data: { name: 'gone' } })
-      await db.postTag.create({
-        data: {
-          postId: post.id,
-          tagId: (await db.tag.findUniqueOrThrow({ where: { name: 'gone' } })).id,
-        },
-      })
-      await signInAs(viewer)
-      expect((await listPosts({ page: 1, perPage: 10 })).totalItems).toBe(1)
-      expect((await listTags()).map((tag) => tag.name)).toEqual(['gone'])
-      await signInAs(author)
-      await deletePost(post.id)
-
-      signOut()
-      expect((await listPosts({ page: 1, perPage: 10 })).items).toEqual([])
-      expect(await listTags()).toEqual([])
-      await expect(getPost(post.id)).rejects.toBeInstanceOf(NotFoundError)
-      await signInAs(viewer)
-      expect((await listPosts({ page: 1, perPage: 10, authorId: author.id })).items).toEqual([])
-      await expect(getPost(post.id)).rejects.toBeInstanceOf(NotFoundError)
-    })
-
-    it('lets the author and admins read a trashed post, with restore as the only permission', async () => {
-      const author = await createUser({})
-      const admin = await createUser({ role: 'admin' })
-      const post = await seedPost(author.id)
-      await trashedNow(post.id)
-      for (const viewer of [author, admin]) {
-        await signInAs(viewer)
-        const detail = await getPost(post.id)
-        expect(detail.deletedAt).toBeInstanceOf(Date)
-        expect(detail.permissions).toEqual({ update: false, delete: false, restore: true })
-      }
-    })
-
-    it('answers 404 to an update, status change or second delete on a trashed post (R4)', async () => {
-      const author = await createUser({})
-      const admin = await createUser({ role: 'admin' })
-      const post = await seedPost(author.id, 'T', 'B', 'draft')
-      await trashedNow(post.id)
-      for (const viewer of [author, admin]) {
-        await signInAs(viewer)
-        await expect(updatePost(post.id, { version: 1, title: 'x' })).rejects.toBeInstanceOf(
-          NotFoundError,
-        )
-        await expect(setPostStatus(post.id, 'published')).rejects.toBeInstanceOf(NotFoundError)
-        await expect(deletePost(post.id)).rejects.toBeInstanceOf(NotFoundError)
-      }
-      expect((await db.post.findUniqueOrThrow({ where: { id: post.id } })).title).toBe('T')
-    })
-
-    describe('trash list', () => {
-      it('lists the viewer’s own trash only, never in the live list', async () => {
-        const author = await createUser({})
-        const other = await createUser({})
-        const live = await seedPost(author.id, 'Live', 'B', 'draft')
-        const gone = await seedPost(author.id, 'Gone', 'B', 'draft')
-        const goneArchived = await seedPost(author.id, 'Gone too', 'B', 'archived')
-        const othersGone = await seedPost(other.id, 'Theirs', 'B', 'published')
-        await trashedNow(gone.id)
-        await trashedNow(goneArchived.id)
-        await trashedNow(othersGone.id)
-        await signInAs(author)
-
-        const live1 = await listPosts({ page: 1, perPage: 10, authorId: author.id })
-        expect(live1.items.map((post) => post.id)).toEqual([live.id])
-        const trash = await listPosts({ page: 1, perPage: 10, authorId: author.id, trash: true })
-        expect(trash.items.map((post) => post.title)).toEqual(['Gone too', 'Gone'])
-        const narrowed = await listPosts({
-          page: 1,
-          perPage: 10,
-          authorId: author.id,
-          trash: true,
-          status: 'draft',
-        })
-        expect(narrowed.items.map((post) => post.title)).toEqual(['Gone'])
-      })
-
-      it('ignores trash for visitors, other users and an author listing someone else', async () => {
-        const author = await createUser({})
-        const other = await createUser({})
-        const published = await seedPost(author.id, 'Visible')
-        const gone = await seedPost(author.id, 'Gone')
-        await trashedNow(gone.id)
-
-        signOut()
-        const asVisitor = await listPosts({ page: 1, perPage: 10, trash: true })
-        expect(asVisitor.items.map((post) => post.id)).toEqual([published.id])
-        await signInAs(other)
-        const asOther = await listPosts({ page: 1, perPage: 10, authorId: author.id, trash: true })
-        expect(asOther.items.map((post) => post.id)).toEqual([published.id])
-        // Their own trash is empty, and asking for yours through another author id is ignored.
-        const own = await listPosts({ page: 1, perPage: 10, authorId: other.id, trash: true })
-        expect(own.items).toEqual([])
-      })
-
-      it('lets an admin list everyone’s trash, whatever the status', async () => {
-        const author = await createUser({})
-        const admin = await createUser({ role: 'admin' })
-        const draft = await seedPost(author.id, 'Draft', 'B', 'draft')
-        const published = await seedPost(author.id, 'Pub', 'B', 'published')
-        await seedPost(author.id, 'Live', 'B', 'published')
-        await trashedNow(draft.id)
-        await trashedNow(published.id)
-        await signInAs(admin)
-        const page = await listPosts({ page: 1, perPage: 10, trash: true })
-        expect(page.items.map((post) => post.title)).toEqual(['Pub', 'Draft'])
-      })
-
-      it('never caches the trash list and does not leak it into the cached list', async () => {
-        const admin = await createUser({ role: 'admin' })
-        const post = await seedPost(admin.id, 'Mine')
-        await signInAs(admin)
-        await listPosts({ page: 1, perPage: 10 })
-        await deletePost(post.id)
-        expect((await listPosts({ page: 1, perPage: 10 })).items).toEqual([])
-        const trash = await listPosts({ page: 1, perPage: 10, trash: true, status: 'published' })
-        expect(trash.items.map((item) => item.id)).toEqual([post.id])
-        await restorePost(post.id)
-        expect((await listPosts({ page: 1, perPage: 10, trash: true })).items).toEqual([])
-        expect((await listPosts({ page: 1, perPage: 10 })).items.map((item) => item.id)).toEqual([
-          post.id,
-        ])
-      })
-    })
-
-    describe('restorePost', () => {
-      it('brings the post back for its author and admins, with caches refreshed', async () => {
-        const author = await createUser({})
-        const admin = await createUser({ role: 'admin' })
-        const post = await seedPost(author.id)
-        await signInAs(author)
-        await listPosts({ page: 1, perPage: 10 })
-        await deletePost(post.id)
-        expect((await listPosts({ page: 1, perPage: 10 })).items).toEqual([])
-
-        const restored = await restorePost(post.id)
-        expect(restored.deletedAt).toBeNull()
-        expect(restored.permissions).toEqual({ update: true, delete: true, restore: false })
-        expect((await listPosts({ page: 1, perPage: 10 })).items.map((item) => item.id)).toEqual([
-          post.id,
-        ])
-
-        await deletePost(post.id)
-        await signInAs(admin)
-        expect((await restorePost(post.id)).deletedAt).toBeNull()
-      })
-
-      it('checks session, existence (a live post has nothing to restore) and ownership', async () => {
-        const author = await createUser({})
-        const stranger = await createUser({})
-        const post = await seedPost(author.id)
-        signOut()
-        await expect(restorePost(post.id)).rejects.toBeInstanceOf(UnauthorizedError)
-        await signInAs(author)
-        await expect(restorePost(999_999)).rejects.toBeInstanceOf(NotFoundError)
-        await expect(restorePost(post.id)).rejects.toBeInstanceOf(NotFoundError)
-        await trashedNow(post.id)
-        await signInAs(stranger)
-        await expect(restorePost(post.id)).rejects.toBeInstanceOf(ForbiddenError)
-        expect(
-          (await db.post.findUniqueOrThrow({ where: { id: post.id } })).deletedAt,
-        ).not.toBeNull()
-      })
-    })
-  })
-
-  describe('optimistic locking', () => {
-    it('starts at version 1 and bumps it on every title, body or tags edit', async () => {
-      const author = await createUser({})
-      await signInAs(author)
-      const post = await createPost({ title: 'T', body: 'B' })
-      expect(post.version).toBe(1)
-      expect((await updatePost(post.id, { version: 1, title: 'A' })).version).toBe(2)
-      expect((await updatePost(post.id, { version: 2, tags: ['x'] })).version).toBe(3)
-      expect((await getPost(post.id)).version).toBe(3)
-    })
-
-    it('lets the first of two edits from the same version win and the second conflict', async () => {
-      const author = await createUser({})
-      const admin = await createUser({ role: 'admin' })
-      const post = await seedPost(author.id, 'T')
-      await signInAs(author)
-      await updatePost(post.id, { version: 1, title: 'Author edit' })
-      await signInAs(admin)
-      await expect(updatePost(post.id, { version: 1, title: 'Admin edit' })).rejects.toBeInstanceOf(
-        ConflictError,
-      )
-      const row = await db.post.findUniqueOrThrow({ where: { id: post.id } })
-      expect(row.title).toBe('Author edit')
-      expect(row.version).toBe(2)
-    })
-
-    it('does not touch the tags of a conflicting edit', async () => {
-      const author = await createUser({})
-      await signInAs(author)
-      const post = await createPost({ title: 'T', body: 'B', tags: ['keep'] })
-      await updatePost(post.id, { version: 1, title: 'New' })
-      await expect(updatePost(post.id, { version: 1, tags: ['other'] })).rejects.toBeInstanceOf(
-        ConflictError,
-      )
-      expect((await getPost(post.id)).tags).toEqual(['keep'])
-    })
-
-    it('rejects a missing or malformed version before anything else', async () => {
-      const author = await createUser({})
-      const post = await seedPost(author.id)
-      await signInAs(author)
-      for (const input of [
-        { title: 'x' },
-        { title: 'x', version: 0 },
-        { title: 'x', version: '1' },
-      ]) {
-        await expect(updatePost(post.id, input as never)).rejects.toBeInstanceOf(ValidationError)
-      }
-    })
-
-    it('does not bump the version on status changes, trash or restore (R5)', async () => {
-      const author = await createUser({})
-      await signInAs(author)
-      const post = await createPost({ title: 'T', body: 'B' })
-      expect((await setPostStatus(post.id, 'published')).version).toBe(1)
-      await deletePost(post.id)
-      expect((await restorePost(post.id)).version).toBe(1)
-      expect((await updatePost(post.id, { version: 1, title: 'N' })).version).toBe(2)
-    })
-
-    it('answers 404, not a conflict, when the post was trashed after the checks', async () => {
-      const author = await createUser({})
-      const post = await seedPost(author.id)
-      await signInAs(author)
-      const realFindUnique = db.post.findUnique.bind(db.post)
-      // The checks see a live post; by the time of the write it is in the trash.
-      vi.spyOn(db.post, 'findUnique').mockImplementation(((args: never) => {
-        return db.post
-          .update({ where: { id: post.id }, data: { deletedAt: new Date() } })
-          .then(() => realFindUnique(args))
-          .then((row) => row && { ...row, deletedAt: null })
-      }) as never)
-      await expect(updatePost(post.id, { version: 1, title: 'x' })).rejects.toBeInstanceOf(
-        NotFoundError,
-      )
-    })
-  })
-
-  describe('commentCount', () => {
-    it('counts comments in lists and details, and refreshes the cached copies', async () => {
-      const author = await createUser({})
-      const reader = await createUser({})
-      const post = await seedPost(author.id, 'T')
-      expect((await listPosts({ page: 1, perPage: 10 })).items[0].commentCount).toBe(0)
-      expect((await getPost(post.id)).commentCount).toBe(0)
-
-      await db.comment.create({ data: { postId: post.id, userId: reader.id, body: 'Hi' } })
-      await db.comment.create({ data: { postId: post.id, userId: reader.id, body: 'Again' } })
-      // The tests wrote straight to the database, so the caches are stale until invalidated.
-      await invalidateTags(POSTS_TAG)
-      expect((await listPosts({ page: 1, perPage: 10 })).items[0].commentCount).toBe(2)
-      expect((await getPost(post.id)).commentCount).toBe(2)
     })
   })
 })

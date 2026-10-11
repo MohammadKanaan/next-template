@@ -130,8 +130,8 @@ describe('signInWithGoogleAction', () => {
     }
     expect(await callbackFor('/posts/mine')).toBe('/posts/mine')
     // A hostile value falls back to the default instead of sending the user off-site.
-    expect(await callbackFor('//evil.example')).toBe('/dashboard')
-    expect(await callbackFor('https://evil.example')).toBe('/dashboard')
+    expect(await callbackFor('//evil.example')).toBe('/')
+    expect(await callbackFor('https://evil.example')).toBe('/')
     await db.$disconnect()
   })
 })

@@ -1,16 +1,10 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { assertAuthEnv, resetServerEnv, serverEnv } from '@/lib/server/env'
+import { assertAuthEnv, R2_VARIABLES, resetServerEnv, serverEnv } from '@/lib/server/env'
 
 const valid = {
   REDIS_URL: 'redis://localhost:6379/15',
   EMAIL_FROM: 'App <noreply@example.com>',
-  S3_ENDPOINT: 'http://localhost:9000',
-  S3_REGION: 'us-east-1',
-  S3_BUCKET: 'bucket',
-  S3_ACCESS_KEY_ID: 'key',
-  S3_SECRET_ACCESS_KEY: 'secret',
-  S3_PUBLIC_URL: 'http://localhost:9000/bucket',
 }
 
 const stubEnv = (values: Record<string, string | undefined>) => {
@@ -18,9 +12,8 @@ const stubEnv = (values: Record<string, string | undefined>) => {
     RESEND_API_KEY: undefined,
     GOOGLE_CLIENT_ID: undefined,
     GOOGLE_CLIENT_SECRET: undefined,
-    VAPID_PUBLIC_KEY: undefined,
-    VAPID_PRIVATE_KEY: undefined,
-    VAPID_SUBJECT: undefined,
+    TRUSTED_PROXY_HOPS: undefined,
+    ...Object.fromEntries(R2_VARIABLES.map((name) => [name, undefined])),
     ...values,
   })) {
     vi.stubEnv(name, value)
@@ -41,17 +34,8 @@ describe('serverEnv', () => {
   })
 
   it('treats empty optional variables as unset', () => {
-    stubEnv({ ...valid, RESEND_API_KEY: '', S3_PUBLIC_ENDPOINT: '' })
+    stubEnv({ ...valid, RESEND_API_KEY: '' })
     expect(serverEnv().RESEND_API_KEY).toBeUndefined()
-    expect(serverEnv().S3_PUBLIC_ENDPOINT).toBeUndefined()
-  })
-
-  it('accepts a browser-facing S3 endpoint and rejects a malformed one', () => {
-    stubEnv({ ...valid, S3_PUBLIC_ENDPOINT: 'https://files.example.com' })
-    expect(serverEnv().S3_PUBLIC_ENDPOINT).toBe('https://files.example.com')
-    resetServerEnv()
-    stubEnv({ ...valid, S3_PUBLIC_ENDPOINT: 'not a url' })
-    expect(() => serverEnv()).toThrow(/S3_PUBLIC_ENDPOINT/)
   })
 
   it('memoizes the first successful parse', () => {
@@ -62,8 +46,8 @@ describe('serverEnv', () => {
   })
 
   it('lists every missing or invalid variable in one error', () => {
-    stubEnv({ ...valid, REDIS_URL: undefined, S3_BUCKET: undefined, S3_ENDPOINT: 'not a url' })
-    expect(() => serverEnv()).toThrow(/REDIS_URL[\s\S]*S3_ENDPOINT[\s\S]*S3_BUCKET/)
+    stubEnv({ ...valid, REDIS_URL: undefined, EMAIL_FROM: '' })
+    expect(() => serverEnv()).toThrow(/REDIS_URL[\s\S]*EMAIL_FROM/)
   })
 
   it('accepts TRUSTED_PROXY_HOPS from 1 to 10, treats empty as unset, and rejects the rest', () => {
@@ -100,29 +84,45 @@ describe('serverEnv', () => {
     stubEnv({ ...valid, GOOGLE_CLIENT_SECRET: 'secret', GOOGLE_CLIENT_ID: '' })
     expect(() => serverEnv()).toThrow(/Set both GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET/)
   })
+})
 
-  it('treats the VAPID trio as optional, all or none', () => {
+describe('serverEnv R2 group', () => {
+  const r2 = {
+    R2_ACCOUNT_ID: 'acct',
+    R2_ACCESS_KEY_ID: 'key',
+    R2_SECRET_ACCESS_KEY: 'secret',
+    R2_BUCKET: 'bucket',
+    R2_PUBLIC_URL: 'https://pub-abc.r2.dev',
+  }
+  beforeEach(resetServerEnv)
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    resetServerEnv()
+  })
+
+  it('is optional as a whole, and empty values count as unset', () => {
     stubEnv(valid)
-    expect(serverEnv().VAPID_PUBLIC_KEY).toBeUndefined()
+    expect(serverEnv().R2_BUCKET).toBeUndefined()
     resetServerEnv()
-    stubEnv({
-      ...valid,
-      VAPID_PUBLIC_KEY: 'pub',
-      VAPID_PRIVATE_KEY: 'priv',
-      VAPID_SUBJECT: 'mailto:a@b.co',
-    })
-    expect(serverEnv().VAPID_SUBJECT).toBe('mailto:a@b.co')
-    resetServerEnv()
-    stubEnv({ ...valid, VAPID_PUBLIC_KEY: 'pub' })
-    expect(() => serverEnv()).toThrow(/VAPID_PUBLIC_KEY/)
-    resetServerEnv()
-    stubEnv({
-      ...valid,
-      VAPID_PUBLIC_KEY: 'pub',
-      VAPID_PRIVATE_KEY: 'priv',
-      VAPID_SUBJECT: 'a@b.co',
-    })
-    expect(() => serverEnv()).toThrow(/VAPID_SUBJECT/)
+    stubEnv({ ...valid, ...Object.fromEntries(R2_VARIABLES.map((name) => [name, ''])) })
+    expect(serverEnv().R2_ACCOUNT_ID).toBeUndefined()
+  })
+
+  it('accepts all five together', () => {
+    stubEnv({ ...valid, ...r2 })
+    expect(serverEnv()).toMatchObject(r2)
+  })
+
+  it('rejects a partial group, naming every variable', () => {
+    stubEnv({ ...valid, ...r2, R2_PUBLIC_URL: undefined })
+    expect(() => serverEnv()).toThrow(
+      /Set R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET, R2_PUBLIC_URL together, or none/,
+    )
+  })
+
+  it('requires R2_PUBLIC_URL to be a URL', () => {
+    stubEnv({ ...valid, ...r2, R2_PUBLIC_URL: 'pub-abc.r2.dev' })
+    expect(() => serverEnv()).toThrow(/R2_PUBLIC_URL/)
   })
 })
 

@@ -11,7 +11,6 @@ import {
 import { attachAvatar, createUpload } from '@/lib/data/uploads'
 import { getViewer } from '@/lib/data/users'
 import {
-  ATTACHMENT_MAX_SIZE,
   AVATAR_MAX_SIZE,
   objectDeleteDelaySeconds,
   UPLOAD_OBJECT_GRACE_SECONDS,
@@ -19,7 +18,12 @@ import {
   UPLOAD_TICKET_SECONDS,
 } from '@/lib/dto/uploads'
 import { enqueue } from '@/lib/server/queue'
-import { createUploadTicket, deleteObject, headObject } from '@/lib/server/storage'
+import {
+  createUploadTicket,
+  deleteObject,
+  headObject,
+  isStorageConfigured,
+} from '@/lib/server/storage'
 import { createUser, resetDatabase, signInAs, signOut } from '../../helpers/server'
 
 const { cookieStore, requestHeaders } = await vi.hoisted(
@@ -31,13 +35,14 @@ vi.mock('next/headers', () => ({
 }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn(), refresh: vi.fn() }))
 vi.mock('@/lib/server/storage', () => ({
+  isStorageConfigured: vi.fn(() => true),
   createUploadTicket: vi.fn(async () => ({
-    url: 'http://storage.test/bucket',
-    fields: { key: 'k', 'Content-Type': 'image/png' },
+    url: 'https://acct.r2.cloudflarestorage.com/bucket/k?X-Amz-Signature=s',
+    headers: { 'Content-Type': 'image/png' },
   })),
   headObject: vi.fn(async () => ({ size: 1024, contentType: 'image/png' })),
   deleteObject: vi.fn(async () => {}),
-  publicUrl: (key: string) => `http://storage.test/bucket/${key}`,
+  publicUrl: (key: string) => `https://pub-abc.r2.dev/${key}`,
 }))
 
 /** Sign-up also queues an email; only the object-deletion jobs matter here. */
@@ -52,6 +57,7 @@ describe('uploads DAL', () => {
     vi.mocked(createUploadTicket).mockClear()
     vi.mocked(deleteObject).mockClear()
     vi.mocked(headObject).mockResolvedValue({ size: 1024, contentType: 'image/png' })
+    vi.mocked(isStorageConfigured).mockReturnValue(true)
   })
   afterAll(() => db.$disconnect())
 
@@ -75,13 +81,31 @@ describe('uploads DAL', () => {
         status: 'pending',
       })
       expect(row.key).toMatch(new RegExp(`^avatars/${user.id}/[0-9a-f-]{36}$`))
-      expect(ticket).toMatchObject({ url: 'http://storage.test/bucket' })
+      expect(ticket).toMatchObject({
+        url: 'https://acct.r2.cloudflarestorage.com/bucket/k?X-Amz-Signature=s',
+        headers: { 'Content-Type': 'image/png' },
+      })
+      // Signed for the exact size the browser declared, so another size is refused by storage.
       expect(createUploadTicket).toHaveBeenCalledWith({
         key: row.key,
         contentType: 'image/png',
-        maxSize: AVATAR_MAX_SIZE,
+        size: 1024,
         expiresIn: UPLOAD_TICKET_SECONDS,
       })
+    })
+
+    it('refuses a ticket while storage is not configured, after the session and input checks', async () => {
+      vi.mocked(isStorageConfigured).mockReturnValue(false)
+      await expect(createUpload(input)).rejects.toBeInstanceOf(UnauthorizedError)
+      await signInAs(await createUser({}))
+      await expect(createUpload({ ...input, size: 0 })).rejects.toMatchObject({
+        fieldErrors: { size: ['The file is empty'] },
+      })
+      await expect(createUpload(input)).rejects.toMatchObject({
+        fieldErrors: { base: ['Uploads are not available'] },
+      })
+      expect(await db.upload.count()).toBe(0)
+      expect(createUploadTicket).not.toHaveBeenCalled()
     })
 
     it('uses a different key every time', async () => {
@@ -167,162 +191,29 @@ describe('uploads DAL', () => {
     })
   })
 
-  describe('createUpload (rules per purpose)', () => {
-    const base = {
-      purpose: 'attachment',
-      contentType: 'application/pdf',
-      size: 5000,
-      name: 'report.pdf',
-    } as const
-    // The ticket is for a post the viewer may update: here one of their own, created by `ownPost`.
-    let attachment: typeof base & { postId: number }
-    const ownPost = async (userId: string) => {
-      const post = await db.post.create({ data: { userId, title: 'T', body: 'B' } })
-      attachment = { ...base, postId: post.id }
-      return post
-    }
-
-    it('keeps the table in sync with the numbers the plan names', () => {
+  describe('createUpload (rules)', () => {
+    it('keeps the table in sync with the numbers the UI shows', () => {
       expect(UPLOAD_RULES.avatar).toMatchObject({ maxSize: AVATAR_MAX_SIZE, maxPending: 3 })
-      expect(UPLOAD_RULES.attachment).toMatchObject({ maxSize: ATTACHMENT_MAX_SIZE, maxPending: 5 })
-      expect(ATTACHMENT_MAX_SIZE).toBe(10 * 1024 * 1024)
-    })
-
-    it('stores an attachment under attachments/<user>/ with its name and the attachment limits', async () => {
-      const user = await createUser({})
-      await ownPost(user.id)
-      await signInAs(user)
-      const ticket = await createUpload(attachment)
-
-      const row = await db.upload.findUniqueOrThrow({ where: { id: ticket.uploadId } })
-      expect(row).toMatchObject({
-        userId: user.id,
-        purpose: 'attachment',
-        contentType: 'application/pdf',
-        size: 5000,
-        name: 'report.pdf',
-        postId: null,
-        status: 'pending',
-      })
-      expect(row.key).toMatch(new RegExp(`^attachments/${user.id}/[0-9a-f-]{36}$`))
-      expect(createUploadTicket).toHaveBeenCalledWith({
-        key: row.key,
-        contentType: 'application/pdf',
-        maxSize: ATTACHMENT_MAX_SIZE,
-        expiresIn: UPLOAD_TICKET_SECONDS,
-      })
-    })
-
-    it('does not keep a name for an avatar', async () => {
-      await signInAs(await createUser({}))
-      const ticket = await createUpload({ ...input, name: 'me.png' })
-      expect(
-        (await db.upload.findUniqueOrThrow({ where: { id: ticket.uploadId } })).name,
-      ).toBeNull()
     })
 
     it.each([
       ['an avatar that is not an image it knows', { ...input, contentType: 'application/pdf' }],
+      ['an svg', { ...input, contentType: 'image/svg+xml' }],
       ['an avatar over 2 MB', { ...input, size: AVATAR_MAX_SIZE + 1 }],
-      ['an attachment of an unknown type', { ...base, postId: 1, contentType: 'text/html' }],
-      ['an svg attachment', { ...base, postId: 1, contentType: 'image/svg+xml' }],
-      ['an attachment over 10 MB', { ...base, postId: 1, size: ATTACHMENT_MAX_SIZE + 1 }],
-      ['an attachment without a name', { ...base, postId: 1, name: undefined }],
-      ['an attachment without a post', base],
-      ['an attachment for a malformed post id', { ...base, postId: 0 }],
-      ['an empty file', { ...base, postId: 1, size: 0 }],
-      ['an unknown purpose', { ...base, postId: 1, purpose: 'banner' }],
+      ['an empty file', { ...input, size: 0 }],
+      ['an unknown purpose', { ...input, purpose: 'banner' }],
     ])('rejects %s', async (_name, bad) => {
       await signInAs(await createUser({}))
       await expect(createUpload(bad as never)).rejects.toBeInstanceOf(ValidationError)
       expect(await db.upload.count()).toBe(0)
     })
 
-    it('accepts every attachment type the rule lists', async () => {
-      const user = await createUser({})
-      await ownPost(user.id)
-      await signInAs(user)
-      for (const contentType of UPLOAD_RULES.attachment.contentTypes) {
+    it('accepts every avatar type the rule lists', async () => {
+      await signInAs(await createUser({}))
+      for (const contentType of UPLOAD_RULES.avatar.contentTypes) {
         await db.upload.deleteMany()
-        await expect(createUpload({ ...attachment, contentType })).resolves.toBeDefined()
+        await expect(createUpload({ ...input, contentType })).resolves.toBeDefined()
       }
-      expect(UPLOAD_RULES.attachment.contentTypes).toContain('text/csv')
-    })
-
-    it('allows five pending attachments, a sixth is refused, and avatars count apart', async () => {
-      const user = await createUser({})
-      await ownPost(user.id)
-      await signInAs(user)
-      for (let i = 0; i < 5; i += 1) {
-        await createUpload(attachment)
-      }
-      await expect(createUpload(attachment)).rejects.toBeInstanceOf(RateLimitedError)
-      // Three avatar tickets are their own budget.
-      for (let i = 0; i < 3; i += 1) {
-        await createUpload(input)
-      }
-      await expect(createUpload(input)).rejects.toBeInstanceOf(RateLimitedError)
-      expect(await db.upload.count({ where: { userId: user.id } })).toBe(8)
-    })
-
-    describe('the post an attachment ticket is for', () => {
-      it('requires a session before anything else', async () => {
-        await expect(createUpload({ ...base, postId: 1 })).rejects.toBeInstanceOf(UnauthorizedError)
-      })
-
-      it('answers 404 for a missing post and for a post in the trash', async () => {
-        const author = await createUser({})
-        const post = await ownPost(author.id)
-        await signInAs(author)
-        await expect(createUpload({ ...base, postId: post.id + 1000 })).rejects.toBeInstanceOf(
-          NotFoundError,
-        )
-        await db.post.update({ where: { id: post.id }, data: { deletedAt: new Date() } })
-        await expect(createUpload(attachment)).rejects.toBeInstanceOf(NotFoundError)
-        expect(await db.upload.count()).toBe(0)
-      })
-
-      it('answers 403 for someone who may not update the post, and issues nothing', async () => {
-        const author = await createUser({})
-        const post = await ownPost(author.id)
-        await signInAs(await createUser({}))
-        await expect(createUpload(attachment)).rejects.toBeInstanceOf(ForbiddenError)
-        expect(await db.upload.count()).toBe(0)
-        expect(createUploadTicket).not.toHaveBeenCalled()
-        expect(post.id).toBe(attachment.postId)
-      })
-
-      it("lets an admin ask for a ticket for someone else's post", async () => {
-        const author = await createUser({})
-        await ownPost(author.id)
-        await signInAs(await createUser({ role: 'admin' }))
-        await expect(createUpload(attachment)).resolves.toBeDefined()
-      })
-
-      it('leaves avatar tickets alone: they name no post', async () => {
-        await signInAs(await createUser({}))
-        await expect(createUpload({ ...input, postId: 999 })).resolves.toBeDefined()
-      })
-    })
-
-    it('reclaims only stale rows of the same purpose', async () => {
-      const user = await createUser({})
-      await ownPost(user.id)
-      await signInAs(user)
-      const avatarTicket = await createUpload(input)
-      const attachmentTicket = await createUpload(attachment)
-      const age = (UPLOAD_TICKET_SECONDS + UPLOAD_OBJECT_GRACE_SECONDS + 1) * 1000
-      await db.upload.updateMany({
-        where: { userId: user.id },
-        data: { createdAt: new Date(Date.now() - age) },
-      })
-
-      await createUpload(attachment)
-
-      const rows = await db.upload.findMany({ where: { userId: user.id } })
-      expect(rows.map((row) => row.id)).toContain(avatarTicket.uploadId)
-      expect(rows.map((row) => row.id)).not.toContain(attachmentTicket.uploadId)
-      expect(deleteObject).toHaveBeenCalledTimes(1)
     })
   })
 
@@ -370,7 +261,7 @@ describe('uploads DAL', () => {
 
       const result = await attachAvatar(upload.id)
 
-      expect(result.image).toBe(`http://storage.test/bucket/${upload.key}`)
+      expect(result.image).toBe(`https://pub-abc.r2.dev/${upload.key}`)
       expect((await db.user.findUniqueOrThrow({ where: { id: user.id } })).image).toBe(result.image)
       expect(await db.upload.findUniqueOrThrow({ where: { id: upload.id } })).toMatchObject({
         status: 'attached',
@@ -387,7 +278,7 @@ describe('uploads DAL', () => {
 
       await attachAvatar(upload.id)
 
-      expect((await getViewer())?.image).toBe(`http://storage.test/bucket/${upload.key}`)
+      expect((await getViewer())?.image).toBe(`https://pub-abc.r2.dev/${upload.key}`)
     })
 
     it('queues the replaced avatar object for deletion and drops its row', async () => {
@@ -481,7 +372,7 @@ describe('uploads DAL', () => {
       const attached = await db.upload.findMany({ where: { status: 'attached' } })
       expect(attached).toHaveLength(1)
       const { image } = await db.user.findUniqueOrThrow({ where: { id: user.id } })
-      expect(image).toBe(`http://storage.test/bucket/${attached[0].key}`)
+      expect(image).toBe(`https://pub-abc.r2.dev/${attached[0].key}`)
     })
   })
 })

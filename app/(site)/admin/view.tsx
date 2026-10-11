@@ -2,7 +2,8 @@
 
 import { useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
-import { setUserRoleAction } from '@/actions/users'
+import { impersonateUserAction, setUserRoleAction, unbanUserAction } from '@/actions/admin'
+import { BanUserDialog } from '@/components/Admin/BanDialog'
 import { Empty } from '@/components/Empty'
 import { Input } from '@/components/Form/Input'
 import { Pagination } from '@/components/Pagination'
@@ -24,6 +25,7 @@ import {
   TableRow,
 } from '@/components/SCN/table'
 import { useUrlState } from '@/hooks/useUrlState'
+import { ROUTE_HOME } from '@/lib/constants-routes'
 import type { Page } from '@/lib/dto/common'
 import { roleSchema, USER_SEARCH_MAX_LENGTH, usersUrlQuery, type AdminUser } from '@/lib/dto/users'
 import { formatDateTime } from '@/lib/formatDate'
@@ -31,14 +33,14 @@ import styles from './styles.module.scss'
 
 type AdminViewProps = {
   users: Page<AdminUser>
-  /** The signed-in admin: their own role cannot be changed here. */
+  /** The signed-in admin: their own row offers no actions. */
   viewerId: string
 }
 
 export const AdminView = ({ users, viewerId }: AdminViewProps) => {
   const { state, setState, isPending } = useUrlState(usersUrlQuery)
-  // A role change is in flight: every role select waits, so changes cannot overlap.
-  const [isSavingRole, setIsSavingRole] = useState(false)
+  // One admin write at a time: every control waits, so changes cannot overlap.
+  const [isSaving, setIsSaving] = useState(false)
 
   const handleSearch = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -46,23 +48,51 @@ export const AdminView = ({ users, viewerId }: AdminViewProps) => {
     setState({ q: typeof q === 'string' ? q.trim() : '', page: 1 })
   }
 
+  const run = async (work: () => Promise<{ ok: true } | { ok: false; message: string }>) => {
+    setIsSaving(true)
+    try {
+      const result = await work()
+      if (!result.ok) {
+        toast.error(result.message)
+      }
+      return result.ok
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
   const handleRole = async (user: AdminUser, value: string) => {
     const role = roleSchema.safeParse(value)
     if (!role.success || role.data === user.role) {
       return
     }
-    setIsSavingRole(true)
-    try {
+    await run(async () => {
       const result = await setUserRoleAction({ id: user.id, role: role.data })
       if (result.ok) {
         toast.success(
           `${user.name} is now ${role.data === 'admin' ? 'an admin' : 'a regular user'}`,
         )
-      } else {
-        toast.error(result.message)
       }
-    } finally {
-      setIsSavingRole(false)
+      return result
+    })
+  }
+
+  const handleUnban = async (user: AdminUser) => {
+    await run(async () => {
+      const result = await unbanUserAction(user.id)
+      if (result.ok) {
+        toast.success(`${user.name} can sign in again`)
+      }
+      return result
+    })
+  }
+
+  const handleImpersonate = async (user: AdminUser) => {
+    const ok = await run(() => impersonateUserAction(user.id))
+    if (ok) {
+      // This browser is now signed in as the user, so every layout must be rendered again from
+      // scratch: a full navigation, not the client router (the layout shows how to come back).
+      window.location.assign(ROUTE_HOME)
     }
   }
 
@@ -97,8 +127,9 @@ export const AdminView = ({ users, viewerId }: AdminViewProps) => {
               <TableHead>Name</TableHead>
               <TableHead>Email</TableHead>
               <TableHead>Role</TableHead>
-              <TableHead>Posts</TableHead>
+              <TableHead>Status</TableHead>
               <TableHead>Joined</TableHead>
+              <TableHead>Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -120,7 +151,7 @@ export const AdminView = ({ users, viewerId }: AdminViewProps) => {
                     <Select
                       value={user.role}
                       onValueChange={(value) => handleRole(user, value)}
-                      disabled={isSelf || isSavingRole}
+                      disabled={isSelf || isSaving}
                     >
                       <SelectTrigger size="sm" aria-label={`Role of ${user.name}`}>
                         <SelectValue />
@@ -131,8 +162,46 @@ export const AdminView = ({ users, viewerId }: AdminViewProps) => {
                       </SelectContent>
                     </Select>
                   </TableCell>
-                  <TableCell>{user.postCount}</TableCell>
+                  <TableCell>
+                    {user.banned ? (
+                      <Badge variant="destructive" title={user.banReason ?? undefined}>
+                        Banned
+                      </Badge>
+                    ) : (
+                      <Badge variant="secondary">Active</Badge>
+                    )}
+                  </TableCell>
                   <TableCell>{formatDateTime(user.createdAt)}</TableCell>
+                  <TableCell>
+                    {!isSelf && (
+                      <div className={styles.actions}>
+                        {user.banned ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={isSaving}
+                            onClick={() => handleUnban(user)}
+                          >
+                            Unban
+                          </Button>
+                        ) : (
+                          <BanUserDialog user={user} disabled={isSaving} />
+                        )}
+                        {user.role !== 'admin' && !user.banned && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            disabled={isSaving}
+                            onClick={() => handleImpersonate(user)}
+                          >
+                            Impersonate
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </TableCell>
                 </TableRow>
               )
             })}

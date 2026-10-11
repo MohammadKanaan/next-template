@@ -4,9 +4,9 @@
   gap: 1rem;
   align-items: center;
   justify-content: center;
-  height: 100vh;
-  margin-top: -4rem;
-  background: var(--background);
+  // Fills the viewport below the fixed NavBar (the layout's 4rem top padding). It stays in the flow,
+  // so the impersonation and verify-email banners above it push it down instead of being covered.
+  min-height: calc(100vh - 4rem);
 
   h1 {
     margin: 0;

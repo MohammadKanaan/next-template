@@ -17,20 +17,10 @@ export const SECURITY_HEADERS = [
 const nextConfig: NextConfig = {
   reactCompiler: true,
   poweredByHeader: false,
-  // web-push is a Node package with its own HTTP client; it is loaded by the web process only to
-  // read `isPushConfigured()`.
-  serverExternalPackages: ['web-push'],
   sassOptions: {
     additionalData: scssBreakpoints,
   },
-  headers: async () => [
-    { source: '/(.*)', headers: SECURITY_HEADERS },
-    {
-      // The service worker must never be served stale, or an old push handler lingers for days.
-      source: '/sw.js',
-      headers: [{ key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' }],
-    },
-  ],
+  headers: async () => [{ source: '/(.*)', headers: SECURITY_HEADERS }],
 }
 
 export default nextConfig

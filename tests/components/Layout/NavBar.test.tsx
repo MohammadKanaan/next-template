@@ -8,11 +8,6 @@ vi.mock('@/components/Auth/SignOutButton', () => ({
   SignOutButton: () => <button>Log out</button>,
 }))
 vi.mock('@/components/ThemeToggle', () => ({ ThemeToggle: () => null }))
-vi.mock('@/components/Notifications/Bell', () => ({
-  NotificationBell: ({ initialUnreadCount }: { initialUnreadCount: number }) => (
-    <button>Notifications {initialUnreadCount}</button>
-  ),
-}))
 
 const user: CurrentUser = {
   id: 'u1',
@@ -26,12 +21,12 @@ const user: CurrentUser = {
 }
 
 /** The desktop and the mobile menu both render the links. */
-const adminLinks = () => screen.queryAllByRole('link', { name: 'Admin', hidden: true })
+const linksNamed = (name: string) => screen.queryAllByRole('link', { name, hidden: true })
 
 describe('NavBar', () => {
   it('shows the Admin link to admins, in both menus', () => {
-    render(<NavBar user={{ ...user, role: 'admin' }} unreadCount={0} />)
-    const links = adminLinks()
+    render(<NavBar user={{ ...user, role: 'admin' }} />)
+    const links = linksNamed('Admin')
     expect(links).toHaveLength(2)
     for (const link of links) {
       expect(link).toHaveAttribute('href', '/admin')
@@ -39,32 +34,56 @@ describe('NavBar', () => {
   })
 
   it('hides the Admin link from regular users and signed-out visitors', () => {
-    const { rerender } = render(<NavBar user={user} unreadCount={0} />)
-    expect(adminLinks()).toHaveLength(0)
-    rerender(<NavBar user={null} unreadCount={0} />)
-    expect(adminLinks()).toHaveLength(0)
+    const { rerender } = render(<NavBar user={user} />)
+    expect(linksNamed('Admin')).toHaveLength(0)
+    rerender(<NavBar user={null} />)
+    expect(linksNamed('Admin')).toHaveLength(0)
   })
 
   it('keeps the regular links for everyone', () => {
-    render(<NavBar user={user} unreadCount={0} />)
-    expect(screen.getAllByRole('link', { name: 'Posts', hidden: true }).length).toBeGreaterThan(0)
+    const { rerender } = render(<NavBar user={user} />)
+    expect(linksNamed('Posts').length).toBeGreaterThan(0)
+    expect(linksNamed('UI Kit').length).toBeGreaterThan(0)
+    rerender(<NavBar user={null} />)
+    expect(linksNamed('Posts').length).toBeGreaterThan(0)
   })
 
   it('links signed-in users to their own posts, in both menus', () => {
-    const { rerender } = render(<NavBar user={user} unreadCount={0} />)
-    const links = screen.getAllByRole('link', { name: 'My posts', hidden: true })
+    const { rerender } = render(<NavBar user={user} />)
+    const links = linksNamed('My posts')
     expect(links).toHaveLength(2)
     for (const link of links) {
       expect(link).toHaveAttribute('href', '/posts/mine')
     }
-    rerender(<NavBar user={null} unreadCount={0} />)
-    expect(screen.queryAllByRole('link', { name: 'My posts', hidden: true })).toHaveLength(0)
+    rerender(<NavBar user={null} />)
+    expect(linksNamed('My posts')).toHaveLength(0)
   })
 
-  it('shows one bell to signed-in users only', () => {
-    const { rerender } = render(<NavBar user={user} unreadCount={2} />)
-    expect(screen.getAllByRole('button', { name: 'Notifications 2', hidden: true })).toHaveLength(1)
-    rerender(<NavBar user={null} unreadCount={0} />)
+  it('has no Dashboard link and no notification bell for anyone', () => {
+    const { rerender } = render(<NavBar user={{ ...user, role: 'admin' }} />)
+    expect(linksNamed('Dashboard')).toHaveLength(0)
     expect(screen.queryAllByRole('button', { name: /Notifications/, hidden: true })).toHaveLength(0)
+    expect(screen.queryAllByRole('link', { name: /Notifications/, hidden: true })).toHaveLength(0)
+    rerender(<NavBar user={user} />)
+    expect(linksNamed('Dashboard')).toHaveLength(0)
+    expect(screen.queryAllByRole('button', { name: /Notifications/, hidden: true })).toHaveLength(0)
+  })
+
+  it('offers account settings and sign-out to a signed-in user, and log in otherwise', () => {
+    const { rerender } = render(<NavBar user={user} />)
+    for (const link of linksNamed('Account settings')) {
+      expect(link).toHaveAttribute('href', '/settings')
+    }
+    expect(linksNamed('Account settings')).toHaveLength(2)
+    expect(screen.getAllByRole('button', { name: 'Log out', hidden: true })).toHaveLength(2)
+    expect(linksNamed('Log in')).toHaveLength(0)
+
+    rerender(<NavBar user={null} />)
+    expect(linksNamed('Account settings')).toHaveLength(0)
+    expect(screen.queryAllByRole('button', { name: 'Log out', hidden: true })).toHaveLength(0)
+    for (const link of linksNamed('Log in')) {
+      expect(link).toHaveAttribute('href', '/login')
+    }
+    expect(linksNamed('Log in')).toHaveLength(2)
   })
 })

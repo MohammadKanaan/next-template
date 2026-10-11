@@ -5,8 +5,8 @@ import { ROUTE_POSTS } from '@/lib/constants-routes'
 import { requireUser } from '@/lib/data/auth'
 import { toActionFailure } from '@/lib/data/errors'
 import { consumeRateLimit } from '@/lib/data/rateLimit'
-import { setUserRole, updateProfile } from '@/lib/data/users'
-import type { AdminUser, CurrentUser, SetUserRoleInput, UpdateProfileInput } from '@/lib/dto/users'
+import { updateProfile } from '@/lib/data/users'
+import type { CurrentUser, UpdateProfileInput } from '@/lib/dto/users'
 import type { ActionResult } from '@/types/api'
 
 export const updateProfileAction = async (
@@ -18,19 +18,6 @@ export const updateProfileAction = async (
     const user = await updateProfile(input)
     // The name and username also show on post cards and details.
     revalidatePath(ROUTE_POSTS, 'layout')
-    refresh()
-    return { ok: true, data: user }
-  } catch (error) {
-    return toActionFailure(error)
-  }
-}
-
-/** Admin only (the DAL enforces it): makes a user an admin or a regular user again. */
-export const setUserRoleAction = async (
-  input: SetUserRoleInput,
-): Promise<ActionResult<AdminUser>> => {
-  try {
-    const user = await setUserRole(input)
     refresh()
     return { ok: true, data: user }
   } catch (error) {

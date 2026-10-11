@@ -6,7 +6,6 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useEffectEvent, useState } from 'react'
 import { SignOutButton } from '@/components/Auth/SignOutButton'
-import { NotificationBell } from '@/components/Notifications/Bell'
 import { Button } from '@/components/SCN/button'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { UserAvatar } from '@/components/UserAvatar'
@@ -18,7 +17,6 @@ import {
   ROUTE_LOGIN,
   ROUTE_POSTS,
   ROUTE_POSTS_MINE,
-  ROUTE_DASHBOARD,
   ROUTE_SETTINGS,
   ROUTE_UI_KIT,
 } from '@/lib/constants-routes'
@@ -31,7 +29,6 @@ const MOBILE_NAV_ID = 'mobile-nav'
 const NAV_LINKS = [
   { label: 'Posts', href: ROUTE_POSTS },
   { label: 'UI Kit', href: ROUTE_UI_KIT },
-  { label: 'Dashboard', href: ROUTE_DASHBOARD },
 ]
 
 /** Only for signed-in users; `/posts/mine` is private (the proxy and the DAL both guard it). */
@@ -94,11 +91,9 @@ const AccountActions = ({ user }: AccountActionsProps) => {
 
 type NavBarProps = {
   user: CurrentUser | null
-  /** The signed-in viewer's unread notifications, rendered on the server. */
-  unreadCount: number
 }
 
-export const NavBar = ({ user, unreadCount }: NavBarProps) => {
+export const NavBar = ({ user }: NavBarProps) => {
   const { lockScroll, unlockScroll } = useScrollLock()
   const links = [
     ...NAV_LINKS,
@@ -149,13 +144,6 @@ export const NavBar = ({ user, unreadCount }: NavBarProps) => {
             <AccountActions user={user} />
           </div>
         </div>
-
-        {/* One bell, visible at every breakpoint: it owns the realtime stream, so it mounts once. */}
-        {user && (
-          <div className={styles.bellSlot}>
-            <NotificationBell initialUnreadCount={unreadCount} />
-          </div>
-        )}
 
         <button
           type="button"

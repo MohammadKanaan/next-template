@@ -7,7 +7,7 @@
 # `tsx`, so it needs the source tree and the full node_modules anyway.
 
 ARG NODE_VERSION=24
-ARG BUN_VERSION=1.3.10
+ARG BUN_VERSION=1.4.2
 
 FROM oven/bun:${BUN_VERSION} AS bun
 
@@ -33,7 +33,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/generated ./generated
 COPY . .
 # NEXT_PUBLIC_* values are inlined into the client bundle at build time. Everything else is read at
-# runtime, so the build needs no database, Redis or storage.
+# runtime, so the build needs no database or Redis.
 ARG NEXT_PUBLIC_APP_NAME
 ARG NEXT_PUBLIC_API_BASE_URL
 ENV NEXT_PUBLIC_APP_NAME=$NEXT_PUBLIC_APP_NAME \

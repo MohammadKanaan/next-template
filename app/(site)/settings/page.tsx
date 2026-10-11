@@ -2,8 +2,8 @@ import type { Metadata } from 'next'
 import { PageHeader } from '@/components/PageHeader'
 import { ROUTE_SETTINGS } from '@/lib/constants-routes'
 import { loadPage } from '@/lib/data/page'
-import { getPushConfig } from '@/lib/data/push'
 import { listSessions } from '@/lib/data/sessions'
+import { canUpload } from '@/lib/data/uploads'
 import { getCurrentUser, hasPassword } from '@/lib/data/users'
 import { SettingsView } from './view'
 import styles from './styles.module.scss'
@@ -13,14 +13,10 @@ export const metadata: Metadata = {
 }
 
 const SettingsPage = async () => {
-  const { user, sessions, userHasPassword, pushConfig } = await loadPage(async () => {
-    const [user, sessions, userHasPassword] = await Promise.all([
-      getCurrentUser(),
-      listSessions(),
-      hasPassword(),
-    ])
-    return { user, sessions, userHasPassword, pushConfig: getPushConfig() }
-  }, ROUTE_SETTINGS)
+  const [user, sessions, userHasPassword] = await loadPage(
+    () => Promise.all([getCurrentUser(), listSessions(), hasPassword()]),
+    ROUTE_SETTINGS,
+  )
 
   return (
     <div className={styles.page}>
@@ -29,7 +25,7 @@ const SettingsPage = async () => {
         user={user}
         sessions={sessions}
         hasPassword={userHasPassword}
-        pushConfig={pushConfig}
+        canUpload={canUpload()}
       />
     </div>
   )

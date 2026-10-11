@@ -17,7 +17,7 @@ import styles from './styles.module.scss'
 export type AvatarUploaderProps = {
   name: string
   image: string | null
-  /** Asks for a presigned upload (a Server Action). */
+  /** Asks for a presigned upload ticket (a Server Action). */
   onCreateUpload: (input: CreateUploadInput) => Promise<ActionResult<UploadTicket>>
   /** Makes the finished upload the avatar (a Server Action). */
   onAttach: (uploadId: string) => Promise<ActionResult<CurrentUser>>

@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { signUpInput } from './auth'
 import { pageQuerySchema } from './common'
 
+/** The two roles the admin plugin is configured with (`adminRoles: ['admin']` in `lib/data/auth.ts`). */
 export const roleSchema = z.enum(['user', 'admin'])
 
 export type Role = z.infer<typeof roleSchema>
@@ -77,8 +78,9 @@ export const sessionSummarySchema = z.object({
 export type SessionSummary = z.infer<typeof sessionSummarySchema>
 
 export const USER_SEARCH_MAX_LENGTH = 100
+export const BAN_REASON_MAX_LENGTH = 200
 
-/** One row of the admin user list. Admin-only: it carries the email. */
+/** One row of the admin user list. Admin-only: it carries the email and the ban. */
 export const adminUserSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -86,8 +88,9 @@ export const adminUserSchema = z.object({
   email: z.string(),
   emailVerified: z.boolean(),
   role: roleSchema,
+  banned: z.boolean(),
+  banReason: z.string().nullable(),
   createdAt: z.coerce.date(),
-  postCount: z.number().int(),
 })
 
 export type AdminUser = z.infer<typeof adminUserSchema>
@@ -108,3 +111,15 @@ export const usersUrlQuery = z.object({
 export const setUserRoleInput = z.object({ id: userIdSchema, role: roleSchema })
 
 export type SetUserRoleInput = z.infer<typeof setUserRoleInput>
+
+/** `reason` is shown to the banned user by Better Auth when they try to sign in. */
+export const banUserInput = z.object({
+  id: userIdSchema,
+  reason: z
+    .string()
+    .trim()
+    .max(BAN_REASON_MAX_LENGTH, `Reason must be ${BAN_REASON_MAX_LENGTH} characters or fewer`)
+    .optional(),
+})
+
+export type BanUserInput = z.infer<typeof banUserInput>

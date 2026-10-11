@@ -17,21 +17,21 @@ const signIn = async () => {
 
 describe('LoginView', () => {
   it('explains a failed provider sign-in with fixed text, only when it failed', () => {
-    const { rerender } = render(<LoginView nextPath="/dashboard" googleEnabled />)
+    const { rerender } = render(<LoginView nextPath="/posts" googleEnabled />)
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
 
-    rerender(<LoginView nextPath="/dashboard" googleEnabled signInFailed />)
+    rerender(<LoginView nextPath="/posts" googleEnabled signInFailed />)
     expect(screen.getByRole('alert')).toHaveTextContent(
       'Sign-in with Google could not be completed. Try again or use your password.',
     )
   })
 
   it('offers Google sign-in only when the provider is configured', () => {
-    const { rerender } = render(<LoginView nextPath="/dashboard" googleEnabled={false} />)
+    const { rerender } = render(<LoginView nextPath="/posts" googleEnabled={false} />)
     expect(screen.queryByRole('button', { name: 'Continue with Google' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument()
 
-    rerender(<LoginView nextPath="/dashboard" googleEnabled />)
+    rerender(<LoginView nextPath="/posts" googleEnabled />)
     expect(screen.getByRole('button', { name: 'Continue with Google' })).toBeInTheDocument()
   })
 

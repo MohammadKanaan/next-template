@@ -1,81 +1,53 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
 import type { SessionUser } from '@/lib/data/auth'
-import { commentPolicy, postPolicy } from '@/lib/data/policies/posts'
-import type { PostStatus } from '@/lib/dto/posts'
+import { postPolicy, type PostRecord } from '@/lib/data/policies/posts'
 
-const author: SessionUser = { id: 'author', role: 'user', sessionId: 's1' }
-const stranger: SessionUser = { id: 'stranger', role: 'user', sessionId: 's2' }
-const admin: SessionUser = { id: 'admin', role: 'admin', sessionId: 's3' }
+const author: SessionUser = { id: 'author', role: 'user', sessionId: 's1', impersonatedBy: null }
+const stranger: SessionUser = {
+  id: 'stranger',
+  role: 'user',
+  sessionId: 's2',
+  impersonatedBy: null,
+}
+const admin: SessionUser = { id: 'admin', role: 'admin', sessionId: 's3', impersonatedBy: null }
 const viewers = { anonymous: null, author, stranger, admin }
 
-const post = (status: PostStatus) => ({ status, authorId: author.id, deletedAt: null })
-const trashed = (status: PostStatus) => ({ ...post(status), deletedAt: new Date() })
+const post = (published: boolean): PostRecord => ({ published, authorId: author.id })
 
 describe('postPolicy', () => {
-  it.each([
-    ['published', { anonymous: true, author: true, stranger: true, admin: true }],
-    ['draft', { anonymous: false, author: true, stranger: false, admin: true }],
-    ['archived', { anonymous: false, author: true, stranger: false, admin: true }],
-  ] as const)('view on a %s post', (status, expected) => {
+  it('lets anyone view a published post', () => {
     for (const [name, viewer] of Object.entries(viewers)) {
-      expect(postPolicy.view(viewer, post(status)), name).toBe(
-        expected[name as keyof typeof expected],
-      )
+      expect(postPolicy.view(viewer, post(true)), name).toBe(true)
     }
   })
 
-  it.each(['update', 'delete', 'changeStatus'] as const)(
-    '%s is for the author and admins, whatever the status',
+  it('shows a draft to its author and admins only', () => {
+    expect(postPolicy.view(null, post(false))).toBe(false)
+    expect(postPolicy.view(stranger, post(false))).toBe(false)
+    expect(postPolicy.view(author, post(false))).toBe(true)
+    expect(postPolicy.view(admin, post(false))).toBe(true)
+  })
+
+  it.each(['update', 'delete'] as const)(
+    '%s is for the author and admins, draft or published',
     (action) => {
-      for (const status of ['draft', 'published', 'archived'] as const) {
-        expect(postPolicy[action](null, post(status))).toBe(false)
-        expect(postPolicy[action](stranger, post(status))).toBe(false)
-        expect(postPolicy[action](author, post(status))).toBe(true)
-        expect(postPolicy[action](admin, post(status))).toBe(true)
+      for (const published of [false, true]) {
+        expect(postPolicy[action](null, post(published))).toBe(false)
+        expect(postPolicy[action](stranger, post(published))).toBe(false)
+        expect(postPolicy[action](author, post(published))).toBe(true)
+        expect(postPolicy[action](admin, post(published))).toBe(true)
       }
     },
   )
 
-  it('comment is open to anyone who can see a published post, and to nobody otherwise', () => {
-    expect(postPolicy.comment(null, post('published'))).toBe(true)
-    expect(postPolicy.comment(stranger, post('published'))).toBe(true)
-    for (const status of ['draft', 'archived'] as const) {
-      expect(postPolicy.comment(author, post(status))).toBe(false)
-      expect(postPolicy.comment(admin, post(status))).toBe(false)
-      expect(postPolicy.comment(stranger, post(status))).toBe(false)
-    }
+  it('ignores an impersonated session: the rules look at the acting user only', () => {
+    const impersonated: SessionUser = { ...author, impersonatedBy: admin.id }
+    expect(postPolicy.update(impersonated, post(false))).toBe(true)
+    expect(postPolicy.update(impersonated, { published: true, authorId: stranger.id })).toBe(false)
   })
 
-  it('restore applies only to a trashed post, for its author and admins', () => {
-    for (const status of ['draft', 'published', 'archived'] as const) {
-      expect(postPolicy.restore(author, post(status))).toBe(false)
-      expect(postPolicy.restore(admin, post(status))).toBe(false)
-      expect(postPolicy.restore(null, trashed(status))).toBe(false)
-      expect(postPolicy.restore(stranger, trashed(status))).toBe(false)
-      expect(postPolicy.restore(author, trashed(status))).toBe(true)
-      expect(postPolicy.restore(admin, trashed(status))).toBe(true)
-    }
-  })
-
-  it('a trashed post allows nothing but restore, even to its author and admins', () => {
-    for (const action of ['view', 'update', 'delete', 'changeStatus', 'comment'] as const) {
-      for (const viewer of Object.values(viewers)) {
-        expect(postPolicy[action](viewer, trashed('published')), action).toBe(false)
-      }
-    }
-  })
-})
-
-describe('commentPolicy', () => {
-  const comment = { authorId: 'commenter', postAuthorId: author.id }
-  const commenter: SessionUser = { id: 'commenter', role: 'user', sessionId: 's4' }
-
-  it('delete is for the comment author, the post author and admins', () => {
-    expect(commentPolicy.delete(null, comment)).toBe(false)
-    expect(commentPolicy.delete(stranger, comment)).toBe(false)
-    expect(commentPolicy.delete(commenter, comment)).toBe(true)
-    expect(commentPolicy.delete(author, comment)).toBe(true)
-    expect(commentPolicy.delete(admin, comment)).toBe(true)
+  it('has exactly the view, update and delete rules', () => {
+    expect(Object.keys(postPolicy).sort()).toEqual(['delete', 'update', 'view'])
   })
 })

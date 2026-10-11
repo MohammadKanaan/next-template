@@ -39,13 +39,6 @@ export class ValidationError extends DataError {
   }
 }
 
-/** The record changed since the caller read it (optimistic locking): 409. */
-export class ConflictError extends DataError {
-  constructor(message = 'The record was changed meanwhile. Reload and try again.') {
-    super('CONFLICT', message)
-  }
-}
-
 export class RateLimitedError extends DataError {
   constructor(message = 'Too many attempts. Try again in a minute.') {
     super('RATE_LIMITED', message)
@@ -75,7 +68,6 @@ const STATUS_BY_CODE: Record<ErrorCode, number> = {
   FORBIDDEN: 403,
   NOT_FOUND: 404,
   VALIDATION: 422,
-  CONFLICT: 409,
   RATE_LIMITED: 429,
 }
 

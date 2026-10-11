@@ -8,7 +8,11 @@ import type { CurrentUser } from '@/lib/dto/users'
 
 vi.mock('@/lib/client/uploads', () => ({ uploadFile: vi.fn(async () => {}) }))
 
-const ticket = { uploadId: 'upload-1', url: 'http://storage.test/bucket', fields: { key: 'k' } }
+const ticket = {
+  uploadId: 'upload-1',
+  url: 'https://acct.r2.cloudflarestorage.com/bucket/k?X-Amz-Signature=s',
+  headers: { 'Content-Type': 'image/png' },
+}
 const user: CurrentUser = {
   id: 'u1',
   name: 'Ada Lovelace',

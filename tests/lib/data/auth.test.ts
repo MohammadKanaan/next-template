@@ -1,14 +1,23 @@
 // @vitest-environment node
+import { APIError } from 'better-auth/api'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { jobs, type JobPayload } from '@/jobs/definitions'
 import { auth, getSessionUser, requireAdmin, requireUser } from '@/lib/data/auth'
 import { db } from '@/lib/data/db'
 import { ForbiddenError, UnauthorizedError } from '@/lib/data/errors'
+import { listPosts } from '@/lib/data/posts'
 import { getViewer } from '@/lib/data/users'
 import { MAX_OBJECT_DELETE_DELAY_SECONDS } from '@/lib/dto/uploads'
 import { enqueue } from '@/lib/server/queue'
 import { getRedis } from '@/lib/server/redis'
 import { cookieJar } from '../../helpers/cookies'
+import {
+  clearMail,
+  flushMail,
+  linkOf,
+  sentMails,
+  sentMailsWithSubject,
+  tokenOf,
+} from '../../helpers/mail'
 import { createUser, resetDatabase, signInAs, signOut, TEST_PASSWORD } from '../../helpers/server'
 
 const { cookieStore, requestHeaders } = await vi.hoisted(
@@ -20,8 +29,14 @@ vi.mock('next/headers', () => ({
 }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn(), refresh: vi.fn() }))
 
+const currentSessionOf = (userId: string) =>
+  db.session.findFirstOrThrow({ where: { userId }, orderBy: { createdAt: 'desc' } })
+
 describe('DAL auth', () => {
-  beforeEach(resetDatabase)
+  beforeEach(async () => {
+    await resetDatabase()
+    clearMail()
+  })
   afterAll(async () => {
     await getRedis().quit()
     await db.$disconnect()
@@ -37,15 +52,17 @@ describe('DAL auth', () => {
     await expect(requireUser()).rejects.toBeInstanceOf(UnauthorizedError)
   })
 
-  it('returns the signed-in user id and role', async () => {
+  it('returns the signed-in user id, role and session, with no impersonator', async () => {
     const user = await createUser({})
     await signInAs(user)
     expect(cookieJar.size).toBeGreaterThan(0)
-    const session = await db.session.findFirstOrThrow({
-      where: { userId: user.id },
-      orderBy: { createdAt: 'desc' },
+    const session = await currentSessionOf(user.id)
+    expect(await requireUser()).toEqual({
+      id: user.id,
+      role: 'user',
+      sessionId: session.id,
+      impersonatedBy: null,
     })
-    expect(await requireUser()).toEqual({ id: user.id, role: 'user', sessionId: session.id })
   })
 
   it('only lets admins through requireAdmin', async () => {
@@ -56,6 +73,79 @@ describe('DAL auth', () => {
     const admin = await createUser({ role: 'admin' })
     await signInAs(admin)
     expect(await requireAdmin()).toMatchObject({ id: admin.id, role: 'admin' })
+  })
+
+  it('reads a role it does not know as a regular user, so an odd value never grants more', async () => {
+    const user = await createUser({})
+    await db.user.update({ where: { id: user.id }, data: { role: 'owner' } })
+    await signInAs(user)
+    expect(await getSessionUser()).toMatchObject({ id: user.id, role: 'user' })
+    await expect(requireAdmin()).rejects.toBeInstanceOf(ForbiddenError)
+
+    // The plugin allows comma-separated role lists; a list is not one of ours either.
+    await db.user.update({ where: { id: user.id }, data: { role: 'admin,user' } })
+    expect((await getSessionUser())?.role).toBe('user')
+  })
+
+  it('exposes the admin behind an impersonated session', async () => {
+    const user = await createUser({})
+    const admin = await createUser({ role: 'admin' })
+    await signInAs(user)
+    const session = await currentSessionOf(user.id)
+    await db.session.update({ where: { id: session.id }, data: { impersonatedBy: admin.id } })
+    expect(await getSessionUser()).toEqual({
+      id: user.id,
+      role: 'user',
+      sessionId: session.id,
+      impersonatedBy: admin.id,
+    })
+  })
+
+  describe('a banned user', () => {
+    it('cannot sign in, and their sessions are gone', async () => {
+      const user = await createUser({})
+      const other = await createUser({})
+      await signInAs(user)
+      await expect(requireUser()).resolves.toMatchObject({ id: user.id })
+      const admin = await createUser({ role: 'admin' })
+      await signInAs(admin)
+
+      await auth.api.banUser({
+        body: { userId: user.id, banReason: 'Spam' },
+        headers: requestHeaders(),
+      })
+
+      expect(await db.session.count({ where: { userId: user.id } })).toBe(0)
+      // The ban does not reach anyone else's sessions.
+      expect(await db.session.count({ where: { userId: other.id } })).toBeGreaterThan(0)
+      expect(await db.user.findUniqueOrThrow({ where: { id: user.id } })).toMatchObject({
+        banned: true,
+        banReason: 'Spam',
+      })
+
+      signOut()
+      const refused = await auth.api
+        .signInEmail({ body: { email: user.email, password: TEST_PASSWORD } })
+        .catch((error: unknown) => error)
+      expect(refused).toBeInstanceOf(APIError)
+      expect(refused).toMatchObject({
+        status: 'FORBIDDEN',
+        body: { code: 'BANNED_USER', message: 'Your account is banned: Spam' },
+      })
+      expect(cookieJar.size).toBe(0)
+      await expect(requireUser()).rejects.toBeInstanceOf(UnauthorizedError)
+    })
+
+    it('can sign in again once unbanned', async () => {
+      const user = await createUser({})
+      const admin = await createUser({ role: 'admin' })
+      await signInAs(admin)
+      await auth.api.banUser({ body: { userId: user.id }, headers: requestHeaders() })
+      await auth.api.unbanUser({ body: { userId: user.id }, headers: requestHeaders() })
+
+      await signInAs(user)
+      await expect(requireUser()).resolves.toMatchObject({ id: user.id })
+    })
   })
 
   describe("Better Auth's HTTP router", () => {
@@ -152,66 +242,95 @@ describe('DAL auth', () => {
 
     it('does not expose password-reset or verification-email requests', async () => {
       const user = await createUser({})
-      vi.mocked(enqueue).mockClear()
+      clearMail()
       const reset = await post('/request-password-reset', { email: user.email })
       const verification = await post('/send-verification-email', { email: user.email })
       expect(reset.status).toBe(404)
       expect(verification.status).toBe(404)
-      expect(enqueue).not.toHaveBeenCalled()
+      await flushMail()
+      expect(sentMails()).toEqual([])
       // Direct calls (what the actions use) still work.
       await auth.api.requestPasswordReset({ body: { email: user.email } })
       await auth.api.sendVerificationEmail({ body: { email: user.email } })
-      expect(enqueue).toHaveBeenCalledTimes(2)
+      await flushMail()
+      expect(
+        sentMails()
+          .map((mail) => mail.subject)
+          .sort(),
+      ).toEqual(['Reset your password', 'Verify your email'])
+    })
+
+    it('does not expose the admin plugin routes, even to a signed-in admin', async () => {
+      const target = await createUser({})
+      const admin = await createUser({ role: 'admin' })
+      await signInAs(admin)
+      const cookie = requestHeaders().get('cookie')!
+
+      const setRole = await post('/admin/set-role', { userId: target.id, role: 'admin' }, cookie)
+      const ban = await post('/admin/ban-user', { userId: target.id }, cookie)
+      const impersonate = await post('/admin/impersonate-user', { userId: target.id }, cookie)
+      const list = await auth.handler(
+        new Request('http://localhost:3000/api/auth/admin/list-users?limit=10', {
+          headers: { cookie, origin: 'http://localhost:3000' },
+        }),
+      )
+      expect([setRole.status, ban.status, impersonate.status, list.status]).toEqual([
+        404, 404, 404, 404,
+      ])
+      expect(impersonate.headers.get('set-cookie')).toBeNull()
+      expect(await db.user.findUniqueOrThrow({ where: { id: target.id } })).toMatchObject({
+        role: 'user',
+        banned: false,
+      })
+      expect(await db.session.count({ where: { userId: target.id } })).toBeGreaterThan(0)
+      // The DAL reaches the same operations through `auth.api`, which `disabledPaths` does not affect.
+      const direct = await auth.api.setRole({
+        body: { userId: target.id, role: 'admin' },
+        headers: requestHeaders(),
+      })
+      expect(direct.user.id).toBe(target.id)
     })
   })
 
   describe('changing the email', () => {
-    const sentEmails = () =>
-      vi
-        .mocked(enqueue)
-        .mock.calls.filter(([name]) => name === 'send-email')
-        .map(([, payload]) => payload as JobPayload<'send-email'>)
-
-    const tokenOf = (url: string) => String(new URL(url).searchParams.get('token'))
+    const emailOf = async (id: string) => (await db.user.findUniqueOrThrow({ where: { id } })).email
 
     it('asks the current address to confirm, then verifies the new one, then switches', async () => {
       const user = await createUser({ email: 'old@example.com' })
       await db.user.update({ where: { id: user.id }, data: { emailVerified: true } })
       await signInAs(user)
-      vi.mocked(enqueue).mockClear()
+      clearMail()
 
       await auth.api.changeEmail({
         body: { newEmail: 'New@Example.com', callbackURL: '/settings' },
         headers: requestHeaders(),
       })
-      const [confirmation, ...rest] = sentEmails()
+      await flushMail()
+      const [confirmation, ...rest] = sentMails()
       expect(rest).toEqual([])
       expect(confirmation).toMatchObject({
-        template: 'confirm-email-change',
+        subject: 'Confirm your email change',
         to: 'old@example.com',
-        props: { name: user.name, newEmail: 'new@example.com' },
       })
-      expect(() => jobs['send-email'].schema.parse(confirmation)).not.toThrow()
-      expect(await db.user.findUniqueOrThrow({ where: { id: user.id } })).toMatchObject({
-        email: 'old@example.com',
-      })
+      expect(confirmation.text).toContain(user.name)
+      expect(confirmation.text).toContain('new@example.com')
+      expect(await emailOf(user.id)).toBe('old@example.com')
 
-      vi.mocked(enqueue).mockClear()
+      clearMail()
       await auth.api
         .verifyEmail({
-          query: { token: tokenOf(confirmation.props.url!), callbackURL: '/settings' },
+          query: { token: tokenOf(confirmation), callbackURL: '/settings' },
           headers: requestHeaders(),
         })
         .catch(() => {})
-      const [verification] = sentEmails()
-      expect(verification).toMatchObject({ template: 'verify-email', to: 'new@example.com' })
-      expect(await db.user.findUniqueOrThrow({ where: { id: user.id } })).toMatchObject({
-        email: 'old@example.com',
-      })
+      await flushMail()
+      const [verification] = sentMails()
+      expect(verification).toMatchObject({ subject: 'Verify your email', to: 'new@example.com' })
+      expect(await emailOf(user.id)).toBe('old@example.com')
 
       await auth.api
         .verifyEmail({
-          query: { token: tokenOf(verification.props.url), callbackURL: '/settings' },
+          query: { token: tokenOf(verification), callbackURL: '/settings' },
           headers: requestHeaders(),
         })
         .catch(() => {})
@@ -225,14 +344,15 @@ describe('DAL auth', () => {
     it('verifies the new address directly when the current one was never verified', async () => {
       const user = await createUser({ email: 'old@example.com' })
       await signInAs(user)
-      vi.mocked(enqueue).mockClear()
+      clearMail()
 
       await auth.api.changeEmail({
         body: { newEmail: 'new@example.com', callbackURL: '/settings' },
         headers: requestHeaders(),
       })
-      expect(sentEmails()).toEqual([
-        expect.objectContaining({ template: 'verify-email', to: 'new@example.com' }),
+      await flushMail()
+      expect(sentMails()).toEqual([
+        expect.objectContaining({ subject: 'Verify your email', to: 'new@example.com' }),
       ])
     })
 
@@ -241,136 +361,40 @@ describe('DAL auth', () => {
       await createUser({ email: 'taken@example.com' })
       await db.user.update({ where: { id: user.id }, data: { emailVerified: true } })
       await signInAs(user)
-      vi.mocked(enqueue).mockClear()
+      clearMail()
 
       const result = await auth.api.changeEmail({
         body: { newEmail: 'taken@example.com', callbackURL: '/settings' },
         headers: requestHeaders(),
       })
       expect(result).toEqual({ status: true })
-      expect(sentEmails()).toEqual([])
+      await flushMail()
+      expect(sentMails()).toEqual([])
     })
   })
 
   describe('deleting the account', () => {
-    it('removes the user with their posts and sessions, and queues their uploads for deletion', async () => {
+    it('removes the user with their posts and sessions, and nobody else’s', async () => {
       const user = await createUser({})
       const other = await createUser({})
       await db.post.create({ data: { userId: user.id, title: 'Mine', body: 'b' } })
       await db.post.create({ data: { userId: other.id, title: 'Theirs', body: 'b' } })
-      await db.upload.createMany({
-        data: [
-          {
-            key: 'avatars/a/1',
-            userId: user.id,
-            purpose: 'avatar',
-            contentType: 'image/png',
-            size: 1,
-          },
-          {
-            key: 'avatars/a/2',
-            userId: user.id,
-            purpose: 'avatar',
-            contentType: 'image/png',
-            size: 1,
-          },
-          {
-            key: 'avatars/b/1',
-            userId: other.id,
-            purpose: 'avatar',
-            contentType: 'image/png',
-            size: 1,
-          },
-        ],
-      })
       await signInAs(user)
-      vi.mocked(enqueue).mockClear()
 
       await auth.api.deleteUser({ body: { password: TEST_PASSWORD }, headers: requestHeaders() })
 
       expect(await db.user.count({ where: { id: user.id } })).toBe(0)
+      expect(await db.user.count({ where: { id: other.id } })).toBe(1)
       expect(await db.post.findMany({ select: { title: true } })).toEqual([{ title: 'Theirs' }])
       expect(await db.session.count({ where: { userId: user.id } })).toBe(0)
-      const jobs = vi.mocked(enqueue).mock.calls.filter(([name]) => name === 'delete-object')
-      const deleted = jobs.map(([, payload]) => (payload as { key: string }).key).sort()
-      expect(deleted).toEqual(['avatars/a/1', 'avatars/a/2'])
-      // Delayed past every ticket's lifetime, so an upload still in flight cannot be orphaned.
-      for (const [, , options] of jobs) {
-        expect(options).toEqual({
-          startAfter: MAX_OBJECT_DELETE_DELAY_SECONDS,
-        })
-      }
-    })
-
-    it('also queues and removes the files other people attached to their posts', async () => {
-      const user = await createUser({})
-      const admin = await createUser({ role: 'admin' })
-      const mine = await db.post.create({ data: { userId: user.id, title: 'Mine', body: 'b' } })
-      const theirs = await db.post.create({
-        data: { userId: admin.id, title: 'Theirs', body: 'b' },
-      })
-      const attach = (key: string, postId: number) =>
-        db.upload.create({
-          data: {
-            key,
-            userId: admin.id,
-            postId,
-            purpose: 'attachment',
-            name: 'f.pdf',
-            contentType: 'application/pdf',
-            size: 1,
-            status: 'attached',
-          },
-        })
-      await attach('attachments/admin/on-mine', mine.id)
-      await attach('attachments/admin/on-theirs', theirs.id)
-      await signInAs(user)
-      vi.mocked(enqueue).mockClear()
-
-      await auth.api.deleteUser({ body: { password: TEST_PASSWORD }, headers: requestHeaders() })
-
-      const jobs = vi.mocked(enqueue).mock.calls.filter(([name]) => name === 'delete-object')
-      expect(jobs.map(([, payload]) => (payload as { key: string }).key)).toEqual([
-        'attachments/admin/on-mine',
-      ])
-      expect((await db.upload.findMany()).map((row) => row.key)).toEqual([
-        'attachments/admin/on-theirs',
-      ])
-    })
-
-    it("hands the files they attached to someone else's post to its author", async () => {
-      const admin = await createUser({ role: 'admin' })
-      const author = await createUser({})
-      const post = await db.post.create({ data: { userId: author.id, title: 'Bob', body: 'b' } })
-      await db.upload.create({
-        data: {
-          key: 'attachments/admin/on-bob',
-          userId: admin.id,
-          postId: post.id,
-          purpose: 'attachment',
-          name: 'report.pdf',
-          contentType: 'application/pdf',
-          size: 1,
-          status: 'attached',
-        },
-      })
-      await signInAs(admin)
-      vi.mocked(enqueue).mockClear()
-
-      await auth.api.deleteUser({ body: { password: TEST_PASSWORD }, headers: requestHeaders() })
-
-      const jobs = vi.mocked(enqueue).mock.calls.filter(([name]) => name === 'delete-object')
-      expect(jobs).toEqual([])
-      expect(
-        await db.upload.findMany({ select: { key: true, userId: true, postId: true } }),
-      ).toEqual([{ key: 'attachments/admin/on-bob', userId: author.id, postId: post.id }])
+      expect(await db.account.count({ where: { userId: user.id } })).toBe(0)
+      await expect(requireUser()).rejects.toBeInstanceOf(UnauthorizedError)
     })
 
     it('drops the cached post lists and viewer', async () => {
-      const { listPosts } = await import('@/lib/data/posts')
       const user = await createUser({})
       await db.post.create({
-        data: { userId: user.id, title: 'Soon gone', body: 'b', status: 'published' },
+        data: { userId: user.id, title: 'Soon gone', body: 'b', published: true },
       })
       await signInAs(user)
       expect((await listPosts({ page: 1, perPage: 10 })).totalItems).toBe(1)
@@ -379,6 +403,31 @@ describe('DAL auth', () => {
       await auth.api.deleteUser({ body: { password: TEST_PASSWORD }, headers: requestHeaders() })
 
       expect((await listPosts({ page: 1, perPage: 10 })).totalItems).toBe(0)
+      expect(await getViewer()).toBeNull()
+    })
+
+    it("queues the user's upload objects for deletion, delayed past every ticket's lifetime", async () => {
+      const user = await createUser({})
+      const other = await createUser({})
+      const upload = (userId: string, key: string, status: 'pending' | 'attached') =>
+        db.upload.create({
+          data: { userId, key, purpose: 'avatar', contentType: 'image/png', size: 1, status },
+        })
+      await upload(user.id, `avatars/${user.id}/old`, 'attached')
+      await upload(user.id, `avatars/${user.id}/half`, 'pending')
+      await upload(other.id, `avatars/${other.id}/keep`, 'attached')
+      await signInAs(user)
+      vi.mocked(enqueue).mockClear()
+
+      await auth.api.deleteUser({ body: { password: TEST_PASSWORD }, headers: requestHeaders() })
+
+      const deletes = vi.mocked(enqueue).mock.calls.filter(([name]) => name === 'delete-object')
+      const keys = deletes.map(([, payload]) => ('key' in payload ? payload.key : null)).sort()
+      expect(keys).toEqual([`avatars/${user.id}/half`, `avatars/${user.id}/old`])
+      for (const [, , options] of deletes) {
+        expect(options).toEqual({ startAfter: MAX_OBJECT_DELETE_DELAY_SECONDS })
+      }
+      expect(await db.upload.count()).toBe(1)
     })
 
     it('refuses a wrong password and keeps the account', async () => {
@@ -397,17 +446,14 @@ describe('DAL auth', () => {
     const requestChangeEmail = async (newEmail: string) => {
       const user = await createUser({ email: 'old@example.com' })
       await signInAs(user)
-      vi.mocked(enqueue).mockClear()
+      clearMail()
       await auth.api.changeEmail({
         body: { newEmail, callbackURL: '/settings' },
         headers: requestHeaders(),
       })
-      const verification = vi
-        .mocked(enqueue)
-        .mock.calls.map(([, payload]) => payload as JobPayload<'send-email'>)
-        .find((payload) => payload.template === 'verify-email')
-      const url = new URL(verification!.props.url)
-      return { user, token: String(url.searchParams.get('token')) }
+      await flushMail()
+      const [verification] = sentMailsWithSubject('Verify your email')
+      return { user, token: tokenOf(verification) }
     }
 
     const emailOf = async (id: string) => (await db.user.findUniqueOrThrow({ where: { id } })).email
@@ -463,13 +509,13 @@ describe('DAL auth', () => {
     it('leaves the plain verification link alone', async () => {
       const user = await createUser({ email: 'plain@example.com' })
       signOut()
-      vi.mocked(enqueue).mockClear()
+      clearMail()
       await auth.api.sendVerificationEmail({ body: { email: user.email } })
-      const { props } = vi.mocked(enqueue).mock.calls[0][1] as JobPayload<'send-email'>
-      await auth.api.verifyEmail({
-        query: { token: String(new URL(props.url!).searchParams.get('token')) },
-        headers: requestHeaders(),
-      })
+      await flushMail()
+      const [mail] = sentMailsWithSubject('Verify your email')
+      expect(mail.to).toBe('plain@example.com')
+      expect(new URL(linkOf(mail)).pathname).toBe('/api/auth/verify-email')
+      await auth.api.verifyEmail({ query: { token: tokenOf(mail) }, headers: requestHeaders() })
       expect(await db.user.findUniqueOrThrow({ where: { id: user.id } })).toMatchObject({
         emailVerified: true,
       })

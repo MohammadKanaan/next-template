@@ -1,31 +1,22 @@
-import { createElement } from 'react'
-import { ConfirmEmailChange } from '@/emails/ConfirmEmailChange'
-import { ResetPassword } from '@/emails/ResetPassword'
-import { VerifyEmail } from '@/emails/VerifyEmail'
-import { sendMail } from '@/lib/server/mailer'
-import { jobs } from './definitions'
+import { confirmEmailChangeEmail } from '@/emails/confirmEmailChange'
+import { resetPasswordEmail } from '@/emails/resetPassword'
+import { verifyEmail } from '@/emails/verifyEmail'
+import { sendMail, type Mail } from '@/lib/server/mailer'
+import { jobs, type SendEmailPayload } from './definitions'
 
-/** Maps a payload's `template` to its React Email component and subject, then sends it. */
-export const handleSendEmail = async (payload: unknown) => {
-  const email = jobs['send-email'].schema.parse(payload)
+/** Builds the mail a payload describes: the template function for its `template`, plus `to`. */
+export const renderEmail = (email: SendEmailPayload): Mail => {
   switch (email.template) {
     case 'verify-email':
-      return sendMail({
-        to: email.to,
-        subject: 'Verify your email',
-        react: createElement(VerifyEmail, email.props),
-      })
+      return { to: email.to, ...verifyEmail(email.props) }
     case 'reset-password':
-      return sendMail({
-        to: email.to,
-        subject: 'Reset your password',
-        react: createElement(ResetPassword, email.props),
-      })
+      return { to: email.to, ...resetPasswordEmail(email.props) }
     case 'confirm-email-change':
-      return sendMail({
-        to: email.to,
-        subject: 'Confirm your email change',
-        react: createElement(ConfirmEmailChange, email.props),
-      })
+      return { to: email.to, ...confirmEmailChangeEmail(email.props) }
   }
+}
+
+/** Re-validates the payload, builds the mail and sends it; a failure makes pg-boss retry. */
+export const handleSendEmail = async (payload: unknown) => {
+  await sendMail(renderEmail(jobs['send-email'].schema.parse(payload)))
 }
