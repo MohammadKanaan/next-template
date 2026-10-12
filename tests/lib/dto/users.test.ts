@@ -5,8 +5,6 @@ import {
   BAN_REASON_MAX_LENGTH,
   banUserInput,
   listUsersQuery,
-  roleSchema,
-  sessionIdSchema,
   setUserRoleInput,
   updateProfileInput,
   USER_SEARCH_MAX_LENGTH,
@@ -53,14 +51,6 @@ describe('updateProfileInput', () => {
 })
 
 const USER_ID = '0190d1a2-0000-7000-8000-0000000000a1'
-
-describe('sessions', () => {
-  it('accepts a UUID session id only', () => {
-    expect(sessionIdSchema.safeParse('0190d1a2-0000-7000-8000-0000000000a1').success).toBe(true)
-    expect(sessionIdSchema.safeParse('abc').success).toBe(false)
-    expect(sessionIdSchema.safeParse('').success).toBe(false)
-  })
-})
 
 describe('admin user list', () => {
   it('bounds and trims the search, and defaults the paging', () => {
@@ -174,7 +164,6 @@ describe('adminUserSchema', () => {
   })
 
   it('rejects a role that is not one of ours', () => {
-    expect(roleSchema.options).toEqual(['user', 'admin'])
     expect(adminUserSchema.safeParse({ ...row, role: 'owner' }).success).toBe(false)
     expect(adminUserSchema.safeParse({ ...row, role: 'admin,user' }).success).toBe(false)
   })

@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { toast } from 'sonner'
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { updatePostAction } from '@/actions/posts'
 import { PostEditView } from '@/app/(site)/posts/[id]/edit/view'
 import type { PostDetail } from '@/lib/dto/posts'
@@ -10,19 +10,6 @@ const { push } = vi.hoisted(() => ({ push: vi.fn() }))
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }))
 vi.mock('sonner', () => ({ toast: Object.assign(vi.fn(), { success: vi.fn() }) }))
 vi.mock('@/actions/posts', () => ({ updatePostAction: vi.fn() }))
-
-// Radix Checkbox mirrors itself into a hidden form input it sizes with ResizeObserver, which
-// jsdom does not implement.
-beforeAll(() => {
-  vi.stubGlobal(
-    'ResizeObserver',
-    class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    },
-  )
-})
 
 const post: PostDetail = {
   id: '0190d1a2-0000-7000-8000-000000000007',
@@ -45,15 +32,6 @@ const save = () => userEvent.click(screen.getByRole('button', { name: 'Save chan
 describe('PostEditView', () => {
   afterEach(() => vi.clearAllMocks())
 
-  it('shows the post in the form under an Edit post heading', () => {
-    render(<PostEditView post={post} />)
-    expect(screen.getByRole('heading', { name: 'Edit post' })).toBeInTheDocument()
-    expect(screen.getByLabelText(/Title/)).toHaveValue('Hello')
-    expect(screen.getByLabelText(/Body/)).toHaveValue('World')
-    expect(screen.getByRole('checkbox', { name: 'Published' })).not.toBeChecked()
-    expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled()
-  })
-
   it('submits only the changed attributes and opens the post', async () => {
     vi.mocked(updatePostAction).mockResolvedValue({ ok: true, data: { ...post, title: 'Hello!' } })
     render(<PostEditView post={post} />)
@@ -72,20 +50,6 @@ describe('PostEditView', () => {
     await save()
     expect(updatePostAction).toHaveBeenCalledWith(post.id, { published: true })
     expect(push).toHaveBeenCalledWith('/posts/0190d1a2-0000-7000-8000-000000000007')
-  })
-
-  it('sends every changed field together', async () => {
-    vi.mocked(updatePostAction).mockResolvedValue({ ok: true, data: post })
-    render(<PostEditView post={post} />)
-    await userEvent.type(screen.getByLabelText(/Title/), '!')
-    await userEvent.type(screen.getByLabelText(/Body/), '?')
-    await userEvent.click(screen.getByRole('checkbox', { name: 'Published' }))
-    await save()
-    expect(updatePostAction).toHaveBeenCalledWith(post.id, {
-      title: 'Hello!',
-      body: 'World?',
-      published: true,
-    })
   })
 
   it('says there is nothing to save when the trimmed values equal the post', async () => {

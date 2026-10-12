@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { toast } from 'sonner'
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createPostAction } from '@/actions/posts'
 import { PostNewView } from '@/app/(site)/posts/new/view'
 
@@ -9,19 +9,6 @@ const { push } = vi.hoisted(() => ({ push: vi.fn() }))
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }))
 vi.mock('sonner', () => ({ toast: { success: vi.fn() } }))
 vi.mock('@/actions/posts', () => ({ createPostAction: vi.fn() }))
-
-// Radix Checkbox mirrors itself into a hidden form input it sizes with ResizeObserver, which
-// jsdom does not implement.
-beforeAll(() => {
-  vi.stubGlobal(
-    'ResizeObserver',
-    class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    },
-  )
-})
 
 const typeInto = async (title: string, body: string) => {
   await userEvent.type(screen.getByLabelText(/Title/), title)

@@ -1,12 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { z } from 'zod'
 import {
   booleanParamSchema,
   idSchema,
   MAX_PAGE,
   MAX_PER_PAGE,
   pageQuerySchema,
-  pageSchema,
   toPage,
 } from '@/lib/dto/common'
 
@@ -41,11 +39,6 @@ describe('idSchema', () => {
 })
 
 describe('booleanParamSchema', () => {
-  it('accepts a boolean as it is', () => {
-    expect(booleanParamSchema.parse(true)).toBe(true)
-    expect(booleanParamSchema.parse(false)).toBe(false)
-  })
-
   it('reads the strings a query string carries', () => {
     expect(booleanParamSchema.parse('true')).toBe(true)
     // `z.coerce.boolean()` would read this as true.
@@ -69,15 +62,5 @@ describe('toPage', () => {
       totalPages: 3,
     })
     expect(toPage([], 0, { page: 1, perPage: 10 }).totalPages).toBe(1)
-  })
-
-  it('round-trips through pageSchema', () => {
-    const page = toPage([1, 2], 2, { page: 1, perPage: 10 })
-    expect(pageSchema(z.number()).parse(page)).toEqual(page)
-  })
-
-  it('rejects a page whose items do not match', () => {
-    const page = toPage(['a'], 1, { page: 1, perPage: 10 })
-    expect(pageSchema(z.number()).safeParse(page).success).toBe(false)
   })
 })

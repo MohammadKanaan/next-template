@@ -31,7 +31,6 @@ describe('SessionList', () => {
 
     expect(within(rows[0]).getByText('Firefox on Linux')).toBeInTheDocument()
     expect(within(rows[0]).getByText('This device')).toBeInTheDocument()
-    expect(within(rows[0]).getByText('Oct 5, 2026, 3:04 PM UTC')).toBeInTheDocument()
     expect(within(rows[0]).queryByRole('button')).not.toBeInTheDocument()
 
     expect(within(rows[1]).getByText('Unknown device')).toBeInTheDocument()

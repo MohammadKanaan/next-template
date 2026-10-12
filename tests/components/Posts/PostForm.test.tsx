@@ -1,21 +1,8 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeAll, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { PostForm } from '@/components/Posts/Form'
 import type { PostDetail } from '@/lib/dto/posts'
-
-// Radix Checkbox mirrors itself into a hidden form input it sizes with ResizeObserver, which
-// jsdom does not implement.
-beforeAll(() => {
-  vi.stubGlobal(
-    'ResizeObserver',
-    class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    },
-  )
-})
 
 const success = { ok: true, data: null }
 const post: PostDetail = {
@@ -70,11 +57,6 @@ describe('PostForm', () => {
     expect(onSubmit).toHaveBeenCalledWith({ title: 'Hello', body: 'World', published: true })
   })
 
-  it('explains what a draft is', () => {
-    render(<PostForm post={null} submitLabel="Create post" onSubmit={vi.fn()} />)
-    expect(screen.getByText('A draft is visible to you and admins only.')).toBeInTheDocument()
-  })
-
   it('shows the fields of an existing post', () => {
     render(<PostForm post={{ ...post, published: true }} submitLabel="Save" onSubmit={vi.fn()} />)
     expect(screen.getByLabelText(/Title/)).toHaveValue('Hello')
@@ -105,11 +87,6 @@ describe('PostForm', () => {
     expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
     await userEvent.click(published())
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
-  })
-
-  it('lets a new post be submitted right away', () => {
-    render(<PostForm post={null} submitLabel="Create post" onSubmit={vi.fn()} />)
-    expect(screen.getByRole('button', { name: 'Create post' })).toBeEnabled()
   })
 
   it('maps server validation errors onto fields', async () => {

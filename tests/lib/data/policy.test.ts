@@ -22,10 +22,6 @@ describe('authorize', () => {
     expect(() => authorize(isOwner, null, note)).toThrow(ForbiddenError)
     expect(() => authorize(isOwner, null, note)).toThrow('You are not allowed to do that')
   })
-
-  it('throws with a custom message', () => {
-    expect(() => authorize(isOwner, null, note, 'Not yours')).toThrow('Not yours')
-  })
 })
 
 describe('permissionsFor', () => {

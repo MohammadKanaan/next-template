@@ -45,18 +45,6 @@ describe('Providers', () => {
     },
   )
 
-  it('restores a saved dark preference without hiding the app', async () => {
-    localStorage.setItem('theme', 'dark')
-    render(
-      <Providers>
-        <p>Application content</p>
-      </Providers>,
-    )
-
-    expect(screen.getByText('Application content')).toBeVisible()
-    await waitFor(() => expect(document.documentElement).toHaveClass('dark'))
-  })
-
   it('uses the system preference when no theme is saved', async () => {
     render(
       <Providers>

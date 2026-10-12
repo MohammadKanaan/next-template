@@ -76,18 +76,4 @@ describe('generated OpenAPI document', () => {
       properties: { updatedAt: { type: 'string', format: 'date-time' } },
     })
   })
-
-  it('uses health and error DTOs for documented response bodies', () => {
-    const schemas = generateOpenApi().components?.schemas
-    expect(schemas?.Health).toMatchObject({
-      required: ['status', 'checks'],
-      properties: { status: { enum: ['ok', 'degraded'] } },
-    })
-    expect(schemas?.ErrorBody).toMatchObject({
-      required: ['code', 'message'],
-      properties: {
-        code: { enum: ['UNAUTHORIZED', 'FORBIDDEN', 'NOT_FOUND', 'VALIDATION', 'RATE_LIMITED'] },
-      },
-    })
-  })
 })

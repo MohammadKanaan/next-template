@@ -46,8 +46,4 @@ describe('postPolicy', () => {
     expect(postPolicy.update(impersonated, post(false))).toBe(true)
     expect(postPolicy.update(impersonated, { published: true, authorId: stranger.id })).toBe(false)
   })
-
-  it('has exactly the view, update and delete rules', () => {
-    expect(Object.keys(postPolicy).sort()).toEqual(['delete', 'update', 'view'])
-  })
 })

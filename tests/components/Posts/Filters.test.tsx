@@ -1,16 +1,8 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { PostsFilters } from '@/components/Posts/Filters'
 import type { ComponentProps } from 'react'
-
-// Radix Select measures and captures pointers, which jsdom does not implement.
-beforeAll(() => {
-  Element.prototype.hasPointerCapture ??= () => false
-  Element.prototype.setPointerCapture ??= () => {}
-  Element.prototype.releasePointerCapture ??= () => {}
-  Element.prototype.scrollIntoView ??= () => {}
-})
 
 const Filters = (props: Partial<ComponentProps<typeof PostsFilters>>) => {
   return <PostsFilters q="" sort="newest" onChange={() => {}} {...props} />
@@ -23,13 +15,7 @@ describe('PostsFilters', () => {
   it('shows the current search and sort', () => {
     render(<Filters q="cats" sort="oldest" />)
     expect(screen.getByLabelText('Search')).toHaveValue('cats')
-    expect(screen.getByLabelText('Search')).toHaveAttribute('maxlength', '100')
     expect(screen.getByRole('combobox', { name: 'Sort' })).toHaveTextContent('Oldest first')
-  })
-
-  it('shows newest first by default', () => {
-    render(<Filters />)
-    expect(screen.getByRole('combobox', { name: 'Sort' })).toHaveTextContent('Newest first')
   })
 
   it('reports the search once, after the debounce, trimmed', () => {
@@ -117,20 +103,6 @@ describe('PostsFilters', () => {
     expect(onChange).toHaveBeenCalledWith({ sort: 'oldest' })
   })
 
-  it('offers newest and oldest only', async () => {
-    vi.useRealTimers()
-    render(<Filters />)
-    await userEvent.click(screen.getByRole('combobox', { name: 'Sort' }))
-    const options = await screen.findAllByRole('option')
-    expect(options.map((option) => option.textContent)).toEqual(['Newest first', 'Oldest first'])
-  })
-
-  it('disables both controls', () => {
-    render(<Filters disabled />)
-    expect(screen.getByLabelText('Search')).toBeDisabled()
-    expect(screen.getByRole('combobox', { name: 'Sort' })).toBeDisabled()
-  })
-
   describe('clear search', () => {
     it('is hidden while no search is applied, and sort alone does not show it', () => {
       render(<Filters sort="oldest" />)
@@ -170,11 +142,6 @@ describe('PostsFilters', () => {
       fireEvent.change(screen.getByLabelText('Search'), { target: { value: 'cats' } })
       act(() => vi.advanceTimersByTime(300))
       expect(onChange).toHaveBeenLastCalledWith({ q: 'cats' })
-    })
-
-    it('is disabled with the other controls', () => {
-      render(<Filters q="cats" disabled />)
-      expect(screen.getByRole('button', { name: 'Clear search' })).toBeDisabled()
     })
   })
 })

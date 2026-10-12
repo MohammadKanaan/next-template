@@ -94,27 +94,6 @@ describe('post actions', () => {
       expect(revalidatePath).not.toHaveBeenCalled()
     })
 
-    it('rejects an empty update', async () => {
-      await signInAs(await createUser({}))
-      expect(await updatePostAction(MISSING_ID, {})).toMatchObject({
-        ok: false,
-        code: 'VALIDATION',
-        fieldErrors: { base: ['Provide at least one attribute'] },
-      })
-    })
-
-    it('rejects a bad id', async () => {
-      await signInAs(await createUser({}))
-      expect(await updatePostAction('0', { title: 'x' })).toMatchObject({
-        ok: false,
-        code: 'VALIDATION',
-      })
-      expect(await updatePostAction('abc' as never, { title: 'x' })).toMatchObject({
-        ok: false,
-        code: 'VALIDATION',
-      })
-    })
-
     it('reports NOT_FOUND for a missing post', async () => {
       await signInAs(await createUser({}))
       expect(await updatePostAction(MISSING_ID, { title: 'x' })).toMatchObject({

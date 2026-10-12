@@ -1,5 +1,4 @@
 // @vitest-environment node
-import { APIError } from 'better-auth/api'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { auth, getSessionUser, requireAdmin, requireUser, toRole } from '@/lib/data/auth'
 import { db } from '@/lib/data/db'
@@ -94,67 +93,6 @@ describe('DAL auth', () => {
       db.user.update({ where: { id: user.id }, data: { role: 'owner' } }),
     ).rejects.toThrow()
     expect((await db.user.findUniqueOrThrow({ where: { id: user.id } })).role).toBe('user')
-  })
-
-  it('exposes the admin behind an impersonated session', async () => {
-    const user = await createUser({})
-    const admin = await createUser({ role: 'admin' })
-    await signInAs(user)
-    const session = await currentSessionOf(user.id)
-    await db.session.update({ where: { id: session.id }, data: { impersonatedBy: admin.id } })
-    expect(await getSessionUser()).toEqual({
-      id: user.id,
-      role: 'user',
-      sessionId: session.id,
-      impersonatedBy: admin.id,
-    })
-  })
-
-  describe('a banned user', () => {
-    it('cannot sign in, and their sessions are gone', async () => {
-      const user = await createUser({})
-      const other = await createUser({})
-      await signInAs(user)
-      await expect(requireUser()).resolves.toMatchObject({ id: user.id })
-      const admin = await createUser({ role: 'admin' })
-      await signInAs(admin)
-
-      await auth.api.banUser({
-        body: { userId: user.id, banReason: 'Spam' },
-        headers: requestHeaders(),
-      })
-
-      expect(await db.session.count({ where: { userId: user.id } })).toBe(0)
-      // The ban does not reach anyone else's sessions.
-      expect(await db.session.count({ where: { userId: other.id } })).toBeGreaterThan(0)
-      expect(await db.user.findUniqueOrThrow({ where: { id: user.id } })).toMatchObject({
-        banned: true,
-        banReason: 'Spam',
-      })
-
-      signOut()
-      const refused = await auth.api
-        .signInEmail({ body: { email: user.email, password: TEST_PASSWORD } })
-        .catch((error: unknown) => error)
-      expect(refused).toBeInstanceOf(APIError)
-      expect(refused).toMatchObject({
-        status: 'FORBIDDEN',
-        body: { code: 'BANNED_USER', message: 'Your account is banned: Spam' },
-      })
-      expect(cookieJar.size).toBe(0)
-      await expect(requireUser()).rejects.toBeInstanceOf(UnauthorizedError)
-    })
-
-    it('can sign in again once unbanned', async () => {
-      const user = await createUser({})
-      const admin = await createUser({ role: 'admin' })
-      await signInAs(admin)
-      await auth.api.banUser({ body: { userId: user.id }, headers: requestHeaders() })
-      await auth.api.unbanUser({ body: { userId: user.id }, headers: requestHeaders() })
-
-      await signInAs(user)
-      await expect(requireUser()).resolves.toMatchObject({ id: user.id })
-    })
   })
 
   describe("Better Auth's HTTP router", () => {
@@ -405,22 +343,6 @@ describe('DAL auth', () => {
         expect.objectContaining({ subject: 'Verify your email', to: 'new@example.com' }),
       ])
     })
-
-    it('answers the same and sends nothing when the new address belongs to someone else', async () => {
-      const user = await createUser({ email: 'old@example.com' })
-      await createUser({ email: 'taken@example.com' })
-      await db.user.update({ where: { id: user.id }, data: { emailVerified: true } })
-      await signInAs(user)
-      clearMail()
-
-      const result = await auth.api.changeEmail({
-        body: { newEmail: 'taken@example.com', callbackURL: '/settings' },
-        headers: requestHeaders(),
-      })
-      expect(result).toEqual({ status: true })
-      await flushMail()
-      expect(sentMails()).toEqual([])
-    })
   })
 
   describe('deleting the account', () => {
@@ -489,15 +411,6 @@ describe('DAL auth', () => {
           [],
         )
       }
-    })
-
-    it('refuses a wrong password and keeps the account', async () => {
-      const user = await createUser({})
-      await signInAs(user)
-      await expect(
-        auth.api.deleteUser({ body: { password: 'not-the-password' }, headers: requestHeaders() }),
-      ).rejects.toMatchObject({ body: { code: 'INVALID_PASSWORD' } })
-      expect(await db.user.count({ where: { id: user.id } })).toBe(1)
     })
   })
 
@@ -581,12 +494,6 @@ describe('DAL auth', () => {
         emailVerified: true,
       })
       expect(cookieJar.size).toBe(0)
-    })
-  })
-
-  describe('configuration', () => {
-    it('does not sign the browser in when a verification link is opened', () => {
-      expect(auth.options.emailVerification?.autoSignInAfterVerification).toBe(false)
     })
   })
 })

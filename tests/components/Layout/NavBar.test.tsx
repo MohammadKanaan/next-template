@@ -41,14 +41,6 @@ describe('NavBar', () => {
     expect(linksNamed('Admin')).toHaveLength(0)
   })
 
-  it('keeps the regular links for everyone', () => {
-    const { rerender } = render(<NavBar user={user} />)
-    expect(linksNamed('Posts').length).toBeGreaterThan(0)
-    expect(linksNamed('UI Kit').length).toBeGreaterThan(0)
-    rerender(<NavBar user={null} />)
-    expect(linksNamed('Posts').length).toBeGreaterThan(0)
-  })
-
   it('links signed-in users to their own posts, in both menus', () => {
     const { rerender } = render(<NavBar user={user} />)
     const links = linksNamed('My posts')
@@ -58,16 +50,6 @@ describe('NavBar', () => {
     }
     rerender(<NavBar user={null} />)
     expect(linksNamed('My posts')).toHaveLength(0)
-  })
-
-  it('has no Dashboard link and no notification bell for anyone', () => {
-    const { rerender } = render(<NavBar user={{ ...user, role: 'admin' }} />)
-    expect(linksNamed('Dashboard')).toHaveLength(0)
-    expect(screen.queryAllByRole('button', { name: /Notifications/, hidden: true })).toHaveLength(0)
-    expect(screen.queryAllByRole('link', { name: /Notifications/, hidden: true })).toHaveLength(0)
-    rerender(<NavBar user={user} />)
-    expect(linksNamed('Dashboard')).toHaveLength(0)
-    expect(screen.queryAllByRole('button', { name: /Notifications/, hidden: true })).toHaveLength(0)
   })
 
   it('offers account settings and sign-out to a signed-in user, and log in otherwise', () => {

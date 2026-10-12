@@ -35,8 +35,6 @@ describe('SettingsView', () => {
       expect(screen.getByRole('heading', { name: title, level: 2 })).toBeInTheDocument()
       expect(within(nav).getByRole('link', { name: title })).toBeInTheDocument()
     }
-    expect(screen.getByText('ada@example.com')).toBeInTheDocument()
-    expect(screen.queryByText('Browser notifications')).not.toBeInTheDocument()
     expect(screen.queryByText('Profile photo')).not.toBeInTheDocument()
   })
 

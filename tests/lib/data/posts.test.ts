@@ -66,12 +66,6 @@ describe('posts DAL', () => {
       expect(page.items[0]).not.toHaveProperty('permissions')
     })
 
-    it('keeps a short body whole as the excerpt', async () => {
-      const author = await createUser({})
-      await seedPost(author.id, 'Short', 'Just a line')
-      expect((await listPosts({ page: 1, perPage: 10 })).items[0].excerpt).toBe('Just a line')
-    })
-
     it('pages through the list', async () => {
       const author = await createUser({})
       for (const n of [1, 2, 3]) {

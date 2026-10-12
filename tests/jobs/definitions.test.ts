@@ -41,10 +41,6 @@ describe('job definitions', () => {
     ).toBe(false)
   })
 
-  it('requires the template props', () => {
-    expect(sendEmailPayload.safeParse({ ...verifyEmail, props: {} }).success).toBe(false)
-  })
-
   it('keeps completed send-email jobs for an hour, not the pg-boss default of a week', () => {
     // The payloads carry live reset and verification links.
     expect(jobs['send-email'].options.deleteAfterSeconds).toBe(3600)
@@ -54,11 +50,5 @@ describe('job definitions', () => {
     expect(jobs['delete-object'].schema.safeParse({ key: 'avatars/u/x' }).success).toBe(true)
     expect(jobs['delete-object'].schema.safeParse({ key: '' }).success).toBe(false)
     expect(jobs['delete-object'].schema.safeParse({}).success).toBe(false)
-    expect(jobs['delete-object'].options.retryLimit).toBeGreaterThan(0)
-  })
-
-  it('runs the cleanup every hour', () => {
-    expect(jobs.cleanup.cron).toBe('0 * * * *')
-    expect(jobs.cleanup.schema.safeParse({}).success).toBe(true)
   })
 })

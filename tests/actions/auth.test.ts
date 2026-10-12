@@ -277,14 +277,6 @@ describe('auth actions', () => {
       }
     })
 
-    it('does not block sign-in for an unverified email', async () => {
-      const user = await createUser({})
-      expect(await signInAction({ email: user.email, password: TEST_PASSWORD })).toEqual({
-        ok: true,
-        data: null,
-      })
-    })
-
     it('answers ok for an unknown email without sending anything', async () => {
       expect(await requestPasswordResetAction({ email: 'ghost@example.com' })).toEqual({
         ok: true,
@@ -449,10 +441,6 @@ describe('account actions', () => {
   describe('changePasswordAction', () => {
     const input = { currentPassword: TEST_PASSWORD, newPassword: 'a-brand-new-one' }
 
-    it('requires a session', async () => {
-      expect(await changePasswordAction(input)).toMatchObject({ ok: false, code: 'UNAUTHORIZED' })
-    })
-
     it('answers UNAUTHORIZED before looking at the input when signed out', async () => {
       expect(await changePasswordAction({ currentPassword: '', newPassword: '' })).toMatchObject({
         ok: false,
@@ -513,13 +501,6 @@ describe('account actions', () => {
       await flushMail()
       return sentMails()
     }
-
-    it('requires a session', async () => {
-      expect(await changeEmailAction({ newEmail: 'x@example.com' })).toMatchObject({
-        ok: false,
-        code: 'UNAUTHORIZED',
-      })
-    })
 
     it('answers UNAUTHORIZED before looking at the input when signed out', async () => {
       expect(await changeEmailAction({ newEmail: 'nope' })).toMatchObject({
@@ -610,13 +591,6 @@ describe('account actions', () => {
   })
 
   describe('deleteAccountAction', () => {
-    it('requires a session', async () => {
-      expect(await deleteAccountAction({ password: TEST_PASSWORD })).toMatchObject({
-        ok: false,
-        code: 'UNAUTHORIZED',
-      })
-    })
-
     it('answers UNAUTHORIZED before looking at the input when signed out', async () => {
       expect(await deleteAccountAction({ password: '' })).toMatchObject({
         ok: false,

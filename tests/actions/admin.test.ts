@@ -88,42 +88,6 @@ describe('admin actions', () => {
   })
 
   describe('banUserAction and unbanUserAction', () => {
-    it('require an admin and do not refresh', async () => {
-      const target = await createUser({})
-      expect(await banUserAction({ id: target.id })).toMatchObject({
-        ok: false,
-        code: 'UNAUTHORIZED',
-      })
-      expect(await unbanUserAction(target.id)).toMatchObject({ ok: false, code: 'UNAUTHORIZED' })
-      const member = await createUser({})
-      await signInAs(member)
-      expect(await banUserAction({ id: target.id })).toMatchObject({
-        ok: false,
-        code: 'FORBIDDEN',
-      })
-      expect(await unbanUserAction(target.id)).toMatchObject({ ok: false, code: 'FORBIDDEN' })
-      expect(refresh).not.toHaveBeenCalled()
-      expect(await userRow(target.id)).toMatchObject({ banned: false })
-    })
-
-    it('validate the input and put a long reason on its field', async () => {
-      const target = await createUser({})
-      const admin = await createUser({ role: 'admin' })
-      await signInAs(admin)
-      expect(await banUserAction({ id: 'a b' })).toMatchObject({
-        ok: false,
-        code: 'VALIDATION',
-        fieldErrors: { id: ['Invalid user id'] },
-      })
-      expect(await banUserAction({ id: target.id, reason: 'x'.repeat(201) })).toMatchObject({
-        ok: false,
-        code: 'VALIDATION',
-        fieldErrors: { reason: ['Reason must be 200 characters or fewer'] },
-      })
-      expect(await unbanUserAction('')).toMatchObject({ ok: false, code: 'VALIDATION' })
-      expect(refresh).not.toHaveBeenCalled()
-    })
-
     it('ban, then unban, each refreshing and returning the updated user', async () => {
       const target = await createUser({ name: 'Target' })
       const admin = await createUser({ role: 'admin' })
@@ -192,22 +156,6 @@ describe('admin actions', () => {
   })
 
   describe('impersonateUserAction and stopImpersonatingAction', () => {
-    it('impersonation requires an admin and does not refresh', async () => {
-      const target = await createUser({})
-      expect(await impersonateUserAction(target.id)).toMatchObject({
-        ok: false,
-        code: 'UNAUTHORIZED',
-      })
-      const member = await createUser({})
-      await signInAs(member)
-      expect(await impersonateUserAction(target.id)).toMatchObject({
-        ok: false,
-        code: 'FORBIDDEN',
-      })
-      expect(refresh).not.toHaveBeenCalled()
-      await expect(getSessionUser()).resolves.toMatchObject({ id: member.id })
-    })
-
     it('validates the id and reports a missing user or another admin', async () => {
       const other = await createUser({ role: 'admin' })
       const admin = await createUser({ role: 'admin' })

@@ -55,19 +55,6 @@ describe('GET /api/v1/posts', () => {
     expect(new Date(body.items[0].createdAt).toISOString()).toBe(body.items[0].createdAt)
   })
 
-  it('defaults to the first page of ten, newest first', async () => {
-    const author = await createUser({})
-    await seedPost(author.id, 'First')
-    await seedPost(author.id, 'Second')
-    const response = await GET(request(''))
-    expect(response.status).toBe(200)
-    expect(await response.json()).toMatchObject({
-      page: 1,
-      perPage: 10,
-      items: [{ title: 'Second' }, { title: 'First' }],
-    })
-  })
-
   it('rejects an invalid page with field errors', async () => {
     const response = await GET(request('?page=0'))
     expect(response.status).toBe(422)

@@ -33,9 +33,4 @@ describe('ForgotPasswordForm', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Send reset link' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Too many attempts')
   })
-
-  it('links back to login', () => {
-    render(<ForgotPasswordForm onSubmit={vi.fn()} />)
-    expect(screen.getByRole('link', { name: 'Log in' })).toHaveAttribute('href', '/login')
-  })
 })

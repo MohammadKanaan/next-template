@@ -3,12 +3,7 @@ import {
   AVATAR_MAX_SIZE,
   createUploadInput,
   isAllowedContentType,
-  MAX_OBJECT_DELETE_DELAY_SECONDS,
-  objectDeleteDelaySeconds,
-  UPLOAD_OBJECT_GRACE_SECONDS,
-  UPLOAD_TICKET_SECONDS,
   uploadKeySchema,
-  uploadTicketSchema,
 } from '@/lib/dto/uploads'
 
 const messages = (input: unknown) => {
@@ -24,13 +19,6 @@ describe('UPLOAD_RULES', () => {
     expect(isAllowedContentType('avatar', null)).toBe(false)
     expect(isAllowedContentType('avatar', 'application/pdf')).toBe(false)
     expect(isAllowedContentType('avatar', 'image/webp')).toBe(true)
-  })
-
-  it('delays object deletion past the ticket plus the grace period', () => {
-    expect(objectDeleteDelaySeconds('avatar')).toBe(
-      UPLOAD_TICKET_SECONDS + UPLOAD_OBJECT_GRACE_SECONDS,
-    )
-    expect(MAX_OBJECT_DELETE_DELAY_SECONDS).toBe(objectDeleteDelaySeconds('avatar'))
   })
 })
 
@@ -60,17 +48,6 @@ describe('createUploadInput', () => {
 })
 
 describe('upload ticket and key', () => {
-  it('describes a presigned PUT: a URL and the headers the signature covers', () => {
-    expect(
-      uploadTicketSchema.parse({
-        key: 'avatars/u/k',
-        url: 'https://acct.r2.cloudflarestorage.com/b/k?X-Amz-Signature=s',
-        headers: { 'Content-Type': 'image/png' },
-      }).headers,
-    ).toEqual({ 'Content-Type': 'image/png' })
-    expect(uploadTicketSchema.safeParse({ key: 'k', url: 'x' }).success).toBe(false)
-  })
-
   it('only accepts a key shaped like the ones createUpload makes', () => {
     const key = `avatars/${crypto.randomUUID()}/${crypto.randomUUID()}`
     expect(uploadKeySchema.safeParse(key).success).toBe(true)

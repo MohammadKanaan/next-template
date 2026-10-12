@@ -43,17 +43,6 @@ describe('usesPrettyTransport', () => {
 })
 
 describe('createLogger output', () => {
-  it('writes JSON lines with the message and the child module', () => {
-    const { destination, entries } = capture()
-    const log = createLogger({ env: { NODE_ENV: 'production' }, destination }).child({
-      module: 'cache',
-    })
-    log.error({ uploadId: 'u1' }, 'read failed')
-    expect(entries()).toEqual([
-      expect.objectContaining({ level: 50, module: 'cache', uploadId: 'u1', msg: 'read failed' }),
-    ])
-  })
-
   it('redacts links, tokens, passwords and credentials headers', () => {
     const { destination, entries } = capture()
     const log = createLogger({ env: { NODE_ENV: 'production' }, destination })

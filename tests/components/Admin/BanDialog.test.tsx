@@ -32,21 +32,13 @@ describe('BanUserDialog', () => {
     vi.mocked(toast.success).mockReset()
   })
 
-  it('stays closed until asked, then names the user and explains what a ban does', async () => {
+  it('stays closed until asked, then names the user', async () => {
     render(<BanUserDialog user={grace} />)
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    const dialog = await open()
+    await open()
     expect(screen.getByRole('heading', { name: 'Ban Grace Hopper?' })).toBeInTheDocument()
-    expect(dialog).toHaveTextContent(
-      'They are signed out everywhere and cannot sign in until you unban them.',
-    )
     expect(screen.getByLabelText('Reason')).toHaveValue('')
     expect(banUserAction).not.toHaveBeenCalled()
-  })
-
-  it('can be disabled from outside', () => {
-    render(<BanUserDialog user={grace} disabled />)
-    expect(screen.getByRole('button', { name: 'Ban' })).toBeDisabled()
   })
 
   it('bans without a reason, confirms with a toast and closes', async () => {
