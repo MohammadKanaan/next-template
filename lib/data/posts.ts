@@ -28,7 +28,7 @@ import { authorize, permissionsFor } from './policy'
 import { consumeRateLimit } from './rateLimit'
 import { userProfileSelect } from './users'
 
-const postSummarySelect = {
+export const postSummarySelect = {
   id: true,
   title: true,
   body: true,
@@ -52,7 +52,7 @@ type PostDetailRow = Prisma.PostGetPayload<{ select: typeof postDetailSelect }>
 
 const POSTS_CACHE_TTL = 5 * MINUTE
 
-const toPostSummary = (row: PostSummaryRow): PostSummary => {
+export const toPostSummary = (row: PostSummaryRow): PostSummary => {
   return {
     id: row.id,
     title: row.title,

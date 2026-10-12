@@ -2,6 +2,12 @@ import 'server-only'
 import { APIError } from 'better-auth/api'
 import { headers } from 'next/headers'
 import { Prisma } from '@/generated/prisma/client'
+import {
+  ADMIN_OVERVIEW_RECENT,
+  ADMIN_USER_POSTS,
+  type AdminOverview,
+  type AdminUserDetail,
+} from '@/lib/dto/admin'
 import { toPage, type Page } from '@/lib/dto/common'
 import {
   banUserInput,
@@ -19,6 +25,7 @@ import { escapeLike } from './escapeLike'
 import { ForbiddenError, NotFoundError, parseInput } from './errors'
 import { userPolicy } from './policies/users'
 import { authorize } from './policy'
+import { postSummarySelect, toPostSummary } from './posts'
 
 // The admin area. Reads are this app's own queries; writes go through Better Auth's admin plugin
 // (`auth.api.*`), which owns the semantics (a ban revokes the sessions, impersonation opens a
@@ -67,28 +74,104 @@ const readAdminUser = async (id: string): Promise<AdminUser> => {
 }
 
 /**
- * Admin only: every user, newest first, optionally filtered by a search over name, username and
- * email. Never cached: the list carries emails and is restricted to admins, and a shared cache
- * entry would outlive a role change.
+ * Admin only: every user, newest first by default, optionally filtered by a search over name,
+ * username and email, by role and by status. Never cached: the list carries emails and is
+ * restricted to admins, and a shared cache entry would outlive a role change.
  */
 export const listUsers = async (query: ListUsersQuery): Promise<Page<AdminUser>> => {
   await requireAdmin()
-  const { page, perPage, q } = parseInput(listUsersQuery, query)
+  const { page, perPage, q, role, status, sortBy, direction } = parseInput(listUsersQuery, query)
   const contains = q ? { contains: escapeLike(q), mode: 'insensitive' as const } : undefined
-  const where: Prisma.UserWhereInput = contains
-    ? { OR: [{ name: contains }, { username: contains }, { email: contains }] }
-    : {}
+  const where: Prisma.UserWhereInput = {
+    ...(contains ? { OR: [{ name: contains }, { username: contains }, { email: contains }] } : {}),
+    ...(role ? { role } : {}),
+    ...(status ? { banned: status === 'banned' } : {}),
+  }
   const [rows, totalItems] = await Promise.all([
     db.user.findMany({
       where,
       select: adminUserSelect,
-      orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+      orderBy: [{ [sortBy]: direction }, { id: 'asc' }],
       skip: (page - 1) * perPage,
       take: perPage,
     }),
     db.user.count({ where }),
   ])
   return toPage(rows.map(toAdminUser), totalItems, { page, perPage })
+}
+
+/** The detail's row: the list row plus image, timestamps, live sessions (never the token) and the post count. */
+const adminUserDetailSelect = (now: Date) =>
+  ({
+    ...adminUserSelect,
+    image: true,
+    updatedAt: true,
+    sessions: {
+      where: { expiresAt: { gt: now } },
+      select: { id: true, userAgent: true, createdAt: true, expiresAt: true },
+      orderBy: { createdAt: 'desc' },
+    },
+    _count: { select: { posts: true } },
+  }) satisfies Prisma.UserSelect
+
+/**
+ * Admin only: one user with their image, unexpired sessions and newest posts (drafts included: an
+ * admin may see them). A malformed id reads as not found, like an unknown one (it is a read, so
+ * pages pass the route param straight in). Never cached, like the list.
+ */
+export const getAdminUser = async (id: string): Promise<AdminUserDetail> => {
+  await requireAdmin()
+  if (!userIdSchema.safeParse(id).success) {
+    throw new NotFoundError('User not found')
+  }
+  const [row, posts] = await Promise.all([
+    db.user.findUnique({ where: { id }, select: adminUserDetailSelect(new Date()) }),
+    db.post.findMany({
+      where: { userId: id },
+      select: postSummarySelect,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: ADMIN_USER_POSTS,
+    }),
+  ])
+  if (!row) {
+    throw new NotFoundError('User not found')
+  }
+  const { _count, sessions, ...user } = row
+  return {
+    ...toAdminUser(user),
+    image: user.image,
+    updatedAt: user.updatedAt,
+    sessions,
+    postCount: _count.posts,
+    posts: posts.map(toPostSummary),
+  }
+}
+
+/** Admin only: the dashboard's counts and the latest additions. Never cached: a few indexed counts. */
+export const getAdminOverview = async (): Promise<AdminOverview> => {
+  await requireAdmin()
+  const [users, admins, banned, posts, drafts, recentPosts, recentUsers] = await Promise.all([
+    db.user.count(),
+    db.user.count({ where: { role: 'admin' } }),
+    db.user.count({ where: { banned: true } }),
+    db.post.count(),
+    db.post.count({ where: { published: false } }),
+    db.post.findMany({
+      select: postSummarySelect,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: ADMIN_OVERVIEW_RECENT,
+    }),
+    db.user.findMany({
+      select: adminUserSelect,
+      orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+      take: ADMIN_OVERVIEW_RECENT,
+    }),
+  ])
+  return {
+    counts: { users, admins, banned, posts, drafts },
+    recentPosts: recentPosts.map(toPostSummary),
+    recentUsers: recentUsers.map(toAdminUser),
+  }
 }
 
 /**

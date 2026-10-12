@@ -14,6 +14,10 @@ export const ROUTE_POST_NEW = `${ROUTE_POSTS}/new`
 export const ROUTE_POSTS_MINE = `${ROUTE_POSTS}/mine`
 export const ROUTE_UI_KIT = '/ui-kit'
 
+// The admin dashboard (`app/(admin)`): every route under `/admin` is private, see `PUBLIC_ROUTES`.
+export const ROUTE_ADMIN_USERS = `${ROUTE_ADMIN}/users`
+export const adminUserPath = (id: string) => `${ROUTE_ADMIN_USERS}/${id}`
+
 export const loginPath = (next: string) => `${ROUTE_LOGIN}?next=${encodeURIComponent(next)}`
 
 export const ROUTE_POST_DETAILS = (postId: RouteParameter) => `${ROUTE_POSTS}/${encode(postId)}`

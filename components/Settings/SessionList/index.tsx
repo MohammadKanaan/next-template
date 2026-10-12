@@ -51,7 +51,7 @@ export const SessionList = ({ sessions, onRevoke, onRevokeOthers }: SessionListP
         <TableHeader>
           <TableRow>
             <TableHead>Device</TableHead>
-            <TableHead>Signed in</TableHead>
+            <TableHead className={styles.signedInColumn}>Signed in</TableHead>
             <TableHead>
               <span className={styles.srOnly}>Actions</span>
             </TableHead>
@@ -66,9 +66,15 @@ export const SessionList = ({ sessions, onRevoke, onRevokeOthers }: SessionListP
                     {session.userAgent ?? 'Unknown device'}
                   </span>
                   {session.current && <Badge variant="secondary">This device</Badge>}
+                  {/* Phones have no room for the column: the time sits under the device. */}
+                  <span className={styles.signedInInline}>
+                    Signed in {formatDateTime(session.createdAt)}
+                  </span>
                 </div>
               </TableCell>
-              <TableCell>{formatDateTime(session.createdAt)}</TableCell>
+              <TableCell className={styles.signedInColumn}>
+                {formatDateTime(session.createdAt)}
+              </TableCell>
               <TableCell>
                 {!session.current && (
                   <LoadingButton

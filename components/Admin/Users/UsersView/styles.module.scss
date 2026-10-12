@@ -1,0 +1,88 @@
+.view {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* ── Toolbar ────────────────────────────────────────── */
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.search {
+  display: flex;
+  flex: 1;
+  align-items: flex-end;
+  gap: 0.75rem;
+  min-width: 16rem;
+  max-width: 28rem;
+}
+
+.searchField {
+  flex: 1;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* ── Table ──────────────────────────────────────────── */
+.tableWrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  transition: opacity 150ms ease-out;
+
+  // A page or filter change is in flight: dim the rows it is about to replace.
+  &[aria-busy='true'] {
+    opacity: 0.6;
+  }
+}
+
+.nameCell {
+  display: flex;
+  flex-direction: column;
+  // The table's cells do not wrap; a long name may, so the row's actions stay on a phone screen.
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.nameLink {
+  color: var(--foreground);
+  font-weight: 500;
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.username {
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+}
+
+.emailCell {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+// Phones: the columns a row can do without, so its name and actions stay on screen.
+.secondary {
+  @media (width < $breakpoint-md) {
+    display: none;
+  }
+}

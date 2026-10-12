@@ -11,3 +11,13 @@ const dateTimeFormat = new Intl.DateTimeFormat('en-US', {
 export const formatDateTime = (date: Date) => {
   return `${dateTimeFormat.format(date)} UTC`
 }
+
+const dateFormat = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeZone: 'UTC' })
+
+/**
+ * "Mar 1, 2024": a calendar day (a `@db.Date` column), which the database stores as midnight UTC,
+ * so it is read in UTC too (a viewer west of Greenwich would otherwise see the day before).
+ */
+export const formatDate = (date: Date) => {
+  return dateFormat.format(date)
+}

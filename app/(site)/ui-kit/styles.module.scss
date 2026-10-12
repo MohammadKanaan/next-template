@@ -69,6 +69,12 @@
   gap: 1rem;
 }
 
+.statGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 1rem;
+}
+
 .copy {
   margin: 0;
   color: var(--muted-foreground);

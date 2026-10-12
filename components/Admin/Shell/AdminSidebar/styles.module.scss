@@ -1,0 +1,100 @@
+.brandMark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--radius-md);
+  background: var(--sidebar-primary);
+  color: var(--sidebar-primary-foreground);
+
+  svg {
+    width: 1rem;
+    height: 1rem;
+  }
+}
+
+.brandText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.2;
+}
+
+.brandName {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.brandArea {
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+}
+
+/* ── Footer: the signed-in admin ─────────────────────── */
+.account {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.25rem;
+}
+
+.accountLink {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  padding: 0.25rem;
+  border-radius: var(--radius-md);
+  color: var(--sidebar-foreground);
+  text-decoration: none;
+
+  &:hover {
+    background: var(--sidebar-accent);
+  }
+}
+
+.accountText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.accountName,
+.accountEmail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.accountName {
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.accountEmail {
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+}
+
+.signOut {
+  display: flex;
+}
+
+// Collapsed to icons: only the avatar stays.
+:global([data-collapsible='icon']) {
+  .accountText,
+  .signOut,
+  .brandText {
+    display: none;
+  }
+
+  .account,
+  .accountLink {
+    padding: 0;
+  }
+}

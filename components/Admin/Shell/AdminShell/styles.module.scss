@@ -1,0 +1,53 @@
+.topBar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  height: 3.5rem;
+  padding: 0 1rem;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in oklch, var(--background) 92%, transparent);
+  backdrop-filter: blur(8px);
+}
+
+.topBarStart,
+.topBarEnd {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.topBarStart {
+  // The separator is a vertical rule the height of the trigger.
+  > [data-slot='separator'] {
+    height: 1rem;
+  }
+}
+
+.topBarTitle {
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+// Every dashboard page gets the same gutter; pages only set their own max-width.
+.content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding: 1.5rem 1.5rem 4rem;
+}
+
+@media (width < $breakpoint-md) {
+  .topBar {
+    padding: 0 0.75rem;
+  }
+
+  .content {
+    padding: 1rem 1rem 3rem;
+  }
+}

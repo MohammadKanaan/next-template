@@ -99,7 +99,7 @@ such a feature; never treat it as a description of existing code.
 ## Project Structure
 
 ```
-app/                     # App Router: route groups (site), (minimal); api/auth, api/v1/posts, api/health
+app/                     # App Router: route groups (site), (minimal), (admin); api/auth, api/v1/posts, api/health
   (site)/<route>/        # page.tsx (Server Component) + optional view.tsx ('use client') + styles.module.scss
 actions/                 # 'use server' Server Actions (auth, users, admin, posts)
 components/              # React components (ComponentName/index.tsx + styles.module.scss)
@@ -344,10 +344,11 @@ author lists are never cached. Redis is an optimization, never a dependency. Ful
 
 ## Layouts
 
-| Route group | Use case                                               |
-| ----------- | ------------------------------------------------------ |
-| `(site)`    | Main pages (NavBar, content container, footer)         |
-| `(minimal)` | Auth pages (`/login`, `/signup`; no navigation chrome) |
+| Route group | Use case                                                                                                                                                                                                |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `(site)`    | Main pages (NavBar, content container, footer)                                                                                                                                                          |
+| `(minimal)` | Auth pages (`/login`, `/signup`; no navigation chrome)                                                                                                                                                  |
+| `(admin)`   | The admin dashboard (`/admin/**`): shadcn sidebar shell (`components/Admin/Shell`), no NavBar; its layout runs `requireAdmin()` through `loadPage`, and every page still reads admin-only DAL functions |
 
 - The root `app/layout.tsx` owns fonts, global styles, and `Providers` (theme, tooltips, toaster).
 - The `(site)` layout is async: it reads the session once (`getViewer()`, `getSessionUser()`) and

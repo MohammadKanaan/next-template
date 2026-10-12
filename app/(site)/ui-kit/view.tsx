@@ -3,6 +3,8 @@
 import { X } from 'lucide-react'
 import { useState, type ComponentProps, type ReactNode } from 'react'
 import { toast } from 'sonner'
+import { ConfirmDialog } from '@/components/Admin/ConfirmDialog'
+import { StatCard } from '@/components/Admin/StatCard'
 import { Empty } from '@/components/Empty'
 import { FileUploader } from '@/components/Form/FileUploader'
 import { Input } from '@/components/Form/Input'
@@ -66,6 +68,7 @@ import {
 } from '@/components/SCN/table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/SCN/tooltip'
 import { UserAvatar } from '@/components/UserAvatar'
+import type { ActionResult } from '@/types/api'
 import styles from './styles.module.scss'
 
 type ButtonVariant = NonNullable<ComponentProps<typeof Button>['variant']>
@@ -103,6 +106,18 @@ const TABLE_ROWS = [
   { id: 'INV-002', name: 'Grace Hopper', status: 'Pending' },
   { id: 'INV-003', name: 'Alan Turing', status: 'Archived' },
 ]
+
+const resolveAfter = <T,>(value: T, ms = 400) =>
+  new Promise<T>((resolve) => {
+    setTimeout(() => resolve(value), ms)
+  })
+
+const CONFIRM_OK: ActionResult<null> = { ok: true, data: null }
+const CONFIRM_REFUSED: ActionResult<null> = {
+  ok: false,
+  code: 'VALIDATION',
+  message: 'Remove the user’s posts first',
+}
 
 type SectionProps = {
   id: string
@@ -547,6 +562,53 @@ export const UiKitView = () => {
             return { ok: true, data: null }
           }}
         />
+      </Section>
+
+      <Section
+        id="confirm-dialog"
+        eyebrow="Application components"
+        title="ConfirmDialog"
+        description="Asks before an irreversible write. A refusal is shown inside the dialog, which stays open."
+      >
+        <div className={styles.row}>
+          <ConfirmDialog
+            trigger="Delete"
+            title="Delete this record?"
+            description="This cannot be undone."
+            confirmLabel="Delete"
+            onConfirm={() => resolveAfter(CONFIRM_OK)}
+            onDone={() => toast.success('Record deleted')}
+          />
+          <ConfirmDialog
+            trigger="Delete (refused)"
+            title="Delete this record?"
+            description="The server refuses, and the message appears here."
+            confirmLabel="Delete"
+            onConfirm={() => resolveAfter(CONFIRM_REFUSED)}
+          />
+          <ConfirmDialog
+            trigger="Delete (disabled)"
+            triggerTitle="Remove the record’s posts first"
+            title="Delete this record?"
+            description="This cannot be undone."
+            confirmLabel="Delete"
+            disabled
+            onConfirm={() => resolveAfter(CONFIRM_OK)}
+          />
+        </div>
+      </Section>
+
+      <Section
+        id="stat-card"
+        eyebrow="Application components"
+        title="StatCard"
+        description="One number of the dashboard overview, with an optional hint and link."
+      >
+        <div className={styles.statGrid}>
+          <StatCard label="Posts" value={16} hint="2 drafts" />
+          <StatCard label="Users" value={12345} href="#stat-card" />
+          <StatCard label="Banned" value={0} />
+        </div>
       </Section>
 
       <Section

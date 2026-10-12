@@ -3,6 +3,8 @@ import { APIError } from 'better-auth/api'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   banUser,
+  getAdminOverview,
+  getAdminUser,
   impersonateUser,
   listUsers,
   revokeUserSessions,
@@ -19,7 +21,8 @@ import {
   ValidationError,
 } from '@/lib/data/errors'
 import { getViewer } from '@/lib/data/users'
-import { BAN_REASON_MAX_LENGTH } from '@/lib/dto/users'
+import { ADMIN_OVERVIEW_RECENT, ADMIN_USER_POSTS } from '@/lib/dto/admin'
+import { BAN_REASON_MAX_LENGTH, type ListUsersQuery } from '@/lib/dto/users'
 import { getRedis } from '@/lib/server/redis'
 import { cookieJar } from '../../helpers/cookies'
 import {
@@ -64,6 +67,37 @@ describe('admin DAL', () => {
       const member = await createUser({})
       await signInAs(member)
       await expect(listUsers(all)).rejects.toBeInstanceOf(ForbiddenError)
+    })
+
+    it('sorts the filtered users before pagination in either direction', async () => {
+      const ada = await createUser({ name: 'Ada' })
+      const zoe = await createUser({ name: 'Zoe' })
+      const admin = await createUser({ name: 'Root', role: 'admin' })
+      await signInAs(admin)
+      const first = (direction: 'asc' | 'desc') =>
+        listUsers({ page: 1, perPage: 1, role: 'user', sortBy: 'name', direction })
+      expect((await first('asc')).items[0]?.id).toBe(ada.id)
+      expect((await first('desc')).items[0]?.id).toBe(zoe.id)
+    })
+
+    it('filters by role and by status, together with the search', async () => {
+      const bannedUser = await createUser({ name: 'Ben', username: 'ben_v' })
+      await createUser({ name: 'Vera', username: 'vera_v' })
+      const admin = await createUser({ name: 'Root', username: 'root_u', role: 'admin' })
+      await signInAs(admin)
+      await banUser({ id: bannedUser.id })
+
+      const names = async (query: Partial<ListUsersQuery>) =>
+        (await listUsers({ ...all, ...query })).items.map((user) => user.name).sort()
+      expect(await names({ role: 'user' })).toEqual(['Ben', 'Vera'])
+      expect(await names({ role: 'admin' })).toEqual(['Root'])
+      expect(await names({ status: 'banned' })).toEqual(['Ben'])
+      expect(await names({ status: 'active' })).toEqual(['Root', 'Vera'])
+      expect(await names({ role: 'user', status: 'active' })).toEqual(['Vera'])
+      expect(await names({ role: 'user', status: 'active', q: 'ben' })).toEqual([])
+      await expect(listUsers({ ...all, role: 'owner' as never })).rejects.toBeInstanceOf(
+        ValidationError,
+      )
     })
 
     it('validates the query', async () => {
@@ -535,6 +569,109 @@ describe('admin DAL', () => {
         message: 'You are not impersonating anyone',
       })
       await expect(getSessionUser()).resolves.toMatchObject({ id: user.id })
+    })
+  })
+
+  describe('getAdminUser', () => {
+    it('requires an admin: 401 signed out, 403 for a regular user', async () => {
+      const target = await createUser({})
+      await expect(getAdminUser(target.id)).rejects.toBeInstanceOf(UnauthorizedError)
+      await signInAs(await createUser({}))
+      await expect(getAdminUser(target.id)).rejects.toBeInstanceOf(ForbiddenError)
+    })
+
+    it('treats a malformed or unknown id as not found', async () => {
+      await signInAs(await createUser({ role: 'admin' }))
+      await expect(getAdminUser('a b')).rejects.toBeInstanceOf(NotFoundError)
+      await expect(getAdminUser(MISSING_ID)).rejects.toBeInstanceOf(NotFoundError)
+    })
+
+    it('returns the row with its image, its unexpired sessions (no token) and its newest posts, drafts included', async () => {
+      const target = await createUser({ name: 'Target', username: 'target_u' })
+      await db.user.update({
+        where: { id: target.id },
+        data: { image: 'https://pub.example/avatar.png' },
+      })
+      // Three live sessions (sign-up opened one, plus two sign-ins) and one expired.
+      await signInAs(target)
+      await signInAs(target)
+      await db.session.create({
+        data: {
+          userId: target.id,
+          token: 'expired-token',
+          expiresAt: new Date(Date.now() - 1000),
+          userAgent: 'Old',
+        },
+      })
+      for (let n = 0; n <= ADMIN_USER_POSTS; n += 1) {
+        await db.post.create({
+          data: { userId: target.id, title: `Post ${n}`, body: 'B', published: n % 2 === 0 },
+        })
+      }
+      const other = await createUser({})
+      await db.post.create({ data: { userId: other.id, title: 'Someone else’s', body: 'B' } })
+      await signInAs(await createUser({ role: 'admin' }))
+
+      const detail = await getAdminUser(target.id)
+      expect(detail).toMatchObject({
+        id: target.id,
+        name: 'Target',
+        username: 'target_u',
+        email: target.email,
+        role: 'user',
+        banned: false,
+        image: 'https://pub.example/avatar.png',
+        postCount: ADMIN_USER_POSTS + 1,
+      })
+      expect(detail.updatedAt).toBeInstanceOf(Date)
+      expect(detail.sessions).toHaveLength(3)
+      expect(detail.sessions[0]).not.toHaveProperty('token')
+      // Newest first, capped, and the drafts are there.
+      expect(detail.posts).toHaveLength(ADMIN_USER_POSTS)
+      expect(detail.posts[0]?.title).toBe(`Post ${ADMIN_USER_POSTS}`)
+      expect(detail.posts.some((post) => !post.published)).toBe(true)
+      expect(detail.posts.map((post) => post.title)).not.toContain('Someone else’s')
+    })
+  })
+
+  describe('getAdminOverview', () => {
+    it('requires an admin: 401 signed out, 403 for a regular user', async () => {
+      await expect(getAdminOverview()).rejects.toBeInstanceOf(UnauthorizedError)
+      await signInAs(await createUser({}))
+      await expect(getAdminOverview()).rejects.toBeInstanceOf(ForbiddenError)
+    })
+
+    it('counts the users and the posts, and lists what was added last', async () => {
+      const banned = await createUser({ username: 'banned_u' })
+      const author = await createUser({ username: 'author_u' })
+      const admin = await createUser({ username: 'root_u', role: 'admin' })
+      for (const n of [1, 2, 3, 4, 5, 6]) {
+        await db.post.create({
+          data: { userId: author.id, title: `Post ${n}`, body: 'B', published: n % 2 === 0 },
+        })
+      }
+      await signInAs(admin)
+      await banUser({ id: banned.id })
+
+      const overview = await getAdminOverview()
+      expect(overview.counts).toEqual({ users: 3, admins: 1, banned: 1, posts: 6, drafts: 3 })
+      expect(overview.recentPosts.map((post) => post.title)).toEqual(
+        ['Post 6', 'Post 5', 'Post 4', 'Post 3', 'Post 2'].slice(0, ADMIN_OVERVIEW_RECENT),
+      )
+      expect(overview.recentUsers.map((user) => user.username)).toEqual([
+        'root_u',
+        'author_u',
+        'banned_u',
+      ])
+      expect(overview.recentUsers[2]).toMatchObject({ banned: true })
+    })
+
+    it('is never served from a cache', async () => {
+      const admin = await createUser({ role: 'admin' })
+      await signInAs(admin)
+      expect((await getAdminOverview()).counts.posts).toBe(0)
+      await db.post.create({ data: { userId: admin.id, title: 'T', body: 'B' } })
+      expect((await getAdminOverview()).counts.posts).toBe(1)
     })
   })
 })

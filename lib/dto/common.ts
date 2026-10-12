@@ -11,6 +11,9 @@ export const MAX_PAGE = 1000
  */
 export const idSchema = z.uuid('Invalid id')
 
+export const sortDirectionSchema = z.enum(['asc', 'desc'])
+export type SortDirection = z.infer<typeof sortDirectionSchema>
+
 /** `true` / `false` as a boolean or as the string a query string carries (never `z.coerce.boolean()`, which reads `'false'` as true). */
 export const booleanParamSchema = z.union([z.boolean(), z.stringbool()])
 

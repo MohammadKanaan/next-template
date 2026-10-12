@@ -72,10 +72,51 @@ describe('admin user list', () => {
     expect(listUsersQuery.safeParse({ page: String(MAX_PAGE + 1) }).success).toBe(false)
   })
 
+  it('defaults the sort and rejects unknown sort columns, roles and statuses', () => {
+    expect(listUsersQuery.parse({})).toMatchObject({ sortBy: 'createdAt', direction: 'desc' })
+    expect(listUsersQuery.safeParse({ sortBy: 'password' }).success).toBe(false)
+    expect(listUsersQuery.safeParse({ direction: 'up' }).success).toBe(false)
+    expect(listUsersQuery.safeParse({ role: 'owner' }).success).toBe(false)
+    expect(listUsersQuery.safeParse({ status: 'gone' }).success).toBe(false)
+  })
+
   it('parses any URL by falling back per field', () => {
-    expect(usersUrlQuery.parse({})).toEqual({ page: 1, q: '' })
-    expect(usersUrlQuery.parse({ page: 'abc', q: 'a'.repeat(101) })).toEqual({ page: 1, q: '' })
-    expect(usersUrlQuery.parse({ page: '2', q: ' ada ' })).toEqual({ page: 2, q: 'ada' })
+    const defaults = {
+      sortBy: 'createdAt',
+      direction: 'desc',
+      page: 1,
+      q: '',
+      role: '',
+      status: '',
+    }
+    expect(usersUrlQuery.parse({})).toEqual(defaults)
+    expect(
+      usersUrlQuery.parse({
+        page: 'abc',
+        q: 'a'.repeat(101),
+        sortBy: 'password',
+        direction: 'up',
+        role: 'owner',
+        status: 'gone',
+      }),
+    ).toEqual(defaults)
+    expect(
+      usersUrlQuery.parse({
+        page: '2',
+        q: ' ada ',
+        sortBy: 'name',
+        direction: 'asc',
+        role: 'admin',
+        status: 'banned',
+      }),
+    ).toEqual({
+      sortBy: 'name',
+      direction: 'asc',
+      page: 2,
+      q: 'ada',
+      role: 'admin',
+      status: 'banned',
+    })
   })
 
   it('accepts a user id and a known role only', () => {

@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { signUpInput } from './auth'
-import { pageQuerySchema } from './common'
+import { pageQuerySchema, sortDirectionSchema } from './common'
 
 /** The two roles the admin plugin is configured with (`adminRoles: ['admin']` in `lib/data/auth.ts`). */
 export const roleSchema = z.enum(['user', 'admin'])
@@ -94,18 +94,35 @@ export const adminUserSchema = z.object({
 
 export type AdminUser = z.infer<typeof adminUserSchema>
 
+/** Whether a user may sign in: `banned` users are refused until unbanned. */
+export const userStatusSchema = z.enum(['active', 'banned'])
+
+export type UserStatus = z.infer<typeof userStatusSchema>
+
+export const userSortBySchema = z.enum(['name', 'email', 'role', 'banned', 'createdAt'])
+
 export const listUsersQuery = pageQuerySchema.extend({
+  sortBy: userSortBySchema.default('createdAt'),
+  direction: sortDirectionSchema.default('desc'),
   /** Matches name, username or email, case-insensitively; bounded because it is free text. */
   q: z.string().trim().max(USER_SEARCH_MAX_LENGTH).optional(),
+  role: roleSchema.optional(),
+  status: userStatusSchema.optional(),
 })
 
-export type ListUsersQuery = z.infer<typeof listUsersQuery>
+export type ListUsersQuery = z.input<typeof listUsersQuery>
 
-/** The tolerant URL contract of the admin list (see `postsUrlQuery`): any query string parses. */
+/** The tolerant URL contract of the admin list: any query string parses, falling back to defaults ('' is "any"). */
 export const usersUrlQuery = z.object({
+  sortBy: userSortBySchema.catch('createdAt'),
+  direction: sortDirectionSchema.catch('desc'),
   page: pageQuerySchema.shape.page.catch(1),
   q: z.string().trim().max(USER_SEARCH_MAX_LENGTH).catch(''),
+  role: roleSchema.or(z.literal('')).catch(''),
+  status: userStatusSchema.or(z.literal('')).catch(''),
 })
+
+export type UsersUrlQuery = z.output<typeof usersUrlQuery>
 
 export const setUserRoleInput = z.object({ id: userIdSchema, role: roleSchema })
 
