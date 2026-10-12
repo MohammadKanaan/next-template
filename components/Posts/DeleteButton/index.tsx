@@ -1,11 +1,13 @@
 'use client'
 
+import { Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
 import { deletePostAction } from '@/actions/posts'
+import { ActionButton } from '@/components/ActionButton'
 import { LoadingButton } from '@/components/LoadingButton'
-import { Button } from '@/components/SCN/button'
+import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogClose,
@@ -15,11 +17,11 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from '@/components/SCN/dialog'
+} from '@/components/ui/dialog'
 import { ROUTE_POSTS } from '@/lib/constants-routes'
 
 type DeletePostButtonProps = {
-  postId: number
+  postId: string
 }
 
 export const DeletePostButton = ({ postId }: DeletePostButtonProps) => {
@@ -42,25 +44,20 @@ export const DeletePostButton = ({ postId }: DeletePostButtonProps) => {
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger asChild>
-        <Button type="button" variant="destructive">
-          Delete
-        </Button>
-      </DialogTrigger>
+      <DialogTrigger render={<ActionButton action="delete" label="Delete post" />} />
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Delete this post?</DialogTitle>
           <DialogDescription>This cannot be undone.</DialogDescription>
         </DialogHeader>
         <DialogFooter>
-          <DialogClose asChild>
-            <Button type="button" variant="outline" disabled={isPending}>
-              Cancel
-            </Button>
+          <DialogClose render={<Button type="button" variant="outline" disabled={isPending} />}>
+            Cancel
           </DialogClose>
           <LoadingButton
             type="button"
             variant="destructive"
+            icon={Trash2}
             loading={isPending}
             onClick={handleConfirm}
           >

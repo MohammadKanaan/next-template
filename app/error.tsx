@@ -1,7 +1,8 @@
 'use client'
 
+import { RotateCcw } from 'lucide-react'
 import { Empty } from '@/components/Empty'
-import { Button } from '@/components/SCN/button'
+import { Button } from '@/components/ui/button'
 import styles from './not-found.module.scss'
 
 type ErrorPageProps = {
@@ -17,6 +18,7 @@ const ErrorPage = ({ retry }: ErrorPageProps) => {
         description="An unexpected error occurred. You can try again."
         action={
           <Button type="button" onClick={retry}>
+            <RotateCcw data-icon="inline-start" aria-hidden="true" />
             Try again
           </Button>
         }

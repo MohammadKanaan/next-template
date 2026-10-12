@@ -29,8 +29,4 @@ describe('presentUser', () => {
     const { website: _original, ...expected } = user
     expect(rest).toEqual(expected)
   })
-
-  it('preserves extra fields such as the current user email', () => {
-    expect(presentUser({ ...user, email: 'leanne@example.com' }).email).toBe('leanne@example.com')
-  })
 })

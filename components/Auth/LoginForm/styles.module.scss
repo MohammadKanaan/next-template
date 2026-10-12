@@ -21,8 +21,11 @@
   color: var(--muted-foreground);
   font-size: 0.875rem;
 
+  // Underlined: inside running text, the colour alone does not mark it as a link.
   a {
     color: var(--primary);
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
   }
 }
 

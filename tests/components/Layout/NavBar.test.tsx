@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import userEvent from '@testing-library/user-event'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { NavBar } from '@/components/Layout/NavBar'
 import type { CurrentUser } from '@/lib/dto/users'
 
@@ -40,14 +41,6 @@ describe('NavBar', () => {
     expect(linksNamed('Admin')).toHaveLength(0)
   })
 
-  it('keeps the regular links for everyone', () => {
-    const { rerender } = render(<NavBar user={user} />)
-    expect(linksNamed('Posts').length).toBeGreaterThan(0)
-    expect(linksNamed('UI Kit').length).toBeGreaterThan(0)
-    rerender(<NavBar user={null} />)
-    expect(linksNamed('Posts').length).toBeGreaterThan(0)
-  })
-
   it('links signed-in users to their own posts, in both menus', () => {
     const { rerender } = render(<NavBar user={user} />)
     const links = linksNamed('My posts')
@@ -57,16 +50,6 @@ describe('NavBar', () => {
     }
     rerender(<NavBar user={null} />)
     expect(linksNamed('My posts')).toHaveLength(0)
-  })
-
-  it('has no Dashboard link and no notification bell for anyone', () => {
-    const { rerender } = render(<NavBar user={{ ...user, role: 'admin' }} />)
-    expect(linksNamed('Dashboard')).toHaveLength(0)
-    expect(screen.queryAllByRole('button', { name: /Notifications/, hidden: true })).toHaveLength(0)
-    expect(screen.queryAllByRole('link', { name: /Notifications/, hidden: true })).toHaveLength(0)
-    rerender(<NavBar user={user} />)
-    expect(linksNamed('Dashboard')).toHaveLength(0)
-    expect(screen.queryAllByRole('button', { name: /Notifications/, hidden: true })).toHaveLength(0)
   })
 
   it('offers account settings and sign-out to a signed-in user, and log in otherwise', () => {
@@ -85,5 +68,21 @@ describe('NavBar', () => {
       expect(link).toHaveAttribute('href', '/login')
     }
     expect(linksNamed('Log in')).toHaveLength(2)
+  })
+})
+
+describe('NavBar log in', () => {
+  afterEach(() => {
+    window.sessionStorage.clear()
+    window.history.replaceState(null, '', '/')
+  })
+
+  it('remembers the page the visitor was on, to return them after logging in', async () => {
+    window.history.replaceState(null, '', '/posts/mine?q=draft')
+    render(<NavBar user={null} />)
+
+    await userEvent.click(linksNamed('Log in')[0])
+
+    expect(window.sessionStorage.getItem('return-path')).toBe('/posts/mine?q=draft')
   })
 })

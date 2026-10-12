@@ -1,6 +1,6 @@
 import { useId, type ComponentProps } from 'react'
-import { Input as ShadcnInput } from '@/components/SCN/input'
-import { Label } from '@/components/SCN/label'
+import { Input as ShadcnInput } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import styles from './styles.module.scss'
 
 type InputProps = Omit<ComponentProps<typeof ShadcnInput>, 'className' | 'style'> & {

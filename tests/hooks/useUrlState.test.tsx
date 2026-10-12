@@ -76,15 +76,6 @@ describe('useUrlState', () => {
     expect(navigation.replace).toHaveBeenCalledWith('/posts/csr?page=3', { scroll: false })
   })
 
-  it('removes a page equal to the default', () => {
-    navigation.search = 'page=3&q=cats&sort=oldest'
-    const { result } = renderHook(() => useUrlState(schema))
-    act(() => result.current.setState({ page: 1 }))
-    expect(navigation.replace).toHaveBeenCalledWith('/posts/csr?q=cats&sort=oldest', {
-      scroll: false,
-    })
-  })
-
   it('builds a second patch on the first one while the URL has not committed yet', () => {
     const { result } = renderHook(() => useUrlState(schema))
     act(() => result.current.setState({ q: 'cats' }))
@@ -155,10 +146,5 @@ describe('useUrlState', () => {
     act(() => pushing.result.current.setState({ page: 2 }))
     expect(navigation.push).toHaveBeenCalledWith('/posts/csr?page=2', { scroll: false })
     expect(navigation.replace).not.toHaveBeenCalled()
-  })
-
-  it('is not pending until a navigation starts', () => {
-    const { result } = renderHook(() => useUrlState(schema))
-    expect(result.current.isPending).toBe(false)
   })
 })

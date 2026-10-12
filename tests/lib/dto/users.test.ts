@@ -5,8 +5,6 @@ import {
   BAN_REASON_MAX_LENGTH,
   banUserInput,
   listUsersQuery,
-  roleSchema,
-  sessionIdSchema,
   setUserRoleInput,
   updateProfileInput,
   USER_SEARCH_MAX_LENGTH,
@@ -52,13 +50,7 @@ describe('updateProfileInput', () => {
   })
 })
 
-describe('sessions', () => {
-  it('bounds the session id', () => {
-    expect(sessionIdSchema.safeParse('abc').success).toBe(true)
-    expect(sessionIdSchema.safeParse('').success).toBe(false)
-    expect(sessionIdSchema.safeParse('a'.repeat(65)).success).toBe(false)
-  })
-})
+const USER_ID = '0190d1a2-0000-7000-8000-0000000000a1'
 
 describe('admin user list', () => {
   it('bounds and trims the search, and defaults the paging', () => {
@@ -70,32 +62,73 @@ describe('admin user list', () => {
     expect(listUsersQuery.safeParse({ page: String(MAX_PAGE + 1) }).success).toBe(false)
   })
 
+  it('defaults the sort and rejects unknown sort columns, roles and statuses', () => {
+    expect(listUsersQuery.parse({})).toMatchObject({ sortBy: 'createdAt', direction: 'desc' })
+    expect(listUsersQuery.safeParse({ sortBy: 'password' }).success).toBe(false)
+    expect(listUsersQuery.safeParse({ direction: 'up' }).success).toBe(false)
+    expect(listUsersQuery.safeParse({ role: 'owner' }).success).toBe(false)
+    expect(listUsersQuery.safeParse({ status: 'gone' }).success).toBe(false)
+  })
+
   it('parses any URL by falling back per field', () => {
-    expect(usersUrlQuery.parse({})).toEqual({ page: 1, q: '' })
-    expect(usersUrlQuery.parse({ page: 'abc', q: 'a'.repeat(101) })).toEqual({ page: 1, q: '' })
-    expect(usersUrlQuery.parse({ page: '2', q: ' ada ' })).toEqual({ page: 2, q: 'ada' })
+    const defaults = {
+      sortBy: 'createdAt',
+      direction: 'desc',
+      page: 1,
+      q: '',
+      role: '',
+      status: '',
+    }
+    expect(usersUrlQuery.parse({})).toEqual(defaults)
+    expect(
+      usersUrlQuery.parse({
+        page: 'abc',
+        q: 'a'.repeat(101),
+        sortBy: 'password',
+        direction: 'up',
+        role: 'owner',
+        status: 'gone',
+      }),
+    ).toEqual(defaults)
+    expect(
+      usersUrlQuery.parse({
+        page: '2',
+        q: ' ada ',
+        sortBy: 'name',
+        direction: 'asc',
+        role: 'admin',
+        status: 'banned',
+      }),
+    ).toEqual({
+      sortBy: 'name',
+      direction: 'asc',
+      page: 2,
+      q: 'ada',
+      role: 'admin',
+      status: 'banned',
+    })
   })
 
   it('accepts a user id and a known role only', () => {
-    expect(setUserRoleInput.parse({ id: 'abc-123', role: 'admin' })).toEqual({
-      id: 'abc-123',
+    expect(setUserRoleInput.parse({ id: USER_ID, role: 'admin' })).toEqual({
+      id: USER_ID,
       role: 'admin',
     })
-    expect(setUserRoleInput.safeParse({ id: 'abc-123', role: 'owner' }).success).toBe(false)
+    expect(setUserRoleInput.safeParse({ id: USER_ID, role: 'owner' }).success).toBe(false)
     expect(setUserRoleInput.safeParse({ id: 'a b', role: 'user' }).success).toBe(false)
     expect(setUserRoleInput.safeParse({ id: '', role: 'user' }).success).toBe(false)
   })
 
   it('accepts a user id and an optional, trimmed, bounded ban reason', () => {
-    expect(banUserInput.parse({ id: 'abc-123' })).toEqual({ id: 'abc-123' })
-    expect(banUserInput.parse({ id: 'abc-123', reason: '  Spam  ' })).toEqual({
-      id: 'abc-123',
+    expect(banUserInput.parse({ id: USER_ID })).toEqual({ id: USER_ID })
+    expect(banUserInput.parse({ id: USER_ID, reason: '  Spam  ' })).toEqual({
+      id: USER_ID,
       reason: 'Spam',
     })
-    expect(banUserInput.parse({ id: 'abc-123', reason: '   ' }).reason).toBe('')
+    expect(banUserInput.parse({ id: USER_ID, reason: '   ' }).reason).toBe('')
     expect(banUserInput.safeParse({ id: 'a b', reason: 'Spam' }).success).toBe(false)
     const long = banUserInput.safeParse({
-      id: 'abc-123',
+      id: USER_ID,
       reason: 'x'.repeat(BAN_REASON_MAX_LENGTH + 1),
     })
     expect(long.success).toBe(false)
@@ -108,7 +141,7 @@ describe('admin user list', () => {
 
 describe('adminUserSchema', () => {
   const row = {
-    id: 'u1',
+    id: USER_ID,
     name: 'Ada',
     username: 'ada',
     email: 'ada@example.com',
@@ -131,7 +164,6 @@ describe('adminUserSchema', () => {
   })
 
   it('rejects a role that is not one of ours', () => {
-    expect(roleSchema.options).toEqual(['user', 'admin'])
     expect(adminUserSchema.safeParse({ ...row, role: 'owner' }).success).toBe(false)
     expect(adminUserSchema.safeParse({ ...row, role: 'admin,user' }).success).toBe(false)
   })

@@ -8,6 +8,33 @@
 
 .main {
   flex: 1;
+
+  // Focused only by the skip link (tabIndex -1), as a scroll target: no ring around the page.
+  &:focus {
+    outline: none;
+  }
+}
+
+// Off screen until a keyboard user tabs to it, then over the fixed header's corner.
+.skipLink {
+  position: fixed;
+  top: 0.75rem;
+  left: 0.75rem;
+  z-index: 50;
+  padding: 0.5rem 0.875rem;
+  border-radius: var(--radius-md);
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-decoration: none;
+  transform: translateY(-200%);
+
+  &:focus-visible {
+    transform: none;
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
 }
 
 .container {

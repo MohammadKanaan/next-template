@@ -4,6 +4,7 @@ import { createAuthMiddleware, getSessionFromCtx } from 'better-auth/api'
 import { prismaAdapter } from 'better-auth/adapters/prisma'
 import { nextCookies } from 'better-auth/next-js'
 import { admin } from 'better-auth/plugins'
+import { adminAc, userAc } from 'better-auth/plugins/admin/access'
 import { headers } from 'next/headers'
 import { cache } from 'react'
 import type { JobPayload } from '@/jobs/definitions'
@@ -15,6 +16,7 @@ import { deriveUsername } from '@/lib/username'
 import { invalidateTags } from '@/lib/server/cache'
 import { logger } from '@/lib/server/logger'
 import { enqueue } from '@/lib/server/queue'
+import { keyFromPublicUrl } from '@/lib/server/storage'
 import { POSTS_TAG, userTag } from './cacheTags'
 import { db } from './db'
 import { ForbiddenError, UnauthorizedError } from './errors'
@@ -100,6 +102,9 @@ const carriesEmailChange = (payload: unknown) =>
 
 export const auth = betterAuth({
   database: prismaAdapter(db, { provider: 'postgresql' }),
+  // Ids are UUID columns. With `uuid` on PostgreSQL, Better Auth leaves the id out of its inserts
+  // and Prisma Client fills it from the schema's `@default(uuid(7))`.
+  advanced: { database: { generateId: 'uuid' } },
   emailAndPassword: {
     enabled: true,
     minPasswordLength: PASSWORD_MIN_LENGTH,
@@ -134,7 +139,12 @@ export const auth = betterAuth({
   // limits that the router would skip; so are the session-bound account changes (change password,
   // change email, verify password), which go only through their actions and are limited per user
   // there, while Better Auth's own limiter is per process and keyed on a spoofable client address.
-  // The admin plugin's routes are closed for the same reason (see `ADMIN_PLUGIN_PATHS`).
+  // The admin plugin's routes are closed for the same reason (see `ADMIN_PLUGIN_PATHS`), and so is
+  // everything else an action or the DAL already owns: completing a password reset, Google sign-in
+  // (`signInWithGoogleAction`), the session list and revocations (`lib/data/sessions.ts`) and the
+  // linked-account routes, which the app does not offer. What stays open is what a browser must
+  // reach on its own: `/get-session`, `/sign-out`, `/verify-email` and `/reset-password/:token`
+  // (the emailed links) and `/callback/:id` (the return from Google).
   // `auth.api.*` calls made directly from server code are unaffected; only the `/api/auth/*`
   // router honours this list.
   disabledPaths: [
@@ -143,11 +153,24 @@ export const auth = betterAuth({
     '/delete-user',
     '/delete-user/callback',
     '/sign-in/email',
+    '/sign-in/social',
     '/request-password-reset',
+    '/reset-password',
     '/send-verification-email',
     '/change-password',
     '/change-email',
     '/verify-password',
+    '/list-sessions',
+    '/revoke-session',
+    '/revoke-sessions',
+    '/revoke-other-sessions',
+    '/update-session',
+    '/list-accounts',
+    '/account-info',
+    '/link-social',
+    '/unlink-account',
+    '/get-access-token',
+    '/refresh-token',
     ...ADMIN_PLUGIN_PATHS,
   ],
   hooks: {
@@ -187,27 +210,24 @@ export const auth = betterAuth({
     },
     deleteUser: {
       enabled: true,
-      // Upload rows go with the user (cascade) but their objects would stay in the bucket, so the
-      // keys are read and queued for deletion before the rows disappear. The jobs are delayed past
-      // every ticket's lifetime plus the grace period: an object uploaded through a still-valid
-      // ticket after the rows are gone would otherwise be orphaned.
+      // The avatar's object would stay in the bucket once the user is gone, so it is queued for
+      // deletion first. The job is delayed past every ticket's lifetime plus the grace period: an
+      // object uploaded through a still-valid ticket after the job ran would otherwise be orphaned.
+      // Only an object under the user's own prefix is ours to delete (a Google picture is not).
       beforeDelete: async (user) => {
-        const uploads = await db.upload.findMany({
-          where: { userId: user.id },
-          select: { key: true },
-        })
-        const results = await Promise.allSettled(
-          uploads.map(({ key }) =>
-            enqueue('delete-object', { key }, { startAfter: MAX_OBJECT_DELETE_DELAY_SECONDS }),
-          ),
-        )
-        for (const result of results) {
-          if (result.status === 'rejected') {
-            log.error({ err: result.reason, userId: user.id }, 'object not queued for deletion')
-          }
+        const key = keyFromPublicUrl(user.image ?? null)
+        if (!key?.startsWith(`avatars/${user.id}/`)) {
+          return
         }
+        await enqueue(
+          'delete-object',
+          { key },
+          { startAfter: MAX_OBJECT_DELETE_DELAY_SECONDS },
+        ).catch((error) =>
+          log.error({ err: error, userId: user.id }, 'avatar not queued for deletion'),
+        )
       },
-      // Posts, sessions, accounts and uploads cascade: drop the cached lists and the cached viewer.
+      // Posts, sessions and accounts cascade: drop the cached lists and the cached viewer.
       afterDelete: async (user) => {
         await invalidateTags(POSTS_TAG, userTag(user.id))
       },
@@ -236,6 +256,9 @@ export const auth = betterAuth({
     // loses their sessions) and impersonation (`session.impersonatedBy`). The DAL wraps its server
     // API in `lib/data/admin.ts`; `requireAdmin()` below is the check every admin read and write runs.
     admin({
+      // The plugin's permissions (manage users and sessions) belong to admins only. Listing the
+      // roles also makes `setRole` refuse any other value.
+      roles: { user: userAc, admin: adminAc },
       defaultRole: 'user',
       adminRoles: ['admin'],
       defaultBanReason: 'no reason given',
@@ -264,7 +287,8 @@ export type SessionUser = {
 /**
  * The admin plugin stores roles as free text (it allows comma-separated lists). Anything that is
  * not one of ours reads as a regular user, so an odd value can never grant more, and never breaks
- * a read either. Every DAL function that maps a user row goes through this before its DTO schema.
+ * a read either (the `users_role_valid` CHECK constraint keeps odd values out of the table anyway).
+ * Every DAL function that maps a user row goes through this before its DTO schema.
  */
 export const toRole = (value: string | null | undefined): Role => {
   const role = roleSchema.safeParse(value)

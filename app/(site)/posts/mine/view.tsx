@@ -1,11 +1,12 @@
 'use client'
 
-import Link from 'next/link'
+import { ActionGroup } from '@/components/ActionGroup'
+import { ActionLink } from '@/components/ActionLink'
+import { ButtonLink } from '@/components/ButtonLink'
 import { Empty } from '@/components/Empty'
 import { Pagination } from '@/components/Pagination'
 import { PostsFilters } from '@/components/Posts/Filters'
 import { PostStatusBadge } from '@/components/Posts/StatusBadge'
-import { Button } from '@/components/SCN/button'
 import {
   Table,
   TableBody,
@@ -13,7 +14,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/SCN/table'
+} from '@/components/ui/table'
 import { useUrlState } from '@/hooks/useUrlState'
 import { ROUTE_POST_DETAILS, ROUTE_POST_EDIT, ROUTE_POST_NEW } from '@/lib/constants-routes'
 import type { Page } from '@/lib/dto/common'
@@ -40,11 +41,7 @@ export const MyPostsView = ({ posts }: MyPostsViewProps) => {
           <Empty
             title="No posts yet"
             description="Write your first post. It stays a draft until you publish it."
-            action={
-              <Button asChild>
-                <Link href={ROUTE_POST_NEW}>Write a post</Link>
-              </Button>
-            }
+            action={<ButtonLink href={ROUTE_POST_NEW}>Write a post</ButtonLink>}
           />
         ) : posts.totalItems === 0 ? (
           <Empty title="No matching posts" description="No post matches your search." />
@@ -75,14 +72,18 @@ export const MyPostsView = ({ posts }: MyPostsViewProps) => {
                 </TableCell>
                 <TableCell>{formatDateTime(post.createdAt)}</TableCell>
                 <TableCell>
-                  <div className={styles.actions}>
-                    <Button asChild size="sm" variant="secondary">
-                      <Link href={ROUTE_POST_DETAILS(post.id)}>View</Link>
-                    </Button>
-                    <Button asChild size="sm" variant="outline">
-                      <Link href={ROUTE_POST_EDIT(post.id)}>Edit</Link>
-                    </Button>
-                  </div>
+                  <ActionGroup label={`Actions for ${post.title}`}>
+                    <ActionLink
+                      action="view"
+                      label={`View ${post.title}`}
+                      href={ROUTE_POST_DETAILS(post.id)}
+                    />
+                    <ActionLink
+                      action="edit"
+                      label={`Edit ${post.title}`}
+                      href={ROUTE_POST_EDIT(post.id)}
+                    />
+                  </ActionGroup>
                 </TableCell>
               </TableRow>
             ))}

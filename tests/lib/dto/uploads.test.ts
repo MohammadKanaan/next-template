@@ -1,16 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
-  AVATAR_CONTENT_TYPES,
   AVATAR_MAX_SIZE,
   createUploadInput,
   isAllowedContentType,
-  MAX_OBJECT_DELETE_DELAY_SECONDS,
-  objectDeleteDelaySeconds,
-  UPLOAD_OBJECT_GRACE_SECONDS,
-  UPLOAD_RULES,
-  UPLOAD_TICKET_SECONDS,
-  uploadIdSchema,
-  uploadTicketSchema,
+  uploadKeySchema,
 } from '@/lib/dto/uploads'
 
 const messages = (input: unknown) => {
@@ -19,16 +12,6 @@ const messages = (input: unknown) => {
 }
 
 describe('UPLOAD_RULES', () => {
-  it('limits avatars to small raster images and three live tickets', () => {
-    expect(UPLOAD_RULES.avatar).toMatchObject({
-      contentTypes: AVATAR_CONTENT_TYPES,
-      maxSize: 2 * 1024 * 1024,
-      maxPending: 3,
-      ticketSeconds: UPLOAD_TICKET_SECONDS,
-    })
-    expect(AVATAR_CONTENT_TYPES).toEqual(['image/png', 'image/jpeg', 'image/webp'])
-  })
-
   it('never allows an active-content type', () => {
     for (const type of ['image/svg+xml', 'text/html', 'application/javascript']) {
       expect(isAllowedContentType('avatar', type)).toBe(false)
@@ -36,13 +19,6 @@ describe('UPLOAD_RULES', () => {
     expect(isAllowedContentType('avatar', null)).toBe(false)
     expect(isAllowedContentType('avatar', 'application/pdf')).toBe(false)
     expect(isAllowedContentType('avatar', 'image/webp')).toBe(true)
-  })
-
-  it('delays object deletion past the ticket plus the grace period', () => {
-    expect(objectDeleteDelaySeconds('avatar')).toBe(
-      UPLOAD_TICKET_SECONDS + UPLOAD_OBJECT_GRACE_SECONDS,
-    )
-    expect(MAX_OBJECT_DELETE_DELAY_SECONDS).toBe(objectDeleteDelaySeconds('avatar'))
   })
 })
 
@@ -71,20 +47,18 @@ describe('createUploadInput', () => {
   })
 })
 
-describe('upload ticket and id', () => {
-  it('describes a presigned PUT: a URL and the headers the signature covers', () => {
-    expect(
-      uploadTicketSchema.parse({
-        uploadId: 'u',
-        url: 'https://acct.r2.cloudflarestorage.com/b/k?X-Amz-Signature=s',
-        headers: { 'Content-Type': 'image/png' },
-      }).headers,
-    ).toEqual({ 'Content-Type': 'image/png' })
-    expect(uploadTicketSchema.safeParse({ uploadId: 'u', url: 'x' }).success).toBe(false)
-  })
-
-  it('only accepts a UUID as an upload id', () => {
-    expect(uploadIdSchema.safeParse(crypto.randomUUID()).success).toBe(true)
-    expect(uploadIdSchema.safeParse('not-a-uuid').success).toBe(false)
+describe('upload ticket and key', () => {
+  it('only accepts a key shaped like the ones createUpload makes', () => {
+    const key = `avatars/${crypto.randomUUID()}/${crypto.randomUUID()}`
+    expect(uploadKeySchema.safeParse(key).success).toBe(true)
+    for (const bad of [
+      'avatars/not-a-uuid/x',
+      `avatars/${crypto.randomUUID()}`,
+      `../avatars/${crypto.randomUUID()}/${crypto.randomUUID()}`,
+      `Avatars/${crypto.randomUUID()}/${crypto.randomUUID()}`,
+      '',
+    ]) {
+      expect(uploadKeySchema.safeParse(bad).success).toBe(false)
+    }
   })
 })

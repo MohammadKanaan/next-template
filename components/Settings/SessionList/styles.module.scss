@@ -5,7 +5,7 @@
 }
 
 .device {
-  max-width: 18rem;
+  max-width: 12rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -13,8 +13,30 @@
 
 .deviceCell {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.25rem 0.5rem;
+}
+
+.signedInInline {
+  display: none;
+  flex-basis: 100%;
+  color: var(--muted-foreground);
+  font-size: 0.8125rem;
+}
+
+@media (width < $breakpoint-sm) {
+  .device {
+    max-width: 10rem;
+  }
+
+  .signedInColumn {
+    display: none;
+  }
+
+  .signedInInline {
+    display: block;
+  }
 }
 
 .srOnly {

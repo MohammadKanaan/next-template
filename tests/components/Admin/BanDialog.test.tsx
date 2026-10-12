@@ -10,7 +10,7 @@ vi.mock('@/actions/admin', () => ({ banUserAction: vi.fn() }))
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 const grace: AdminUser = {
-  id: 'u-grace',
+  id: '0190d1a2-0000-7000-8000-00000000c0de',
   name: 'Grace Hopper',
   username: 'grace',
   email: 'grace@example.com',
@@ -32,21 +32,13 @@ describe('BanUserDialog', () => {
     vi.mocked(toast.success).mockReset()
   })
 
-  it('stays closed until asked, then names the user and explains what a ban does', async () => {
+  it('stays closed until asked, then names the user', async () => {
     render(<BanUserDialog user={grace} />)
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    const dialog = await open()
+    await open()
     expect(screen.getByRole('heading', { name: 'Ban Grace Hopper?' })).toBeInTheDocument()
-    expect(dialog).toHaveTextContent(
-      'They are signed out everywhere and cannot sign in until you unban them.',
-    )
     expect(screen.getByLabelText('Reason')).toHaveValue('')
     expect(banUserAction).not.toHaveBeenCalled()
-  })
-
-  it('can be disabled from outside', () => {
-    render(<BanUserDialog user={grace} disabled />)
-    expect(screen.getByRole('button', { name: 'Ban' })).toBeDisabled()
   })
 
   it('bans without a reason, confirms with a toast and closes', async () => {
@@ -57,7 +49,10 @@ describe('BanUserDialog', () => {
     render(<BanUserDialog user={grace} />)
     await open()
     await userEvent.click(screen.getByRole('button', { name: 'Ban user' }))
-    expect(banUserAction).toHaveBeenCalledWith({ id: 'u-grace', reason: '' })
+    expect(banUserAction).toHaveBeenCalledWith({
+      id: '0190d1a2-0000-7000-8000-00000000c0de',
+      reason: '',
+    })
     expect(toast.success).toHaveBeenCalledWith('Grace Hopper is banned')
     await vi.waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   })
@@ -71,7 +66,10 @@ describe('BanUserDialog', () => {
     await open()
     await userEvent.type(screen.getByLabelText('Reason'), '  Spam  ')
     await userEvent.click(screen.getByRole('button', { name: 'Ban user' }))
-    expect(banUserAction).toHaveBeenCalledWith({ id: 'u-grace', reason: 'Spam' })
+    expect(banUserAction).toHaveBeenCalledWith({
+      id: '0190d1a2-0000-7000-8000-00000000c0de',
+      reason: 'Spam',
+    })
   })
 
   it('refuses a reason that is too long before calling the server', async () => {

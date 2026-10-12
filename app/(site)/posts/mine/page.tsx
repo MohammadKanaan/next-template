@@ -1,13 +1,13 @@
 import type { Metadata } from 'next'
-import Link from 'next/link'
+import { ButtonLink } from '@/components/ButtonLink'
 import { PageHeader } from '@/components/PageHeader'
-import { Button } from '@/components/SCN/button'
 import { ROUTE_POST_NEW, ROUTE_POSTS_MINE } from '@/lib/constants-routes'
 import { loadPage } from '@/lib/data/page'
 import { listPosts } from '@/lib/data/posts'
 import { getCurrentUser } from '@/lib/data/users'
 import { postsUrlQuery, toListPostsParams } from '@/lib/dto/posts'
 import { toScalarParams } from '@/lib/searchParams'
+import { NO_INDEX } from '@/lib/seo'
 import styles from '../styles.module.scss'
 import { MyPostsView } from './view'
 
@@ -15,6 +15,7 @@ const PER_PAGE = 10
 
 export const metadata: Metadata = {
   title: 'My posts',
+  robots: NO_INDEX,
 }
 
 const MyPostsPage = async ({ searchParams }: PageProps<'/posts/mine'>) => {
@@ -30,11 +31,7 @@ const MyPostsPage = async ({ searchParams }: PageProps<'/posts/mine'>) => {
       <PageHeader
         title="My posts"
         description="Your drafts and published posts."
-        actions={
-          <Button asChild>
-            <Link href={ROUTE_POST_NEW}>Write a post</Link>
-          </Button>
-        }
+        actions={<ButtonLink href={ROUTE_POST_NEW}>Write a post</ButtonLink>}
       />
       <MyPostsView posts={posts} />
     </div>

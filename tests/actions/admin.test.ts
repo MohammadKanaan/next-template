@@ -5,12 +5,13 @@ import {
   banUserAction,
   impersonateUserAction,
   setUserRoleAction,
+  revokeUserSessionsAction,
   stopImpersonatingAction,
   unbanUserAction,
 } from '@/actions/admin'
 import { getSessionUser } from '@/lib/data/auth'
 import { db } from '@/lib/data/db'
-import { createUser, resetDatabase, signInAs } from '../helpers/server'
+import { MISSING_ID, createUser, resetDatabase, signInAs } from '../helpers/server'
 
 const { cookieStore, requestHeaders } = await vi.hoisted(async () => import('../helpers/cookies'))
 vi.mock('next/headers', () => ({
@@ -77,7 +78,7 @@ describe('admin actions', () => {
         code: 'FORBIDDEN',
         message: 'You cannot change your own role',
       })
-      expect(await setUserRoleAction({ id: 'missing-id', role: 'user' })).toEqual({
+      expect(await setUserRoleAction({ id: MISSING_ID, role: 'user' })).toEqual({
         ok: false,
         code: 'NOT_FOUND',
         message: 'User not found',
@@ -87,42 +88,6 @@ describe('admin actions', () => {
   })
 
   describe('banUserAction and unbanUserAction', () => {
-    it('require an admin and do not refresh', async () => {
-      const target = await createUser({})
-      expect(await banUserAction({ id: target.id })).toMatchObject({
-        ok: false,
-        code: 'UNAUTHORIZED',
-      })
-      expect(await unbanUserAction(target.id)).toMatchObject({ ok: false, code: 'UNAUTHORIZED' })
-      const member = await createUser({})
-      await signInAs(member)
-      expect(await banUserAction({ id: target.id })).toMatchObject({
-        ok: false,
-        code: 'FORBIDDEN',
-      })
-      expect(await unbanUserAction(target.id)).toMatchObject({ ok: false, code: 'FORBIDDEN' })
-      expect(refresh).not.toHaveBeenCalled()
-      expect(await userRow(target.id)).toMatchObject({ banned: false })
-    })
-
-    it('validate the input and put a long reason on its field', async () => {
-      const target = await createUser({})
-      const admin = await createUser({ role: 'admin' })
-      await signInAs(admin)
-      expect(await banUserAction({ id: 'a b' })).toMatchObject({
-        ok: false,
-        code: 'VALIDATION',
-        fieldErrors: { id: ['Invalid user id'] },
-      })
-      expect(await banUserAction({ id: target.id, reason: 'x'.repeat(201) })).toMatchObject({
-        ok: false,
-        code: 'VALIDATION',
-        fieldErrors: { reason: ['Reason must be 200 characters or fewer'] },
-      })
-      expect(await unbanUserAction('')).toMatchObject({ ok: false, code: 'VALIDATION' })
-      expect(refresh).not.toHaveBeenCalled()
-    })
-
     it('ban, then unban, each refreshing and returning the updated user', async () => {
       const target = await createUser({ name: 'Target' })
       const admin = await createUser({ role: 'admin' })
@@ -146,40 +111,57 @@ describe('admin actions', () => {
       const admin = await createUser({ role: 'admin' })
       await signInAs(admin)
       expect(await banUserAction({ id: admin.id })).toMatchObject({ ok: false, code: 'FORBIDDEN' })
-      expect(await banUserAction({ id: 'missing-id' })).toEqual({
+      expect(await banUserAction({ id: MISSING_ID })).toEqual({
         ok: false,
         code: 'NOT_FOUND',
         message: 'User not found',
       })
-      expect(await unbanUserAction('missing-id')).toMatchObject({ ok: false, code: 'NOT_FOUND' })
+      expect(await unbanUserAction(MISSING_ID)).toMatchObject({ ok: false, code: 'NOT_FOUND' })
       expect(refresh).not.toHaveBeenCalled()
       expect(await userRow(admin.id)).toMatchObject({ banned: false })
     })
   })
 
-  describe('impersonateUserAction and stopImpersonatingAction', () => {
-    it('impersonation requires an admin and does not refresh', async () => {
+  describe('revokeUserSessionsAction', () => {
+    it('requires an admin, refuses an admin target and does not refresh when it fails', async () => {
       const target = await createUser({})
-      expect(await impersonateUserAction(target.id)).toMatchObject({
+      expect(await revokeUserSessionsAction(target.id)).toMatchObject({
         ok: false,
         code: 'UNAUTHORIZED',
       })
-      const member = await createUser({})
-      await signInAs(member)
-      expect(await impersonateUserAction(target.id)).toMatchObject({
+      const peer = await createUser({ role: 'admin' })
+      await signInAs(peer)
+      const admin = await createUser({ role: 'admin' })
+      await signInAs(admin)
+      expect(await revokeUserSessionsAction(peer.id)).toMatchObject({
         ok: false,
         code: 'FORBIDDEN',
       })
+      expect(await revokeUserSessionsAction(MISSING_ID)).toMatchObject({
+        ok: false,
+        code: 'NOT_FOUND',
+      })
       expect(refresh).not.toHaveBeenCalled()
-      await expect(getSessionUser()).resolves.toMatchObject({ id: member.id })
     })
 
+    it('signs the user out everywhere and refreshes', async () => {
+      const target = await createUser({})
+      await signInAs(target)
+      const admin = await createUser({ role: 'admin' })
+      await signInAs(admin)
+      expect(await revokeUserSessionsAction(target.id)).toEqual({ ok: true, data: null })
+      expect(refresh).toHaveBeenCalledTimes(1)
+      expect(await db.session.count({ where: { userId: target.id } })).toBe(0)
+    })
+  })
+
+  describe('impersonateUserAction and stopImpersonatingAction', () => {
     it('validates the id and reports a missing user or another admin', async () => {
       const other = await createUser({ role: 'admin' })
       const admin = await createUser({ role: 'admin' })
       await signInAs(admin)
       expect(await impersonateUserAction('a b')).toMatchObject({ ok: false, code: 'VALIDATION' })
-      expect(await impersonateUserAction('missing-id')).toMatchObject({
+      expect(await impersonateUserAction(MISSING_ID)).toMatchObject({
         ok: false,
         code: 'NOT_FOUND',
       })

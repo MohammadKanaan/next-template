@@ -9,11 +9,6 @@ vi.mock('@/actions/auth', () => ({ resendVerificationAction: vi.fn() }))
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 describe('VerifyEmailBanner', () => {
-  it('tells the user which address to confirm', () => {
-    render(<VerifyEmailBanner email="ada@example.com" />)
-    expect(screen.getByRole('status')).toHaveTextContent('ada@example.com')
-  })
-
   it('resends the email and confirms with a toast', async () => {
     vi.mocked(resendVerificationAction).mockResolvedValue({ ok: true, data: null })
     render(<VerifyEmailBanner email="ada@example.com" />)

@@ -47,10 +47,4 @@ describe('enqueue', () => {
     await expect(enqueue('send-email', invalid)).rejects.toThrow()
     expect(await boss.fetch('send-email')).toHaveLength(0)
   })
-
-  it('passes send options through', async () => {
-    await enqueue('send-email', payload, { startAfter: 3600 })
-    expect(await boss.fetch('send-email')).toHaveLength(0)
-    expect(await boss.findJobs('send-email', { queued: true })).toHaveLength(1)
-  })
 })

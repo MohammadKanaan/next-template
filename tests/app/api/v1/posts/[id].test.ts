@@ -1,8 +1,17 @@
 // @vitest-environment node
-import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DELETE, GET, PATCH } from '@/app/api/v1/posts/[id]/route'
+import { PUBLIC_API_LIMIT } from '@/lib/constants-rateLimit'
 import { db } from '@/lib/data/db'
-import { createUser, resetDatabase, signInAs, signOut } from '../../../../helpers/server'
+import { resetServerEnv } from '@/lib/server/env'
+import { getRedis } from '@/lib/server/redis'
+import {
+  MISSING_ID,
+  createUser,
+  resetDatabase,
+  signInAs,
+  signOut,
+} from '../../../../helpers/server'
 
 const { cookieStore, requestHeaders } = await vi.hoisted(
   async () => import('../../../../helpers/cookies'),
@@ -15,13 +24,13 @@ vi.mock('next/cache', () => ({ revalidatePath: vi.fn(), refresh: vi.fn() }))
 
 type Context = RouteContext<'/api/v1/posts/[id]'>
 
-const context = (id: string | number): Context => ({ params: Promise.resolve({ id: String(id) }) })
+const context = (id: string): Context => ({ params: Promise.resolve({ id: id }) })
 
-const url = (id: string | number) => `http://localhost/api/v1/posts/${id}`
+const url = (id: string) => `http://localhost/api/v1/posts/${id}`
 
-const show = (id: string | number) => GET(new Request(url(id)), context(id))
+const show = (id: string) => GET(new Request(url(id)), context(id))
 
-const patch = (id: string | number, body: unknown, contentType = 'application/json') => {
+const patch = (id: string, body: unknown, contentType = 'application/json') => {
   return PATCH(
     new Request(url(id), {
       method: 'PATCH',
@@ -32,7 +41,7 @@ const patch = (id: string | number, body: unknown, contentType = 'application/js
   )
 }
 
-const remove = (id: string | number) => {
+const remove = (id: string) => {
   return DELETE(new Request(url(id), { method: 'DELETE' }), context(id))
 }
 
@@ -40,12 +49,16 @@ const seedPost = (userId: string, published = true) => {
   return db.post.create({ data: { userId, title: 'Title', body: 'Body', published } })
 }
 
-const titleOf = async (id: number) => {
+const titleOf = async (id: string) => {
   return (await db.post.findUniqueOrThrow({ where: { id } })).title
 }
 
 describe('/api/v1/posts/[id]', () => {
   beforeEach(resetDatabase)
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    resetServerEnv()
+  })
   afterAll(() => db.$disconnect())
 
   describe('GET', () => {
@@ -88,7 +101,7 @@ describe('/api/v1/posts/[id]', () => {
       const other = await createUser({})
       const admin = await createUser({ role: 'admin' })
       const draft = await seedPost(author.id, false)
-      expect((await show(999)).status).toBe(404)
+      expect((await show(MISSING_ID)).status).toBe(404)
       expect((await show('abc')).status).toBe(404)
       expect(await (await show(draft.id)).json()).toEqual({
         code: 'NOT_FOUND',
@@ -100,6 +113,18 @@ describe('/api/v1/posts/[id]', () => {
       expect((await show(draft.id)).status).toBe(200)
       await signInAs(admin)
       expect((await show(draft.id)).status).toBe(200)
+    })
+  })
+
+  describe('GET rate limit', () => {
+    it('answers 429 once the client address is past the limit, before reading anything', async () => {
+      vi.stubEnv('NODE_ENV', 'production')
+      resetServerEnv()
+      await getRedis().set('ratelimit:api:post:ip:unknown', PUBLIC_API_LIMIT.max)
+
+      const response = await show(MISSING_ID)
+      expect(response.status).toBe(429)
+      expect(await response.json()).toMatchObject({ code: 'RATE_LIMITED' })
     })
   })
 
@@ -183,7 +208,7 @@ describe('/api/v1/posts/[id]', () => {
 
     it('answers 404 for a missing post', async () => {
       await signInAs(await createUser({}))
-      const response = await patch(999, { title: 'x' })
+      const response = await patch(MISSING_ID, { title: 'x' })
       expect(response.status).toBe(404)
       expect(await response.json()).toMatchObject({ code: 'NOT_FOUND' })
     })
@@ -200,7 +225,7 @@ describe('/api/v1/posts/[id]', () => {
       expect((await invalid.json()).fieldErrors.title).toEqual(['Title is required'])
       expect((await patch(post.id, { published: 'true' })).status).toBe(422)
       expect((await patch('abc', { title: 'x' })).status).toBe(422)
-      expect((await patch(0, { title: 'x' })).status).toBe(422)
+      expect((await patch('0', { title: 'x' })).status).toBe(422)
       expect(await titleOf(post.id)).toBe('Title')
     })
 
@@ -241,7 +266,7 @@ describe('/api/v1/posts/[id]', () => {
       expect(response.status).toBe(401)
       expect(await response.json()).toMatchObject({ code: 'UNAUTHORIZED' })
       expect((await remove('abc')).status).toBe(401)
-      expect((await remove(999)).status).toBe(401)
+      expect((await remove(MISSING_ID)).status).toBe(401)
       expect(await db.post.count()).toBe(1)
     })
 
@@ -274,7 +299,7 @@ describe('/api/v1/posts/[id]', () => {
       expect((await remove(post.id)).status).toBe(403)
       expect((await remove(draft.id)).status).toBe(403)
       expect(await db.post.count()).toBe(2)
-      expect((await remove(999)).status).toBe(404)
+      expect((await remove(MISSING_ID)).status).toBe(404)
       const malformed = await remove('abc')
       expect(malformed.status).toBe(422)
       expect(await malformed.json()).toMatchObject({ code: 'VALIDATION' })

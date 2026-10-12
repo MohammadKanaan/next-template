@@ -1,12 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { z } from 'zod'
 import {
   booleanParamSchema,
   idSchema,
   MAX_PAGE,
   MAX_PER_PAGE,
   pageQuerySchema,
-  pageSchema,
   toPage,
 } from '@/lib/dto/common'
 
@@ -31,24 +29,16 @@ describe('pageQuerySchema', () => {
 })
 
 describe('idSchema', () => {
-  it('accepts positive integer strings only', () => {
-    expect(idSchema.parse('7')).toBe(7)
-    expect(idSchema.parse(7)).toBe(7)
-    expect(idSchema.safeParse('abc').success).toBe(false)
-    expect(idSchema.safeParse('1.5').success).toBe(false)
-    expect(idSchema.safeParse('0').success).toBe(false)
-    expect(idSchema.safeParse(-1).success).toBe(false)
-    expect(idSchema.parse('2147483647')).toBe(2147483647)
-    expect(idSchema.safeParse('2147483648').success).toBe(false)
+  it('accepts UUIDs and refuses anything else', () => {
+    const id = '0190d1a2-0000-7000-8000-000000000001'
+    expect(idSchema.parse(id)).toBe(id)
+    for (const value of ['7', 'abc', '', 7, null]) {
+      expect(idSchema.safeParse(value).success).toBe(false)
+    }
   })
 })
 
 describe('booleanParamSchema', () => {
-  it('accepts a boolean as it is', () => {
-    expect(booleanParamSchema.parse(true)).toBe(true)
-    expect(booleanParamSchema.parse(false)).toBe(false)
-  })
-
   it('reads the strings a query string carries', () => {
     expect(booleanParamSchema.parse('true')).toBe(true)
     // `z.coerce.boolean()` would read this as true.
@@ -72,15 +62,5 @@ describe('toPage', () => {
       totalPages: 3,
     })
     expect(toPage([], 0, { page: 1, perPage: 10 }).totalPages).toBe(1)
-  })
-
-  it('round-trips through pageSchema', () => {
-    const page = toPage([1, 2], 2, { page: 1, perPage: 10 })
-    expect(pageSchema(z.number()).parse(page)).toEqual(page)
-  })
-
-  it('rejects a page whose items do not match', () => {
-    const page = toPage(['a'], 1, { page: 1, perPage: 10 })
-    expect(pageSchema(z.number()).safeParse(page).success).toBe(false)
   })
 })

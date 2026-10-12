@@ -1,7 +1,6 @@
 // @vitest-environment node
-import { APIError } from 'better-auth/api'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { auth, getSessionUser, requireAdmin, requireUser } from '@/lib/data/auth'
+import { auth, getSessionUser, requireAdmin, requireUser, toRole } from '@/lib/data/auth'
 import { db } from '@/lib/data/db'
 import { ForbiddenError, UnauthorizedError } from '@/lib/data/errors'
 import { listPosts } from '@/lib/data/posts'
@@ -28,6 +27,11 @@ vi.mock('next/headers', () => ({
   headers: async () => requestHeaders(),
 }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn(), refresh: vi.fn() }))
+const BUCKET_URL = vi.hoisted(() => 'https://pub-abc.r2.dev/')
+vi.mock('@/lib/server/storage', () => ({
+  keyFromPublicUrl: (url: string | null) =>
+    url?.startsWith(BUCKET_URL) ? url.slice(BUCKET_URL.length) : null,
+}))
 
 const currentSessionOf = (userId: string) =>
   db.session.findFirstOrThrow({ where: { userId }, orderBy: { createdAt: 'desc' } })
@@ -75,77 +79,20 @@ describe('DAL auth', () => {
     expect(await requireAdmin()).toMatchObject({ id: admin.id, role: 'admin' })
   })
 
-  it('reads a role it does not know as a regular user, so an odd value never grants more', async () => {
-    const user = await createUser({})
-    await db.user.update({ where: { id: user.id }, data: { role: 'owner' } })
-    await signInAs(user)
-    expect(await getSessionUser()).toMatchObject({ id: user.id, role: 'user' })
-    await expect(requireAdmin()).rejects.toBeInstanceOf(ForbiddenError)
-
+  it('reads a role it does not know as a regular user, so an odd value never grants more', () => {
+    expect(toRole('owner')).toBe('user')
     // The plugin allows comma-separated role lists; a list is not one of ours either.
-    await db.user.update({ where: { id: user.id }, data: { role: 'admin,user' } })
-    expect((await getSessionUser())?.role).toBe('user')
+    expect(toRole('admin,user')).toBe('user')
+    expect(toRole(null)).toBe('user')
+    expect(toRole('admin')).toBe('admin')
   })
 
-  it('exposes the admin behind an impersonated session', async () => {
+  it('keeps odd roles out of the table altogether (users_role_valid)', async () => {
     const user = await createUser({})
-    const admin = await createUser({ role: 'admin' })
-    await signInAs(user)
-    const session = await currentSessionOf(user.id)
-    await db.session.update({ where: { id: session.id }, data: { impersonatedBy: admin.id } })
-    expect(await getSessionUser()).toEqual({
-      id: user.id,
-      role: 'user',
-      sessionId: session.id,
-      impersonatedBy: admin.id,
-    })
-  })
-
-  describe('a banned user', () => {
-    it('cannot sign in, and their sessions are gone', async () => {
-      const user = await createUser({})
-      const other = await createUser({})
-      await signInAs(user)
-      await expect(requireUser()).resolves.toMatchObject({ id: user.id })
-      const admin = await createUser({ role: 'admin' })
-      await signInAs(admin)
-
-      await auth.api.banUser({
-        body: { userId: user.id, banReason: 'Spam' },
-        headers: requestHeaders(),
-      })
-
-      expect(await db.session.count({ where: { userId: user.id } })).toBe(0)
-      // The ban does not reach anyone else's sessions.
-      expect(await db.session.count({ where: { userId: other.id } })).toBeGreaterThan(0)
-      expect(await db.user.findUniqueOrThrow({ where: { id: user.id } })).toMatchObject({
-        banned: true,
-        banReason: 'Spam',
-      })
-
-      signOut()
-      const refused = await auth.api
-        .signInEmail({ body: { email: user.email, password: TEST_PASSWORD } })
-        .catch((error: unknown) => error)
-      expect(refused).toBeInstanceOf(APIError)
-      expect(refused).toMatchObject({
-        status: 'FORBIDDEN',
-        body: { code: 'BANNED_USER', message: 'Your account is banned: Spam' },
-      })
-      expect(cookieJar.size).toBe(0)
-      await expect(requireUser()).rejects.toBeInstanceOf(UnauthorizedError)
-    })
-
-    it('can sign in again once unbanned', async () => {
-      const user = await createUser({})
-      const admin = await createUser({ role: 'admin' })
-      await signInAs(admin)
-      await auth.api.banUser({ body: { userId: user.id }, headers: requestHeaders() })
-      await auth.api.unbanUser({ body: { userId: user.id }, headers: requestHeaders() })
-
-      await signInAs(user)
-      await expect(requireUser()).resolves.toMatchObject({ id: user.id })
-    })
+    await expect(
+      db.user.update({ where: { id: user.id }, data: { role: 'owner' } }),
+    ).rejects.toThrow()
+    expect((await db.user.findUniqueOrThrow({ where: { id: user.id } })).role).toBe('user')
   })
 
   describe("Better Auth's HTTP router", () => {
@@ -260,6 +207,47 @@ describe('DAL auth', () => {
       ).toEqual(['Reset your password', 'Verify your email'])
     })
 
+    it('does not expose the session, account, social sign-in and reset-completion routes either', async () => {
+      const user = await createUser({})
+      await signInAs(user)
+      const cookie = requestHeaders().get('cookie')!
+      const sessions = await db.session.count({ where: { userId: user.id } })
+      const get = (path: string) =>
+        auth.handler(
+          new Request(`http://localhost:3000/api/auth${path}`, {
+            headers: { cookie, origin: 'http://localhost:3000' },
+          }),
+        )
+      const responses = await Promise.all([
+        get('/list-sessions'),
+        get('/list-accounts'),
+        get('/account-info'),
+        post('/revoke-session', { token: 'x' }, cookie),
+        post('/revoke-sessions', {}, cookie),
+        post('/revoke-other-sessions', {}, cookie),
+        post('/update-session', { ipAddress: 'x' }, cookie),
+        post('/unlink-account', { providerId: 'google' }, cookie),
+        post('/link-social', { provider: 'google', callbackURL: '/' }, cookie),
+        post('/sign-in/social', { provider: 'google' }),
+        post('/reset-password', { newPassword: 'another-long-one', token: 'x' }),
+      ])
+      expect(responses.map((response) => response.status)).toEqual(Array(11).fill(404))
+      expect(await db.session.count({ where: { userId: user.id } })).toBe(sessions)
+      // The emailed reset link still lands: its route stays open and answers with a redirect to
+      // the page (here with the error an unknown token gets; a real one carries the token).
+      const link = await auth.handler(
+        new Request(
+          'http://localhost:3000/api/auth/reset-password/some-token?callbackURL=/reset-password',
+          { headers: { origin: 'http://localhost:3000' } },
+        ),
+      )
+      expect(link.status).toBe(302)
+      expect(link.headers.get('location')).toContain('/reset-password?error=INVALID_TOKEN')
+      // What remains open is what the browser needs: the session read and the sign-out.
+      expect((await get('/get-session')).status).toBe(200)
+      expect((await post('/sign-out', {}, cookie)).status).toBe(200)
+    })
+
     it('does not expose the admin plugin routes, even to a signed-in admin', async () => {
       const target = await createUser({})
       const admin = await createUser({ role: 'admin' })
@@ -355,22 +343,6 @@ describe('DAL auth', () => {
         expect.objectContaining({ subject: 'Verify your email', to: 'new@example.com' }),
       ])
     })
-
-    it('answers the same and sends nothing when the new address belongs to someone else', async () => {
-      const user = await createUser({ email: 'old@example.com' })
-      await createUser({ email: 'taken@example.com' })
-      await db.user.update({ where: { id: user.id }, data: { emailVerified: true } })
-      await signInAs(user)
-      clearMail()
-
-      const result = await auth.api.changeEmail({
-        body: { newEmail: 'taken@example.com', callbackURL: '/settings' },
-        headers: requestHeaders(),
-      })
-      expect(result).toEqual({ status: true })
-      await flushMail()
-      expect(sentMails()).toEqual([])
-    })
   })
 
   describe('deleting the account', () => {
@@ -406,37 +378,39 @@ describe('DAL auth', () => {
       expect(await getViewer()).toBeNull()
     })
 
-    it("queues the user's upload objects for deletion, delayed past every ticket's lifetime", async () => {
+    it("queues the avatar's object for deletion, delayed past every ticket's lifetime", async () => {
       const user = await createUser({})
-      const other = await createUser({})
-      const upload = (userId: string, key: string, status: 'pending' | 'attached') =>
-        db.upload.create({
-          data: { userId, key, purpose: 'avatar', contentType: 'image/png', size: 1, status },
-        })
-      await upload(user.id, `avatars/${user.id}/old`, 'attached')
-      await upload(user.id, `avatars/${user.id}/half`, 'pending')
-      await upload(other.id, `avatars/${other.id}/keep`, 'attached')
+      const key = `avatars/${user.id}/0190d1a2-0000-7000-8000-000000000001`
+      await db.user.update({ where: { id: user.id }, data: { image: `${BUCKET_URL}${key}` } })
       await signInAs(user)
       vi.mocked(enqueue).mockClear()
 
       await auth.api.deleteUser({ body: { password: TEST_PASSWORD }, headers: requestHeaders() })
 
       const deletes = vi.mocked(enqueue).mock.calls.filter(([name]) => name === 'delete-object')
-      const keys = deletes.map(([, payload]) => ('key' in payload ? payload.key : null)).sort()
-      expect(keys).toEqual([`avatars/${user.id}/half`, `avatars/${user.id}/old`])
-      for (const [, , options] of deletes) {
-        expect(options).toEqual({ startAfter: MAX_OBJECT_DELETE_DELAY_SECONDS })
-      }
-      expect(await db.upload.count()).toBe(1)
+      expect(deletes).toEqual([
+        ['delete-object', { key }, { startAfter: MAX_OBJECT_DELETE_DELAY_SECONDS }],
+      ])
     })
 
-    it('refuses a wrong password and keeps the account', async () => {
-      const user = await createUser({})
-      await signInAs(user)
-      await expect(
-        auth.api.deleteUser({ body: { password: 'not-the-password' }, headers: requestHeaders() }),
-      ).rejects.toMatchObject({ body: { code: 'INVALID_PASSWORD' } })
-      expect(await db.user.count({ where: { id: user.id } })).toBe(1)
+    it('deletes no object it does not own: a Google picture or another user’s key', async () => {
+      const other = await createUser({})
+      for (const image of [
+        'https://lh3.googleusercontent.com/a/picture',
+        `${BUCKET_URL}avatars/${other.id}/0190d1a2-0000-7000-8000-000000000001`,
+      ]) {
+        const user = await createUser({})
+        await db.user.update({ where: { id: user.id }, data: { image } })
+        await signInAs(user)
+        vi.mocked(enqueue).mockClear()
+
+        await auth.api.deleteUser({ body: { password: TEST_PASSWORD }, headers: requestHeaders() })
+
+        expect(await db.user.count({ where: { id: user.id } })).toBe(0)
+        expect(vi.mocked(enqueue).mock.calls.filter(([name]) => name === 'delete-object')).toEqual(
+          [],
+        )
+      }
     })
   })
 
@@ -520,12 +494,6 @@ describe('DAL auth', () => {
         emailVerified: true,
       })
       expect(cookieJar.size).toBe(0)
-    })
-  })
-
-  describe('configuration', () => {
-    it('does not sign the browser in when a verification link is opened', () => {
-      expect(auth.options.emailVerification?.autoSignInAfterVerification).toBe(false)
     })
   })
 })

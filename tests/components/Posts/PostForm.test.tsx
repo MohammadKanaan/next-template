@@ -1,31 +1,23 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeAll, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { PostForm } from '@/components/Posts/Form'
 import type { PostDetail } from '@/lib/dto/posts'
 
-// Radix Checkbox mirrors itself into a hidden form input it sizes with ResizeObserver, which
-// jsdom does not implement.
-beforeAll(() => {
-  vi.stubGlobal(
-    'ResizeObserver',
-    class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    },
-  )
-})
-
 const success = { ok: true, data: null }
 const post: PostDetail = {
-  id: 1,
+  id: '0190d1a2-0000-7000-8000-000000000001',
   title: 'Hello',
   body: 'World',
   published: false,
   createdAt: new Date('2026-01-01T00:00:00.000Z'),
   updatedAt: new Date('2026-01-01T00:00:00.000Z'),
-  author: { id: 'u1', name: 'Leanne Graham', username: 'leanne', website: null },
+  author: {
+    id: '0190d1a2-0000-7000-8000-0000000000a1',
+    name: 'Leanne Graham',
+    username: 'leanne',
+    website: null,
+  },
   permissions: { update: true, delete: true },
 }
 
@@ -65,11 +57,6 @@ describe('PostForm', () => {
     expect(onSubmit).toHaveBeenCalledWith({ title: 'Hello', body: 'World', published: true })
   })
 
-  it('explains what a draft is', () => {
-    render(<PostForm post={null} submitLabel="Create post" onSubmit={vi.fn()} />)
-    expect(screen.getByText('A draft is visible to you and admins only.')).toBeInTheDocument()
-  })
-
   it('shows the fields of an existing post', () => {
     render(<PostForm post={{ ...post, published: true }} submitLabel="Save" onSubmit={vi.fn()} />)
     expect(screen.getByLabelText(/Title/)).toHaveValue('Hello')
@@ -100,11 +87,6 @@ describe('PostForm', () => {
     expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
     await userEvent.click(published())
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
-  })
-
-  it('lets a new post be submitted right away', () => {
-    render(<PostForm post={null} submitLabel="Create post" onSubmit={vi.fn()} />)
-    expect(screen.getByRole('button', { name: 'Create post' })).toBeEnabled()
   })
 
   it('maps server validation errors onto fields', async () => {
@@ -171,5 +153,24 @@ describe('PostForm', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
     expect(onCancel).toHaveBeenCalledTimes(1)
     expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('submits from the body with ⌘ or Ctrl + Enter, and keeps a plain Enter as a new line', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(success)
+    render(<PostForm post={null} submitLabel="Create post" onSubmit={onSubmit} />)
+    await userEvent.type(screen.getByLabelText(/Title/), 'Hello')
+    const body = screen.getByLabelText(/Body/)
+    await userEvent.type(body, 'One{Enter}Two')
+    expect(body).toHaveValue('One\nTwo')
+    expect(onSubmit).not.toHaveBeenCalled()
+
+    await userEvent.keyboard('{Meta>}{Enter}{/Meta}')
+    await vi.waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith({ title: 'Hello', body: 'One\nTwo', published: false }),
+    )
+    expect(screen.getByRole('button', { name: 'Create post' })).toHaveAttribute(
+      'aria-keyshortcuts',
+      'Meta+Enter Control+Enter',
+    )
   })
 })

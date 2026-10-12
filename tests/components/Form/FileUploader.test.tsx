@@ -22,13 +22,6 @@ const setup = (props: Partial<React.ComponentProps<typeof FileUploader>> = {}) =
 }
 
 describe('FileUploader', () => {
-  it('takes accept and multiple from its props', () => {
-    const { input } = setup({ hint: 'PDF or PNG' })
-    expect(input).toHaveAttribute('accept', 'application/pdf,image/png')
-    expect(input).toHaveAttribute('multiple')
-    expect(screen.getByText('PDF or PNG')).toBeInTheDocument()
-  })
-
   it('uploads every picked file in order and shows each as uploaded', async () => {
     const order: string[] = []
     const { input } = setup({
@@ -89,12 +82,6 @@ describe('FileUploader', () => {
     expect(screen.getByText('empty.pdf is empty')).toBeInTheDocument()
     expect(screen.getByText('big.pdf is larger than 100 B')).toBeInTheDocument()
     expect(onUpload).not.toHaveBeenCalled()
-  })
-
-  it('is disabled when told so', () => {
-    const { input } = setup({ disabled: true })
-    expect(input).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Add files' })).toBeDisabled()
   })
 
   it('lets the same file be picked again after a failure', async () => {

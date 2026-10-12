@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { SettingsView } from '@/app/(site)/settings/view'
 import type { CurrentUser, SessionSummary } from '@/lib/dto/users'
@@ -28,21 +28,19 @@ const user: CurrentUser = {
 const sessions: SessionSummary[] = []
 
 describe('SettingsView', () => {
-  it('shows the profile, email, password, sessions and delete cards', () => {
+  it('shows the profile, email, password, sessions and delete sections, each linked from the nav', () => {
     render(<SettingsView user={user} sessions={sessions} hasPassword canUpload={false} />)
+    const nav = screen.getByRole('navigation', { name: 'Settings sections' })
     for (const title of ['Profile', 'Email', 'Password', 'Sessions', 'Delete account']) {
-      expect(screen.getByText(title, { selector: '[data-slot="card-title"]' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: title, level: 2 })).toBeInTheDocument()
+      expect(within(nav).getByRole('link', { name: title })).toBeInTheDocument()
     }
-    expect(screen.getByText(/Your email is ada@example.com/)).toBeInTheDocument()
-    expect(screen.queryByText('Browser notifications')).not.toBeInTheDocument()
     expect(screen.queryByText('Profile photo')).not.toBeInTheDocument()
   })
 
-  it('shows the profile photo card only when storage is configured', () => {
+  it('shows the profile photo section only when storage is configured', () => {
     render(<SettingsView user={user} sessions={sessions} hasPassword canUpload />)
-    expect(
-      screen.getByText('Profile photo', { selector: '[data-slot="card-title"]' }),
-    ).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Profile photo', level: 2 })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Change photo' })).toBeInTheDocument()
   })
 

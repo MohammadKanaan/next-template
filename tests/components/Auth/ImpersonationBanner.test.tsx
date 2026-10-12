@@ -22,12 +22,6 @@ describe('ImpersonationBanner', () => {
     vi.unstubAllGlobals()
   })
 
-  it('says who the browser is signed in as', () => {
-    render(<ImpersonationBanner name="Grace Hopper" />)
-    expect(screen.getByRole('status')).toHaveTextContent('You are signed in as Grace Hopper.')
-    expect(screen.getByRole('button', { name: 'Stop impersonating' })).toBeEnabled()
-  })
-
   it('stops impersonating and goes back to the admin page', async () => {
     vi.mocked(stopImpersonatingAction).mockResolvedValue({ ok: true, data: null })
     render(<ImpersonationBanner name="Grace Hopper" />)

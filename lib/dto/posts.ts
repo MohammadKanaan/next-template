@@ -81,7 +81,7 @@ export const toListPostsParams = (query: PostsUrlQuery): Omit<ListPostsParams, '
 
 /** List variant: excerpt instead of body. */
 export const postSummarySchema = z.object({
-  id: z.number().int(),
+  id: z.string(),
   title: z.string(),
   excerpt: z.string(),
   published: z.boolean(),
@@ -93,7 +93,7 @@ export type PostSummary = z.infer<typeof postSummarySchema>
 
 /** Detail variant: full body, timestamps, and what the viewer may do. */
 export const postDetailSchema = z.object({
-  id: z.number().int(),
+  id: z.string(),
   title: z.string(),
   body: z.string(),
   published: z.boolean(),

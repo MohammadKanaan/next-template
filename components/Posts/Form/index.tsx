@@ -8,9 +8,10 @@ import { Controller, useForm } from 'react-hook-form'
 import { Input } from '@/components/Form/Input'
 import { Textarea } from '@/components/Form/Textarea'
 import { LoadingButton } from '@/components/LoadingButton'
-import { Button } from '@/components/SCN/button'
-import { Checkbox } from '@/components/SCN/checkbox'
-import { Label } from '@/components/SCN/label'
+import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Label } from '@/components/ui/label'
+import { ShortcutHint } from '@/components/ShortcutHint'
 import {
   createPostInput,
   type CreatePostInput,
@@ -18,6 +19,7 @@ import {
   type PostDetail,
 } from '@/lib/dto/posts'
 import { applyActionErrors } from '@/lib/formErrors'
+import { SUBMIT_KEYSHORTCUTS, submitOnShortcut } from '@/lib/keyboard'
 import type { ActionResult } from '@/types/api'
 import styles from './styles.module.scss'
 import { hydratePostForm, POST_FORM_FIELDS } from './utils'
@@ -53,10 +55,10 @@ export const PostForm = ({ post, submitLabel, onSubmit, onCancel }: PostFormProp
   })
 
   return (
-    <form className={styles.form} onSubmit={submit} noValidate>
+    <form className={styles.form} onSubmit={submit} onKeyDown={submitOnShortcut} noValidate>
       <Input label="Title" required error={errors.title?.message} {...register('title')} />
       <Textarea label="Body" required rows={8} error={errors.body?.message} {...register('body')} />
-      {/* The checkbox is a Radix control, not a native input, so it goes through `Controller`. */}
+      {/* The checkbox is a Base UI control, not a native input, so it goes through `Controller`. */}
       <Controller
         control={control}
         name="published"
@@ -81,12 +83,18 @@ export const PostForm = ({ post, submitLabel, onSubmit, onCancel }: PostFormProp
         </p>
       )}
       <div className={styles.actions}>
+        <ShortcutHint action={`to ${submitLabel.toLowerCase()}`} />
         {onCancel && (
           <Button type="button" variant="secondary" onClick={onCancel}>
             Cancel
           </Button>
         )}
-        <LoadingButton type="submit" loading={isSubmitting} disabled={post !== null && !isDirty}>
+        <LoadingButton
+          type="submit"
+          aria-keyshortcuts={SUBMIT_KEYSHORTCUTS}
+          loading={isSubmitting}
+          disabled={post !== null && !isDirty}
+        >
           {submitLabel}
         </LoadingButton>
       </div>

@@ -2,19 +2,25 @@
 
 import { useEffect, useId, useRef, useState } from 'react'
 import { Input } from '@/components/Form/Input'
-import { Button } from '@/components/SCN/button'
-import { Label } from '@/components/SCN/label'
+import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/SCN/select'
+} from '@/components/ui/select'
 import { POST_SEARCH_MAX_LENGTH, postsSortSchema, type PostsSort } from '@/lib/dto/posts'
 import styles from './styles.module.scss'
 
 const SEARCH_DEBOUNCE_MS = 300
+
+/** The sort picker's options; also lets the trigger show the label instead of the value. */
+const SORT_LABELS: Record<PostsSort, string> = {
+  newest: 'Newest first',
+  oldest: 'Oldest first',
+}
 
 export type PostsFiltersPatch = {
   q?: string
@@ -63,7 +69,7 @@ export const PostsFilters = ({ q, sort, onChange, disabled }: PostsFiltersProps)
     }, SEARCH_DEBOUNCE_MS)
   }
 
-  const handleSort = (value: string) => {
+  const handleSort = (value: string | null) => {
     const parsed = postsSortSchema.safeParse(value)
     if (parsed.success) {
       onChange({ sort: parsed.data })
@@ -79,7 +85,7 @@ export const PostsFilters = ({ q, sort, onChange, disabled }: PostsFiltersProps)
   }
 
   return (
-    <div className={styles.filters}>
+    <div className={styles.filters} role="search" aria-label="Posts">
       <div className={styles.search}>
         <Input
           type="search"
@@ -93,13 +99,16 @@ export const PostsFilters = ({ q, sort, onChange, disabled }: PostsFiltersProps)
       </div>
       <div className={styles.control}>
         <Label htmlFor={sortId}>Sort</Label>
-        <Select value={sort} onValueChange={handleSort} disabled={disabled}>
+        <Select items={SORT_LABELS} value={sort} onValueChange={handleSort} disabled={disabled}>
           <SelectTrigger id={sortId}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="newest">Newest first</SelectItem>
-            <SelectItem value="oldest">Oldest first</SelectItem>
+            {postsSortSchema.options.map((option) => (
+              <SelectItem key={option} value={option}>
+                {SORT_LABELS[option]}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>

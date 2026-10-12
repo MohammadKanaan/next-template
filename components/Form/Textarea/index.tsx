@@ -1,6 +1,6 @@
 import { useId, type ComponentProps } from 'react'
-import { Label } from '@/components/SCN/label'
-import { Textarea as ShadcnTextarea } from '@/components/SCN/textarea'
+import { Label } from '@/components/ui/label'
+import { Textarea as ShadcnTextarea } from '@/components/ui/textarea'
 import styles from './styles.module.scss'
 
 type TextareaProps = Omit<ComponentProps<typeof ShadcnTextarea>, 'className' | 'style'> & {

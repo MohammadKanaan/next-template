@@ -1,6 +1,10 @@
 import 'server-only'
+import { APIError } from 'better-auth/api'
+import { headers } from 'next/headers'
 import { cache } from 'react'
-import { Prisma } from '@/generated/prisma/client'
+import type { Prisma } from '@/generated/prisma/client'
+import { MINUTE } from '@/lib/constants-time'
+import { deleteAccountInput, type DeleteAccountInput } from '@/lib/dto/auth'
 import {
   currentUserSchema,
   updateProfileInput,
@@ -8,10 +12,12 @@ import {
   type UpdateProfileInput,
 } from '@/lib/dto/users'
 import { invalidateTags, remember } from '@/lib/server/cache'
-import { getSessionUser, requireUser, toRole } from './auth'
+import { auth, getSessionUser, requireUser, toRole } from './auth'
 import { POSTS_TAG, userTag } from './cacheTags'
 import { db } from './db'
 import { parseInput, UnauthorizedError, ValidationError } from './errors'
+import { isUniqueViolation } from './prismaErrors'
+import { consumeRateLimit } from './rateLimit'
 
 /** Selects exactly the `UserProfile` DTO; the row is the DTO, so drift fails to compile. */
 export const userProfileSelect = {
@@ -32,7 +38,9 @@ export const currentUserSelect = {
   role: true,
 } satisfies Prisma.UserSelect
 
-const VIEWER_CACHE_TTL = 300
+const VIEWER_CACHE_TTL = 5 * MINUTE
+/** Attempts to delete the account one user may make per minute (a wrong password counts). */
+const DELETE_ACCOUNT_LIMIT = { max: 3, windowMs: MINUTE * 1000 }
 
 /** The signed-in user's record, or null when signed out (e.g. for the nav bar). */
 export const getViewer = cache(async (): Promise<CurrentUser | null> => {
@@ -105,11 +113,32 @@ export const updateProfile = async (input: UpdateProfileInput): Promise<CurrentU
     })
     .catch((error: unknown) => {
       // Only `username` is unique among the fields written here.
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      if (isUniqueViolation(error, 'users_username_key')) {
         throw new ValidationError({ username: ['That username is taken'] })
       }
       throw error
     })
   await invalidateTags(userTag(viewer.id), POSTS_TAG)
   return { ...user, role: toRole(user.role) }
+}
+
+/**
+ * Deletes the viewer's account: signed in (401) → within the limit (429) → input valid (422) → the
+ * password is right (422 on `password`) → Better Auth deletes the user, and the database cascades
+ * their sessions, accounts and posts (`lib/data/auth.ts` queues the avatar's object and drops the
+ * cached viewer and post lists in `afterDelete`).
+ */
+export const deleteAccount = async (input: DeleteAccountInput): Promise<void> => {
+  const viewer = await requireUser()
+  await consumeRateLimit(`delete-account:user:${viewer.id}`, DELETE_ACCOUNT_LIMIT)
+  const { password } = parseInput(deleteAccountInput, input)
+
+  await auth.api
+    .deleteUser({ body: { password }, headers: await headers() })
+    .catch((error: unknown) => {
+      if (error instanceof APIError && error.body?.code === 'INVALID_PASSWORD') {
+        throw new ValidationError({ password: ['Password is incorrect'] })
+      }
+      throw error
+    })
 }

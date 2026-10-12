@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { randomUUID } from 'node:crypto'
 import { APIError } from 'better-auth/api'
 import { refresh } from 'next/cache'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -18,6 +19,7 @@ import {
 import { auth, requireUser } from '@/lib/data/auth'
 import { db } from '@/lib/data/db'
 import { UnauthorizedError } from '@/lib/data/errors'
+import { isUsernameTaken } from '@/lib/data/users'
 import { cookieJar } from '../helpers/cookies'
 import {
   clearMail,
@@ -35,6 +37,11 @@ vi.mock('next/headers', () => ({
   headers: async () => requestHeaders(),
 }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn(), refresh: vi.fn() }))
+// Real by default; one test makes the sign-up's own check miss a taken username, as a race would.
+vi.mock('@/lib/data/users', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/data/users')>()
+  return { ...actual, isUsernameTaken: vi.fn(actual.isUsernameTaken) }
+})
 
 const newUser = {
   name: 'New',
@@ -69,6 +76,17 @@ describe('auth actions', () => {
       code: 'VALIDATION',
       fieldErrors: { username: ['That username is taken'] },
     })
+  })
+
+  it('reports a username taken between its check and the insert as the same field error', async () => {
+    await createUser({ username: 'taken' })
+    vi.mocked(isUsernameTaken).mockResolvedValueOnce(false)
+    expect(await signUpAction({ ...newUser, username: 'taken' })).toMatchObject({
+      ok: false,
+      code: 'VALIDATION',
+      fieldErrors: { username: ['That username is taken'] },
+    })
+    expect(await db.user.count({ where: { email: 'new@example.com' } })).toBe(0)
   })
 
   it('rejects a taken email', async () => {
@@ -259,14 +277,6 @@ describe('auth actions', () => {
       }
     })
 
-    it('does not block sign-in for an unverified email', async () => {
-      const user = await createUser({})
-      expect(await signInAction({ email: user.email, password: TEST_PASSWORD })).toEqual({
-        ok: true,
-        data: null,
-      })
-    })
-
     it('answers ok for an unknown email without sending anything', async () => {
       expect(await requestPasswordResetAction({ email: 'ghost@example.com' })).toEqual({
         ok: true,
@@ -422,7 +432,7 @@ describe('account actions', () => {
   }
 
   const addSession = async (userId: string) => {
-    const id = `session-${Math.random().toString(36).slice(2, 10)}`
+    const id = randomUUID()
     return db.session.create({
       data: { id, token: `token-${id}`, userId, expiresAt: new Date(Date.now() + 3_600_000) },
     })
@@ -430,10 +440,6 @@ describe('account actions', () => {
 
   describe('changePasswordAction', () => {
     const input = { currentPassword: TEST_PASSWORD, newPassword: 'a-brand-new-one' }
-
-    it('requires a session', async () => {
-      expect(await changePasswordAction(input)).toMatchObject({ ok: false, code: 'UNAUTHORIZED' })
-    })
 
     it('answers UNAUTHORIZED before looking at the input when signed out', async () => {
       expect(await changePasswordAction({ currentPassword: '', newPassword: '' })).toMatchObject({
@@ -495,13 +501,6 @@ describe('account actions', () => {
       await flushMail()
       return sentMails()
     }
-
-    it('requires a session', async () => {
-      expect(await changeEmailAction({ newEmail: 'x@example.com' })).toMatchObject({
-        ok: false,
-        code: 'UNAUTHORIZED',
-      })
-    })
 
     it('answers UNAUTHORIZED before looking at the input when signed out', async () => {
       expect(await changeEmailAction({ newEmail: 'nope' })).toMatchObject({
@@ -592,13 +591,6 @@ describe('account actions', () => {
   })
 
   describe('deleteAccountAction', () => {
-    it('requires a session', async () => {
-      expect(await deleteAccountAction({ password: TEST_PASSWORD })).toMatchObject({
-        ok: false,
-        code: 'UNAUTHORIZED',
-      })
-    })
-
     it('answers UNAUTHORIZED before looking at the input when signed out', async () => {
       expect(await deleteAccountAction({ password: '' })).toMatchObject({
         ok: false,

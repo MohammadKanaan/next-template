@@ -1,19 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import {
-  ROUTE_POST_DETAILS,
-  ROUTE_POST_EDIT,
-  isPrivateRoute,
-  isPublicRoute,
-  loginPath,
-  safeRedirectPath,
-} from '@/lib/constants-routes'
+import { isPrivateRoute, isPublicRoute, safeRedirectPath } from '@/lib/constants-routes'
 
 describe('route helpers', () => {
-  it('builds encoded post routes', () => {
-    expect(ROUTE_POST_DETAILS('a b')).toBe('/posts/a%20b')
-    expect(ROUTE_POST_EDIT(7)).toBe('/posts/7/edit')
-  })
-
   it('treats listing and detail pages as public', () => {
     for (const path of [
       '/',
@@ -42,10 +30,6 @@ describe('route helpers', () => {
     ]) {
       expect(isPrivateRoute(path)).toBe(true)
     }
-  })
-
-  it('builds a login path that carries the return target', () => {
-    expect(loginPath('/posts/new?x=1')).toBe('/login?next=%2Fposts%2Fnew%3Fx%3D1')
   })
 
   it('rejects backslash and control-character tricks that browsers read as another host', () => {

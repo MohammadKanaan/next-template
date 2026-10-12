@@ -1,6 +1,6 @@
-type RouteParameter = string | number
+type RouteParameter = string
 
-const encode = (value: RouteParameter) => encodeURIComponent(String(value))
+const encode = (value: RouteParameter) => encodeURIComponent(value)
 
 export const ROUTE_HOME = '/'
 export const ROUTE_LOGIN = '/login'
@@ -13,6 +13,10 @@ export const ROUTE_POSTS = '/posts'
 export const ROUTE_POST_NEW = `${ROUTE_POSTS}/new`
 export const ROUTE_POSTS_MINE = `${ROUTE_POSTS}/mine`
 export const ROUTE_UI_KIT = '/ui-kit'
+
+// The admin dashboard (`app/(admin)`): every route under `/admin` is private, see `PUBLIC_ROUTES`.
+export const ROUTE_ADMIN_USERS = `${ROUTE_ADMIN}/users`
+export const adminUserPath = (id: string) => `${ROUTE_ADMIN_USERS}/${id}`
 
 export const loginPath = (next: string) => `${ROUTE_LOGIN}?next=${encodeURIComponent(next)}`
 

@@ -37,6 +37,7 @@ describe('LoginView', () => {
 
   describe('after signing in', () => {
     afterEach(() => {
+      window.sessionStorage.clear()
       vi.unstubAllGlobals()
       vi.clearAllMocks()
     })
@@ -60,6 +61,23 @@ describe('LoginView', () => {
 
       await waitFor(() => expect(replace).toHaveBeenCalledWith('/posts/mine'))
       expect(assign).not.toHaveBeenCalled()
+    })
+
+    it('returns to the page the visitor left when no target was given', async () => {
+      window.sessionStorage.setItem('return-path', '/posts/mine')
+      render(<LoginView nextPath="/" googleEnabled={false} />)
+      await signIn()
+
+      await waitFor(() => expect(replace).toHaveBeenCalledWith('/posts/mine'))
+      expect(window.sessionStorage.getItem('return-path')).toBeNull()
+    })
+
+    it('prefers an explicit target over the remembered page', async () => {
+      window.sessionStorage.setItem('return-path', '/posts/mine')
+      render(<LoginView nextPath="/settings" googleEnabled={false} />)
+      await signIn()
+
+      await waitFor(() => expect(replace).toHaveBeenCalledWith('/settings'))
     })
   })
 })

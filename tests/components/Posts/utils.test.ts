@@ -3,13 +3,18 @@ import { buildPostAttributes, hydratePostForm } from '@/components/Posts/Form/ut
 import type { PostDetail } from '@/lib/dto/posts'
 
 const post: PostDetail = {
-  id: 1,
+  id: '0190d1a2-0000-7000-8000-000000000001',
   title: 'Hello',
   body: 'World',
   published: false,
   createdAt: new Date('2026-01-01T00:00:00.000Z'),
   updatedAt: new Date('2026-01-01T00:00:00.000Z'),
-  author: { id: 'u1', name: 'Leanne Graham', username: 'leanne', website: null },
+  author: {
+    id: '0190d1a2-0000-7000-8000-0000000000a1',
+    name: 'Leanne Graham',
+    username: 'leanne',
+    website: null,
+  },
   permissions: { update: true, delete: true },
 }
 

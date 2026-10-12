@@ -1,14 +1,15 @@
 import type { Metadata } from 'next'
-import Link from 'next/link'
+import { ButtonLink } from '@/components/ButtonLink'
 import { Empty } from '@/components/Empty'
-import { Button } from '@/components/SCN/button'
 import { ROUTE_POST_DETAILS, ROUTE_POST_EDIT } from '@/lib/constants-routes'
 import { loadPage } from '@/lib/data/page'
 import { getPost } from '@/lib/data/posts'
+import { NO_INDEX } from '@/lib/seo'
 import { PostEditView } from './view'
 
 export const metadata: Metadata = {
   title: 'Edit post',
+  robots: NO_INDEX,
 }
 
 const PostEditPage = async ({ params }: PageProps<'/posts/[id]/edit'>) => {
@@ -20,9 +21,9 @@ const PostEditPage = async ({ params }: PageProps<'/posts/[id]/edit'>) => {
         title="You cannot edit this post"
         description="Only the author or an admin can change it."
         action={
-          <Button asChild variant="secondary">
-            <Link href={ROUTE_POST_DETAILS(post.id)}>Back to post</Link>
-          </Button>
+          <ButtonLink href={ROUTE_POST_DETAILS(post.id)} variant="secondary">
+            Back to post
+          </ButtonLink>
         }
       />
     )

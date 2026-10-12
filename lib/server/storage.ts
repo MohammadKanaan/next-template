@@ -8,6 +8,7 @@ import {
   type S3ServiceException,
 } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
+import { MINUTE } from '@/lib/constants-time'
 import { serverEnv, type ServerEnv } from './env'
 
 // Cloudflare R2 through its S3 API. The five `R2_*` variables are optional as a group: without
@@ -89,7 +90,7 @@ export const createUploadTicket = async ({
   key,
   contentType,
   size,
-  expiresIn = 300,
+  expiresIn = 5 * MINUTE,
 }: PresignOptions): Promise<PresignedPut> => {
   const url = await getSignedUrl(
     getClient(),
@@ -127,6 +128,19 @@ export const headObject = async (key: string): Promise<ObjectHead | null> => {
 /** Removes the object; a missing key counts as success. */
 export const deleteObject = async (key: string): Promise<void> => {
   await getClient().send(new DeleteObjectCommand({ Bucket: requireStorageEnv().bucket, Key: key }))
+}
+
+/**
+ * The key of an object this bucket serves at `url`, or null for any other URL (a Google profile
+ * picture, or anything when storage is not configured). The inverse of `publicUrl`.
+ */
+export const keyFromPublicUrl = (url: string | null): string | null => {
+  const env = storageEnv()
+  if (!env || !url) {
+    return null
+  }
+  const prefix = `${env.publicUrl.replace(/\/+$/, '')}/`
+  return url.startsWith(prefix) && url.length > prefix.length ? url.slice(prefix.length) : null
 }
 
 /** The URL anyone can load the object from: the bucket's public domain plus the key. */

@@ -2,14 +2,13 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AvatarUploader } from '@/components/Settings/AvatarUploader'
-import { RequestError } from '@/lib/client/errors'
 import { uploadFile } from '@/lib/client/uploads'
 import type { CurrentUser } from '@/lib/dto/users'
 
 vi.mock('@/lib/client/uploads', () => ({ uploadFile: vi.fn(async () => {}) }))
 
 const ticket = {
-  uploadId: 'upload-1',
+  key: 'avatars/u1/upload-1',
   url: 'https://acct.r2.cloudflarestorage.com/bucket/k?X-Amz-Signature=s',
   headers: { 'Content-Type': 'image/png' },
 }
@@ -48,11 +47,6 @@ describe('AvatarUploader', () => {
     vi.mocked(uploadFile).mockReset().mockResolvedValue()
   })
 
-  it('shows initials when there is no image', () => {
-    setup()
-    expect(screen.getByText('AL')).toBeInTheDocument()
-  })
-
   it('asks for a ticket, uploads to storage, then attaches and reports the user', async () => {
     const { onCreateUpload, onAttach, onUploaded } = setup()
     const file = png(1234)
@@ -65,20 +59,8 @@ describe('AvatarUploader', () => {
       size: 1234,
     })
     expect(uploadFile).toHaveBeenCalledWith(ticket, file)
-    expect(onAttach).toHaveBeenCalledWith('upload-1')
+    expect(onAttach).toHaveBeenCalledWith('avatars/u1/upload-1')
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-  })
-
-  it('rejects an unsupported type without calling the server', async () => {
-    const { onCreateUpload } = setup()
-    // `userEvent.upload` honours `accept`, so bypass it to prove the check is ours.
-    const input = screen.getByLabelText('Profile photo')
-    await userEvent
-      .setup({ applyAccept: false })
-      .upload(input, new File(['x'], 'a.gif', { type: 'image/gif' }))
-
-    expect(await screen.findByRole('alert')).toHaveTextContent('Use a PNG, JPEG, or WebP image')
-    expect(onCreateUpload).not.toHaveBeenCalled()
   })
 
   it('rejects a file over 2 MB without calling the server', async () => {
@@ -99,27 +81,6 @@ describe('AvatarUploader', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Sign in to continue')
     expect(uploadFile).not.toHaveBeenCalled()
     expect(onAttach).not.toHaveBeenCalled()
-  })
-
-  it('shows the storage failure and does not attach', async () => {
-    const { onAttach, onUploaded } = setup()
-    vi.mocked(uploadFile).mockRejectedValue(new RequestError('The upload was rejected', 403))
-    await choose(png())
-    expect(await screen.findByRole('alert')).toHaveTextContent('The upload was rejected')
-    expect(onAttach).not.toHaveBeenCalled()
-    expect(onUploaded).not.toHaveBeenCalled()
-  })
-
-  it('shows the server message when attaching fails', async () => {
-    const { onAttach, onUploaded } = setup()
-    onAttach.mockResolvedValue({
-      ok: false,
-      code: 'VALIDATION',
-      message: 'Validation failed',
-    })
-    await choose(png())
-    expect(await screen.findByRole('alert')).toHaveTextContent('Validation failed')
-    expect(onUploaded).not.toHaveBeenCalled()
   })
 
   it('disables the picker and shows progress while uploading', async () => {

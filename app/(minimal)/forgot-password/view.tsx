@@ -3,8 +3,9 @@
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { requestPasswordResetAction } from '@/actions/auth'
+import { AuthHeader } from '@/components/Auth/AuthHeader'
 import { ForgotPasswordForm } from '@/components/Auth/ForgotPasswordForm'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/SCN/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { ROUTE_LOGIN } from '@/lib/constants-routes'
 import type { RequestPasswordResetInput } from '@/lib/dto/auth'
 import styles from '../login/styles.module.scss'
@@ -25,11 +26,11 @@ export const ForgotPasswordView = () => {
     <div className={styles.page}>
       <div className={styles.card}>
         <Card>
-          <CardHeader>
-            <CardTitle>Forgot your password?</CardTitle>
-            <CardDescription>Enter your email and we will send you a reset link.</CardDescription>
-          </CardHeader>
           <CardContent>
+            <AuthHeader
+              title="Forgot your password?"
+              description="Enter your email and we will send you a reset link."
+            />
             <ForgotPasswordForm onSubmit={handleSubmit} />
           </CardContent>
         </Card>

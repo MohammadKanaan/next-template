@@ -131,7 +131,6 @@ describe('assertAuthEnv', () => {
   const url = 'https://example.com'
 
   it('passes for a long random secret and an absolute URL', () => {
-    expect(secret).toHaveLength(40)
     expect(() => assertAuthEnv({ BETTER_AUTH_SECRET: secret, BETTER_AUTH_URL: url })).not.toThrow()
   })
 

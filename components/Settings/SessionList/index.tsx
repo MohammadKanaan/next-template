@@ -1,8 +1,9 @@
 'use client'
 
+import { LogOut } from 'lucide-react'
 import { useState } from 'react'
 import { LoadingButton } from '@/components/LoadingButton'
-import { Badge } from '@/components/SCN/badge'
+import { Badge } from '@/components/ui/badge'
 import {
   Table,
   TableBody,
@@ -10,7 +11,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/SCN/table'
+} from '@/components/ui/table'
 import { formatDateTime } from '@/lib/formatDate'
 import type { SessionSummary } from '@/lib/dto/users'
 import type { ActionResult } from '@/types/api'
@@ -51,8 +52,7 @@ export const SessionList = ({ sessions, onRevoke, onRevokeOthers }: SessionListP
         <TableHeader>
           <TableRow>
             <TableHead>Device</TableHead>
-            <TableHead>IP address</TableHead>
-            <TableHead>Signed in</TableHead>
+            <TableHead className={styles.signedInColumn}>Signed in</TableHead>
             <TableHead>
               <span className={styles.srOnly}>Actions</span>
             </TableHead>
@@ -67,16 +67,22 @@ export const SessionList = ({ sessions, onRevoke, onRevokeOthers }: SessionListP
                     {session.userAgent ?? 'Unknown device'}
                   </span>
                   {session.current && <Badge variant="secondary">This device</Badge>}
+                  {/* Phones have no room for the column: the time sits under the device. */}
+                  <span className={styles.signedInInline}>
+                    Signed in {formatDateTime(session.createdAt)}
+                  </span>
                 </div>
               </TableCell>
-              <TableCell>{session.ipAddress ?? 'Unknown'}</TableCell>
-              <TableCell>{formatDateTime(session.createdAt)}</TableCell>
+              <TableCell className={styles.signedInColumn}>
+                {formatDateTime(session.createdAt)}
+              </TableCell>
               <TableCell>
                 {!session.current && (
                   <LoadingButton
                     type="button"
                     variant="outline"
                     size="sm"
+                    icon={LogOut}
                     loading={pending === session.id}
                     disabled={pending !== null}
                     onClick={() => run(session.id, () => onRevoke(session.id))}
@@ -99,6 +105,7 @@ export const SessionList = ({ sessions, onRevoke, onRevokeOthers }: SessionListP
           <LoadingButton
             type="button"
             variant="outline"
+            icon={LogOut}
             loading={pending === OTHERS}
             disabled={pending !== null}
             onClick={() => run(OTHERS, onRevokeOthers)}

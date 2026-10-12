@@ -1,7 +1,8 @@
 // @vitest-environment node
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { PUBLIC_API_LIMIT } from '@/lib/constants-rateLimit'
 import { RateLimitedError } from '@/lib/data/errors'
-import { consumeRateLimit, getClientIp } from '@/lib/data/rateLimit'
+import { consumePublicApiLimit, consumeRateLimit, getClientIp } from '@/lib/data/rateLimit'
 import { resetServerEnv } from '@/lib/server/env'
 import { getRedis } from '@/lib/server/redis'
 import { resetRedis } from '../../helpers/server'
@@ -12,6 +13,11 @@ const log = vi.hoisted(() => ({ error: vi.fn() }))
 vi.mock('@/lib/server/logger', () => ({ logger: { child: () => log } }))
 
 const rule = { max: 3, windowMs: 1000 }
+
+afterAll(async () => {
+  await resetRedis()
+  await getRedis().quit()
+})
 
 const consume = async (key: string, times: number) => {
   for (let attempt = 0; attempt < times; attempt++) {
@@ -27,11 +33,6 @@ describe('consumeRateLimit', () => {
   afterEach(() => {
     vi.unstubAllEnvs()
   })
-  afterAll(async () => {
-    await resetRedis()
-    await getRedis().quit()
-  })
-
   it('counts nothing outside production, like Better Auth’s own limiter', async () => {
     vi.stubEnv('NODE_ENV', 'development')
     await expect(consume('k', rule.max + 1)).resolves.toBeUndefined()
@@ -129,5 +130,29 @@ describe('getClientIp', () => {
     expect(await getClientIp()).toBe('3.3.3.3')
     headerValues.current = new Headers()
     expect(await getClientIp()).toBe('unknown')
+  })
+})
+
+describe('consumePublicApiLimit', () => {
+  beforeEach(async () => {
+    await resetRedis()
+    vi.stubEnv('NODE_ENV', 'production')
+    vi.stubEnv('TRUSTED_PROXY_HOPS', '')
+    resetServerEnv()
+    headerValues.current = new Headers({ 'x-forwarded-for': '9.9.9.9' })
+  })
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    resetServerEnv()
+  })
+
+  it('counts per endpoint and client address, and throws past the limit', async () => {
+    await getRedis().set('ratelimit:api:posts:ip:9.9.9.9', PUBLIC_API_LIMIT.max - 1)
+    await expect(consumePublicApiLimit('posts')).resolves.toBeUndefined()
+    await expect(consumePublicApiLimit('posts')).rejects.toBeInstanceOf(RateLimitedError)
+
+    await expect(consumePublicApiLimit('post')).resolves.toBeUndefined()
+    headerValues.current = new Headers({ 'x-forwarded-for': '8.8.8.8' })
+    await expect(consumePublicApiLimit('posts')).resolves.toBeUndefined()
   })
 })

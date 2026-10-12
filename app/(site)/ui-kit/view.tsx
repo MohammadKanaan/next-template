@@ -3,10 +3,16 @@
 import { X } from 'lucide-react'
 import { useState, type ComponentProps, type ReactNode } from 'react'
 import { toast } from 'sonner'
+import { ActionButton } from '@/components/ActionButton'
+import { ActionGroup } from '@/components/ActionGroup'
+import { ActionLink } from '@/components/ActionLink'
+import { ConfirmDialog } from '@/components/Admin/ConfirmDialog'
+import { StatCard } from '@/components/Admin/StatCard'
 import { Empty } from '@/components/Empty'
 import { FileUploader } from '@/components/Form/FileUploader'
 import { Input } from '@/components/Form/Input'
 import { Textarea } from '@/components/Form/Textarea'
+import { ButtonLink } from '@/components/ButtonLink'
 import { LoadingButton } from '@/components/LoadingButton'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { PageHeader } from '@/components/PageHeader'
@@ -14,6 +20,7 @@ import { Pagination } from '@/components/Pagination'
 import { PostsFilters, type PostsFiltersPatch } from '@/components/Posts/Filters'
 import { PostForm } from '@/components/Posts/Form'
 import { PostStatusBadge } from '@/components/Posts/StatusBadge'
+import { ShortcutHint } from '@/components/ShortcutHint'
 import { AvatarUploader } from '@/components/Settings/AvatarUploader'
 import {
   Avatar,
@@ -22,9 +29,9 @@ import {
   AvatarGroup,
   AvatarGroupCount,
   AvatarImage,
-} from '@/components/SCN/avatar'
-import { Badge } from '@/components/SCN/badge'
-import { Button } from '@/components/SCN/button'
+} from '@/components/ui/avatar'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
   Card,
   CardContent,
@@ -32,8 +39,8 @@ import {
   CardFooter,
   CardHeader,
   CardTitle,
-} from '@/components/SCN/card'
-import { Checkbox } from '@/components/SCN/checkbox'
+} from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogClose,
@@ -43,17 +50,17 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from '@/components/SCN/dialog'
-import { Label } from '@/components/SCN/label'
+} from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/SCN/select'
-import { Separator } from '@/components/SCN/separator'
-import { Spinner } from '@/components/SCN/spinner'
+} from '@/components/ui/select'
+import { Separator } from '@/components/ui/separator'
+import { Spinner } from '@/components/ui/spinner'
 import {
   Table,
   TableBody,
@@ -62,9 +69,10 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/SCN/table'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/SCN/tooltip'
+} from '@/components/ui/table'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { UserAvatar } from '@/components/UserAvatar'
+import type { ActionResult } from '@/types/api'
 import styles from './styles.module.scss'
 
 type ButtonVariant = NonNullable<ComponentProps<typeof Button>['variant']>
@@ -95,12 +103,25 @@ const AVATAR_SAMPLE_IMAGE = `data:image/svg+xml,${encodeURIComponent(
 )}`
 
 const AVATAR_SIZES = ['sm', 'default', 'lg'] as const
+const FRUITS = { apple: 'Apple', banana: 'Banana', cherry: 'Cherry' }
 
 const TABLE_ROWS = [
   { id: 'INV-001', name: 'Ada Lovelace', status: 'Active' },
   { id: 'INV-002', name: 'Grace Hopper', status: 'Pending' },
   { id: 'INV-003', name: 'Alan Turing', status: 'Archived' },
 ]
+
+const resolveAfter = <T,>(value: T, ms = 400) =>
+  new Promise<T>((resolve) => {
+    setTimeout(() => resolve(value), ms)
+  })
+
+const CONFIRM_OK: ActionResult<null> = { ok: true, data: null }
+const CONFIRM_REFUSED: ActionResult<null> = {
+  ok: false,
+  code: 'VALIDATION',
+  message: 'Remove the user’s posts first',
+}
 
 type SectionProps = {
   id: string
@@ -168,6 +189,9 @@ export const UiKitView = () => {
           <div className={styles.row}>
             <LoadingButton loading>Loading</LoadingButton>
             <Button disabled>Disabled</Button>
+            <ButtonLink href="#button" variant="outline">
+              Link
+            </ButtonLink>
           </div>
         </div>
       </Section>
@@ -270,14 +294,16 @@ export const UiKitView = () => {
         title="Select"
         description="Single choice from a short list, with a placeholder."
       >
-        <Select>
+        <Select items={FRUITS}>
           <SelectTrigger aria-label="Fruit">
             <SelectValue placeholder="Pick a fruit" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="apple">Apple</SelectItem>
-            <SelectItem value="banana">Banana</SelectItem>
-            <SelectItem value="cherry">Cherry</SelectItem>
+            {Object.entries(FRUITS).map(([value, label]) => (
+              <SelectItem key={value} value={value}>
+                {label}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </Section>
@@ -409,21 +435,15 @@ export const UiKitView = () => {
         description="Modal dialog with title, description, and footer actions."
       >
         <Dialog>
-          <DialogTrigger asChild>
-            <Button variant="outline">Open dialog</Button>
-          </DialogTrigger>
+          <DialogTrigger render={<Button variant="outline" />}>Open dialog</DialogTrigger>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Dialog title</DialogTitle>
               <DialogDescription>A short description of what this dialog does.</DialogDescription>
             </DialogHeader>
             <DialogFooter>
-              <DialogClose asChild>
-                <Button variant="outline">Cancel</Button>
-              </DialogClose>
-              <DialogClose asChild>
-                <Button>Confirm</Button>
-              </DialogClose>
+              <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
+              <DialogClose render={<Button />}>Confirm</DialogClose>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -436,9 +456,7 @@ export const UiKitView = () => {
         description="Short hint shown on hover and focus."
       >
         <Tooltip>
-          <TooltipTrigger asChild>
-            <Button variant="outline">Hover me</Button>
-          </TooltipTrigger>
+          <TooltipTrigger render={<Button variant="outline" />}>Hover me</TooltipTrigger>
           <TooltipContent>Tooltip text</TooltipContent>
         </Tooltip>
       </Section>
@@ -548,6 +566,83 @@ export const UiKitView = () => {
             return { ok: true, data: null }
           }}
         />
+      </Section>
+
+      <Section
+        id="confirm-dialog"
+        eyebrow="Application components"
+        title="ConfirmDialog"
+        description="Asks before an irreversible write. A refusal is shown inside the dialog, which stays open."
+      >
+        <div className={styles.row}>
+          <ConfirmDialog
+            trigger="Delete"
+            title="Delete this record?"
+            description="This cannot be undone."
+            confirmLabel="Delete"
+            onConfirm={() => resolveAfter(CONFIRM_OK)}
+            onDone={() => toast.success('Record deleted')}
+          />
+          <ConfirmDialog
+            trigger="Delete (refused)"
+            title="Delete this record?"
+            description="The server refuses, and the message appears here."
+            confirmLabel="Delete"
+            onConfirm={() => resolveAfter(CONFIRM_REFUSED)}
+          />
+          <ConfirmDialog
+            trigger="Delete (disabled)"
+            triggerTitle="Remove the record’s posts first"
+            title="Delete this record?"
+            description="This cannot be undone."
+            confirmLabel="Delete"
+            disabled
+            onConfirm={() => resolveAfter(CONFIRM_OK)}
+          />
+        </div>
+      </Section>
+
+      <Section
+        id="record-actions"
+        eyebrow="Application components"
+        title="ActionButton, ActionLink and ActionGroup"
+        description="A record's view, edit and delete as colour-coded icon buttons with tooltips, always in that order and at the end of their row."
+      >
+        <ActionGroup label="Record actions">
+          <ActionLink action="view" label="View record" href="#record-actions" />
+          <ActionButton action="edit" label="Edit record" />
+          <ConfirmDialog
+            trigger="Delete record"
+            triggerAction="delete"
+            title="Delete this record?"
+            description="This cannot be undone."
+            confirmLabel="Delete"
+            onConfirm={() => resolveAfter(CONFIRM_OK)}
+            onDone={() => toast.success('Record deleted')}
+          />
+        </ActionGroup>
+      </Section>
+
+      <Section
+        id="shortcut-hint"
+        eyebrow="Application components"
+        title="ShortcutHint"
+        description="Names the submit shortcut (⌘ on Apple platforms, Ctrl elsewhere) beside a form's submit button. Pointer-only devices do not show it."
+      >
+        <ShortcutHint action="to submit" />
+      </Section>
+
+      <Section
+        id="stat-card"
+        eyebrow="Application components"
+        title="StatCard"
+        description="One number of the dashboard overview, with an optional hint and link."
+      >
+        <div className={styles.statGrid}>
+          <StatCard label="Posts" value={16} hint="2 drafts" />
+          <StatCard label="Users" value={12345} href="#stat-card" />
+          <StatCard label="Banned" value={0} />
+        </div>
       </Section>
 
       <Section

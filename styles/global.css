@@ -123,6 +123,12 @@
   body {
     @apply bg-background text-foreground font-sans;
   }
+
+  /* Tailwind 4's preflight resets buttons to the default cursor; restore the pointer. */
+  button:not(:disabled),
+  [role='button']:not([aria-disabled='true']) {
+    cursor: pointer;
+  }
 }
 
 html.is-scroll-locked,

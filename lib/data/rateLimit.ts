@@ -1,5 +1,6 @@
 import 'server-only'
 import { headers } from 'next/headers'
+import { PUBLIC_API_LIMIT } from '@/lib/constants-rateLimit'
 import { serverEnv } from '@/lib/server/env'
 import { logger } from '@/lib/server/logger'
 import { getRedis } from '@/lib/server/redis'
@@ -66,4 +67,14 @@ export const getClientIp = async () => {
     .filter(Boolean)
   const forwarded = entries.length >= hops ? entries[entries.length - hops] : undefined
   return forwarded || requestHeaders.get('x-real-ip')?.trim() || 'unknown'
+}
+
+/**
+ * Counts one request to a public `/api/v1` endpoint against the client address (429 past
+ * `PUBLIC_API_LIMIT`). The reads behind them are public and run counted, searched queries, so the
+ * scriptable HTTP surface is limited where it is reached; the pages call the same DAL functions
+ * unlimited, and flooding those is the reverse proxy's to stop.
+ */
+export const consumePublicApiLimit = async (endpoint: string): Promise<void> => {
+  await consumeRateLimit(`api:${endpoint}:ip:${await getClientIp()}`, PUBLIC_API_LIMIT)
 }

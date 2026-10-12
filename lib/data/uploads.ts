@@ -1,15 +1,15 @@
 import 'server-only'
 import { randomUUID } from 'node:crypto'
+import { HOUR } from '@/lib/constants-time'
 import {
   createUploadInput,
   type CreateUploadInput,
   isAllowedContentType,
   objectDeleteDelaySeconds,
   UPLOAD_RULES,
-  uploadIdSchema,
+  uploadKeySchema,
   type UploadPurpose,
   type UploadTicket,
-  UPLOAD_OBJECT_GRACE_SECONDS,
 } from '@/lib/dto/uploads'
 import { currentUserSchema, type CurrentUser } from '@/lib/dto/users'
 import { invalidateTags } from '@/lib/server/cache'
@@ -20,21 +20,25 @@ import {
   deleteObject,
   headObject,
   isStorageConfigured,
+  keyFromPublicUrl,
   publicUrl,
 } from '@/lib/server/storage'
-import { requireUser, toRole } from './auth'
+import { requireAdmin, requireUser, toRole, type SessionUser } from './auth'
 import { userTag } from './cacheTags'
 import { db } from './db'
-import {
-  ForbiddenError,
-  NotFoundError,
-  parseInput,
-  RateLimitedError,
-  ValidationError,
-} from './errors'
+import { ForbiddenError, parseInput, ValidationError } from './errors'
+import { consumeRateLimit } from './rateLimit'
 import { currentUserSelect } from './users'
 
+// There is no table of uploads: an object's key is `<purpose>s/<user id>/<random UUID>`, so the key
+// alone says whose it is and what it is for, and the record that uses it (`users.image`) stores its
+// public URL. A ticket whose file is never attached leaves its object in the bucket; the rate limit
+// on `createUpload` bounds how many one user can leave.
+
 const log = logger.child({ module: 'uploads' })
+
+/** Tickets one user may ask for per hour. Each can leave an unattached object behind. */
+const UPLOAD_TICKET_LIMIT = { max: 10, windowMs: HOUR * 1000 }
 
 /** Whether the upload controls should be offered. Public: it only says what `/settings` can do. */
 export const canUpload = (): boolean => isStorageConfigured()
@@ -42,96 +46,60 @@ export const canUpload = (): boolean => isStorageConfigured()
 /**
  * Queues the deletion of an uploaded object only once its ticket can no longer be used (the
  * ticket's lifetime plus `UPLOAD_OBJECT_GRACE_SECONDS`): until then the browser could still upload
- * to the key, and an object re-uploaded after its row and delete job are gone would never be
- * deleted. pg-boss reads a numeric `startAfter` as seconds.
+ * to the key again, and that object would never be deleted. pg-boss reads a numeric `startAfter` as
+ * seconds. Shared by every `attachXxx` function.
  */
-const deleteObjectAfterTicket = (key: string, purpose: UploadPurpose) => {
+export const deleteObjectAfterTicket = (key: string, purpose: UploadPurpose) => {
   return enqueue('delete-object', { key }, { startAfter: objectDeleteDelaySeconds(purpose) })
 }
 
 /**
- * Signed in → input valid for its purpose → returns a presigned PUT for a new object and the
- * pending upload's id. Pending uploads of that purpose whose ticket expired more than
- * `UPLOAD_OBJECT_GRACE_SECONDS` ago are reclaimed first (object, then row). Rows in between (ticket
- * expired, upload possibly still arriving) are neither counted nor touched; the hourly cleanup or a
- * later ticket gets them. When the viewer still holds `maxPending` live ones for the purpose, the
- * request is refused with `RateLimitedError`, so the per-user backlog is bounded here, not only by
- * the hourly cleanup.
+ * Signed in → within the ticket rate limit → input valid for its purpose → allowed for that purpose
+ * (an `adminOnly` purpose answers 403 to anyone else) → returns a presigned PUT for a new object
+ * under the viewer's own prefix, and its key.
  */
 export const createUpload = async (input: CreateUploadInput): Promise<UploadTicket> => {
   const viewer = await requireUser()
+  await consumeRateLimit(`upload:user:${viewer.id}`, UPLOAD_TICKET_LIMIT)
   const { purpose, contentType, size } = parseInput(createUploadInput, input)
+  if (UPLOAD_RULES[purpose].adminOnly) {
+    await requireAdmin()
+  }
   if (!isStorageConfigured()) {
     throw new ValidationError({ base: ['Uploads are not available'] }, 'Uploads are not available')
   }
-  const rule = UPLOAD_RULES[purpose]
-
-  const pending = await db.upload.findMany({
-    where: { userId: viewer.id, purpose, status: 'pending' },
-    select: { id: true, key: true, createdAt: true },
-    orderBy: { createdAt: 'asc' },
-  })
-  const now = Date.now()
-  const liveSince = now - rule.ticketSeconds * 1000
-  const reclaimBefore = now - (rule.ticketSeconds + UPLOAD_OBJECT_GRACE_SECONDS) * 1000
-  const live = pending.filter((upload) => upload.createdAt.getTime() >= liveSince)
-  const expired = pending.filter((upload) => upload.createdAt.getTime() < reclaimBefore)
-  // Object first, so a storage failure leaves the row for the cleanup job.
-  for (const stale of expired) {
-    await deleteObject(stale.key)
-    // Only a still-pending row: a concurrent attach may have just claimed it.
-    await db.upload.deleteMany({ where: { id: stale.id, status: 'pending' } })
-  }
-  if (live.length >= rule.maxPending) {
-    throw new RateLimitedError('Finish or wait for your pending uploads before starting another')
-  }
-
   const key = `${purpose}s/${viewer.id}/${randomUUID()}`
-  const upload = await db.upload.create({
-    data: { key, userId: viewer.id, purpose, contentType, size },
-    select: { id: true },
-  })
   const ticket = await createUploadTicket({
     key,
     contentType,
     size,
-    expiresIn: rule.ticketSeconds,
+    expiresIn: UPLOAD_RULES[purpose].ticketSeconds,
   })
-  return { uploadId: upload.id, ...ticket }
+  return { key, ...ticket }
 }
 
 /**
- * Signed in, input valid, upload exists (and is of `purpose`), and it is the viewer's own, in that
- * order. Not even an admin may use someone else's upload.
+ * Key valid (422), and the key is the viewer's own and of `purpose` (403), in that order. Not even
+ * an admin may attach someone else's object. The caller has already checked the session, so the
+ * 401 comes before the 422 whatever the key looks like.
  */
-const requireOwnUpload = async (uploadId: string, purpose: UploadPurpose) => {
-  const viewer = await requireUser()
-  const id = parseInput(uploadIdSchema, uploadId)
-  const upload = await db.upload.findUnique({
-    where: { id },
-    select: { id: true, key: true, userId: true, purpose: true, status: true },
-  })
-  if (!upload || upload.purpose !== purpose) {
-    throw new NotFoundError('Upload not found')
-  }
-  if (upload.userId !== viewer.id) {
+export const requireOwnKey = (viewer: SessionUser, key: string, purpose: UploadPurpose) => {
+  const parsed = parseInput(uploadKeySchema, key)
+  if (!parsed.startsWith(`${purpose}s/${viewer.id}/`)) {
     throw new ForbiddenError('You cannot use this upload')
   }
-  return { viewer, upload }
+  return parsed
 }
 
 /**
  * Reads the stored object and checks it against the purpose's rule. An object that broke the rules
- * is deleted at once; the row stays pending (the ticket may still be valid for another upload to
- * this key). The hourly cleanup removes it after 24 hours, and `createUpload` reclaims it sooner,
- * once it is older than the ticket plus grace; until the ticket expires it keeps counting toward
- * the pending cap.
+ * is deleted at once (its ticket may still be valid for another upload to this key).
  */
-const verifyStoredObject = async (key: string, purpose: UploadPurpose) => {
+export const verifyStoredObject = async (key: string, purpose: UploadPurpose) => {
   const rule = UPLOAD_RULES[purpose]
   const head = await headObject(key)
   if (!head) {
-    throw new ValidationError({ uploadId: ['The file was not uploaded'] })
+    throw new ValidationError({ key: ['The file was not uploaded'] })
   }
   if (
     head.size < 1 ||
@@ -139,55 +107,43 @@ const verifyStoredObject = async (key: string, purpose: UploadPurpose) => {
     !isAllowedContentType(purpose, head.contentType)
   ) {
     await deleteObject(key)
-    throw new ValidationError({ uploadId: [`${rule.typeError}. ${rule.sizeError}.`] })
+    throw new ValidationError({ key: [`${rule.typeError}. ${rule.sizeError}.`] })
   }
-  return head
 }
 
 /**
- * Makes a finished upload the viewer's avatar. The stored object is checked against the limits
+ * Makes an uploaded object the viewer's avatar. The stored object is checked against the limits
  * (the signed ticket should already have enforced them); the replaced avatar's object is removed
  * by a delayed job (see `deleteObjectAfterTicket`), because the bucket call is slow and may fail
- * independently.
+ * independently. A Google profile picture is not ours, so replacing it deletes nothing.
  */
-export const attachAvatar = async (uploadId: string): Promise<CurrentUser> => {
-  const { viewer, upload } = await requireOwnUpload(uploadId, 'avatar')
-  if (upload.status !== 'pending') {
-    throw new ValidationError({ uploadId: ['This upload was already used'] })
-  }
+export const attachAvatar = async (key: string): Promise<CurrentUser> => {
+  const viewer = await requireUser()
+  const ownKey = requireOwnKey(viewer, key, 'avatar')
+  await verifyStoredObject(ownKey, 'avatar')
 
-  const head = await verifyStoredObject(upload.key, 'avatar')
-
-  const [replaced, user] = await db.$transaction(async (tx) => {
-    // Updating the user first takes its row lock, so two attaches by the same user run one after
-    // the other and the later one sees (and replaces) the earlier avatar.
+  const [replacedKey, user] = await db.$transaction(async (tx) => {
+    // Lock the user row first, so two attaches by the same user run one after the other and the
+    // later one sees (and replaces) the earlier avatar instead of losing track of it.
+    await tx.$queryRaw`SELECT 1 FROM users WHERE id = ${viewer.id}::uuid FOR UPDATE`
+    const previous = await tx.user.findUnique({
+      where: { id: viewer.id },
+      select: { image: true },
+    })
     const updated = await tx.user.update({
       where: { id: viewer.id },
-      data: { image: publicUrl(upload.key) },
+      data: { image: publicUrl(ownKey) },
       select: currentUserSelect,
     })
-    // Only a still-pending upload can be claimed: a concurrent attach of the same upload matches
-    // nothing here and fails, which rolls back the user update above.
-    const claimed = await tx.upload.updateMany({
-      where: { id: upload.id, status: 'pending' },
-      data: { status: 'attached', size: head.size, contentType: head.contentType ?? undefined },
-    })
-    if (claimed.count === 0) {
-      throw new ValidationError({ uploadId: ['This upload was already used'] })
-    }
-    const previous = await tx.upload.findMany({
-      where: { userId: viewer.id, purpose: 'avatar', status: 'attached', id: { not: upload.id } },
-      select: { id: true, key: true },
-    })
-    await tx.upload.deleteMany({ where: { id: { in: previous.map((row) => row.id) } } })
-    return [previous, updated] as const
+    return [keyFromPublicUrl(previous?.image ?? null), updated] as const
   })
 
   await invalidateTags(userTag(viewer.id))
-  for (const { key } of replaced) {
-    // The row is already gone; a failure to queue leaves an orphaned object, never a broken avatar.
-    deleteObjectAfterTicket(key, 'avatar').catch((error) =>
-      log.error({ err: error, key }, 'old avatar not queued for deletion'),
+  // Attaching the current avatar again replaces nothing.
+  if (replacedKey && replacedKey !== ownKey) {
+    // A failure to queue leaves an orphaned object, never a broken avatar.
+    deleteObjectAfterTicket(replacedKey, 'avatar').catch((error) =>
+      log.error({ err: error, key: replacedKey }, 'old avatar not queued for deletion'),
     )
   }
   return currentUserSchema.parse({ ...user, role: toRole(user.role) })

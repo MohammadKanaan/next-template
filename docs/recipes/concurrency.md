@@ -1,8 +1,7 @@
 # Concurrency: money, row locks, conditional writes, optimistic locking
 
-Four pieces: how an amount is stored and sent, how to lock rows, how to write conditionally (including
-a version column for forms), and when to pay for serializable isolation. None of it exists in the
-template today; the posts example does a plain `update` and a delete is a delete.
+Money, row locks, conditional writes (including a version column for forms) and serializable
+isolation. None of it exists here: posts do a plain `update`.
 
 ## 1. Amounts are `Decimal` in the database and strings everywhere else
 
@@ -13,8 +12,8 @@ A JS `number` cannot hold `0.10` or `19.99` exactly, and a sum of floats drifts.
 
   ```prisma
   model Order {
-    id        Int      @id @default(autoincrement())
-    userId    String   @map("user_id")
+    id        String   @id @default(uuid(7)) @db.Uuid
+    userId    String   @map("user_id") @db.Uuid
     total     Decimal  @db.Decimal(12, 2)
     currency  String   @default("USD") @db.VarChar(3)
     createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -53,7 +52,7 @@ inside the transaction**, so it rolls back and releases the lock.
 ```ts
 const lockedBalance = z.array(z.object({ balance: z.string() })) // numeric comes back as text
 
-export const debitWallet = async (walletId: number, amount: string): Promise<WalletDetail> => {
+export const debitWallet = async (walletId: string, amount: string): Promise<WalletDetail> => {
   const viewer = await requireUser()
   const { id, amount: debit } = parseInput(debitWalletInput, { id: walletId, amount })
   await requireWalletChange(viewer, id) // exists (404) → allowed (403), before the lock
@@ -131,9 +130,8 @@ while, and saves. Two editors of one record would otherwise silently overwrite e
   Zero rows updated means either the record is gone (check with a `findFirst`, then
   `NotFoundError`) or somebody saved first (`ConflictError`). Prisma skips `@updatedAt` for an empty
   `data`, so set `updatedAt: new Date()` yourself when every field may be omitted.
-- Decide what the version guards. The old implementation bumped it for title, body and tags edits
-  only; a status move, a trash or a restore was a different kind of change with its own conditional
-  write (section 3), so an open edit form did not conflict with a publish.
+- Decide what the version guards. Bump it for content edits only and give a status move its own
+  conditional write (section 3), so an open edit form does not conflict with a publish.
 - The form keeps the version it loaded as a non-rendered value and sends it back; the view shows a
   `CONFLICT` failure as the form-level alert with a **Reload** button (`router.refresh()`), and the
   form follows the refreshed record through RHF's `values`.
@@ -174,12 +172,3 @@ A concurrency rule is only proven by a test that races it: start the calls toget
 `Promise.allSettled` against the real test database and assert how many were fulfilled and which typed
 error the others got, plus the stored value. A test that calls them one after the other proves nothing
 about the race.
-
-## From the history (`7bd01c5`)
-
-- `lib/money.ts` and `tests/lib/money.test.ts`: `moneyInputSchema`, `formatMoney`.
-- `lib/data/posts.ts`: `updatePost` (version column), `setPostStatus` (conditional write),
-  `requirePostChange`; `tests/lib/data/posts.test.ts` has the `Promise.allSettled` races.
-- `lib/data/uploads.ts`: `attachPostUpload` (`FOR UPDATE` with a cap), `attachAvatar` (lock by `UPDATE`).
-- `components/Posts/Form` and `app/(site)/posts/[userId]/[id]/edit/view.tsx`: the version in the
-  form and the Reload button.
