@@ -36,11 +36,10 @@ point `REDIS_URL` at your instance in both `.env` and `.env.test`. More in the s
 
 ## Where to look next
 
-- [`AGENTS.md`](AGENTS.md) has the conventions and rules.
-- [`docs/guides/architecture.md`](docs/guides/architecture.md): how the layers fit, the REST API
-  table, the pattern index, and the checklist for adding a resource.
+- [`AGENTS.md`](AGENTS.md) has the conventions and rules. The code and its comments are the
+  documentation; prose exists only for what they cannot carry.
 - [`docs/guides/getting-started.md`](docs/guides/getting-started.md): the stack, full setup, Docker,
-  every script, and testing.
-- [`docs/guides/`](docs/guides/): one page per area (authentication, caching, jobs, uploads, ...).
+  every script, testing, the rename checklist and removing the posts example.
+- [`docs/guides/uploads.md`](docs/guides/uploads.md): creating the R2 bucket for profile photos.
 - [`docs/DECISIONS.md`](docs/DECISIONS.md): what was chosen and why, and what was removed.
 - [`docs/recipes/`](docs/recipes/): concurrency and the other patterns the template leaves out.

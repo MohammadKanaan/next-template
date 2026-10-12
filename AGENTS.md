@@ -24,27 +24,20 @@ that forgets a check cannot bypass it.
   `node_modules/next/dist/docs/` and `node_modules/@prisma/` are the exceptions when you need the
   installed library's documentation.
 
-## Guides
+## Documentation
 
-Long area narratives live in `docs/guides/`. Read the one for the area you touch before editing it.
+The code and its comments are the documentation: read the file, its neighbours and the tests under
+`tests/` before looking for prose. A rule the code cannot show goes in a comment beside the code or
+in this file, never in a new guide. Prose exists only for what the code does not implement or cannot
+carry:
 
-- `docs/guides/architecture.md`: the layer diagram, DTOs, DAL, actions, Route Handlers (REST API table), errors, presenters, caching, jobs, auth, admin, the pattern index and the "Adding a resource" checklist.
-- `docs/guides/getting-started.md`: the stack, setup, services, Docker, every script, testing.
-- `docs/guides/authentication.md`: Better Auth, the admin plugin (roles, bans, impersonation), email flows, account settings, Google, rate limits.
-- `docs/guides/posts.md`: the posts example (visibility, caching, search, the pages).
-- `docs/guides/route-handlers.md`: Route Handlers, the REST API, health.
-- `docs/guides/caching.md`: the Redis data cache (`remember`, tags, what is never cached).
-- `docs/guides/jobs.md`: pg-boss jobs, handlers, the worker, the system DAL.
-- `docs/guides/email.md`: the mailer, the `send-email` job and the plain templates in `emails/`.
-- `docs/guides/uploads.md`: avatar uploads on Cloudflare R2 (presigned PUT, attach, delayed deletes, bucket setup).
-- `docs/guides/infrastructure.md`: `lib/server`, logging, Docker and CI.
-- `docs/guides/hooks.md`: hook rules (no `useMemo` / `useCallback`; RHF files opt out with `'use no memo'`), `useUrlState`.
-- `docs/guides/forms.md`: React Hook Form + Zod forms (each starts `'use client'` then `'use no memo'`).
-- `docs/guides/environment.md`: public and server-only config, security headers, `serverEnv()`.
-
-`docs/recipes/` holds patterns the template does **not** implement (concurrency and optimistic locking
-and the other removed features) written to fit this architecture. Read one before adding
-such a feature; never treat it as a description of existing code.
+- `docs/guides/getting-started.md`: setup, services, Docker, scripts, the rename checklist, removing
+  the posts example, and the test database each checkout needs.
+- `docs/guides/uploads.md`: creating the R2 bucket, its public domain, CORS rule and API token.
+- `docs/recipes/`: patterns the template does **not** implement (concurrency and optimistic locking
+  and the other removed features) written to fit this architecture. Read one before adding such a
+  feature; never treat it as a description of existing code.
+- `docs/DECISIONS.md`: framework and library choices with reasons, what was removed and why.
 
 ## Build & Run Commands
 
@@ -52,7 +45,7 @@ such a feature; never treat it as a description of existing code.
 | ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
 | `bun run dev`                              | Start the Next dev server                                                                                        |
 | `bun run build`                            | Production build                                                                                                 |
-| `bun run test`                             | Run all Vitest tests                                                                                             |
+| `bun run test`                             | Run all Vitest tests (avoid: name files)                                                                         |
 | `bun run test tests/lib/dto/posts.test.ts` | Run a single test file                                                                                           |
 | `bun run test -t "formats validation"`     | Run tests matching a name pattern                                                                                |
 | `bun run lint`                             | ESLint                                                                                                           |
@@ -107,7 +100,8 @@ components/SCN/          # shadcn/ui primitives (the only place Tailwind is allo
 hooks/                   # Reusable React hooks (useXxx)
 presenters/              # Override functions for views that need reshaped data
 types/                   # Cross-cutting types (types/api.ts: ActionResult, ErrorBody, FieldErrors)
-lib/                     # Pure helpers, constants, env, formErrors, username derivation, csp,
+lib/                     # Pure helpers, constants, env, formErrors, keyboard (the submit shortcut),
+                         # constants-theme (PINNED_THEME), username derivation, csp,
                          # openapi (the generated spec of the public handlers), seo (descriptions,
                          # canonicals, NO_INDEX) and structuredData (JSON-LD)
 lib/dto/                 # Zod schemas + inferred types (inputs and outputs); client- and server-safe
@@ -182,6 +176,40 @@ docs/DECISIONS.md        # Framework and library choices, with reasons; what was
 - In application code, do not cast with `as` inside JSX. Narrow or derive the value in the
   component body. Leave CLI-generated `components/SCN` code as upstream provides it.
 
+## Hooks & Forms
+
+- Hooks live in `hooks/`, named `useXxx`, exported as `const` arrow functions that return an object
+  of state and callbacks. Write one only for logic that is independent or shared (`useScrollLock`,
+  `useUrlState`, `useReturnPath`), never for logic married to a single component.
+- **No `useMemo` / `useCallback` / `React.memo`.** The React Compiler memoizes components and hooks
+  at build time (and in Vitest, through `vitest.config.mts`), so derived values and callbacks are
+  plain `const`s. Never rely on memoization for correctness: code must behave the same if a value
+  is recreated on every render. An effect that needs the latest props or state without re-running
+  reads them through `useEffectEvent` (`NavBar`'s resize handler), not a callback dependency.
+- **A file that uses React Hook Form starts `'use client'` then `'use no memo'`** (copy
+  `components/Posts/Form`): `register()` must run on every render, and compiled it is cached, so the
+  form stops following resets and new `values`. ESLint fails the file if the directive is missing.
+- Forms are React Hook Form + `zodResolver` with the same `lib/dto` schemas the DAL validates with.
+  The form component owns `useForm` and hands validated values to `onSubmit`; the view passes an
+  `onSubmit` that calls a Server Action and returns its `ActionResult`; the form maps failures with
+  `applyActionErrors`. Hydrate/build helpers (`hydrateXForm`, `buildXAttributes`) live in a
+  `utils.ts` beside the form. Keep field markup explicit: no field-definition arrays, no generic
+  FormField wrapper. A control that is not a native input (the `Checkbox`) is controlled through
+  RHF's `Controller`.
+- A form submits with ⌘/Ctrl + Enter from any field: `onKeyDown={submitOnShortcut}` on the
+  `<form>`, `aria-keyshortcuts={SUBMIT_KEYSHORTCUTS}` on the submit button and a `ShortcutHint`
+  beside it (`lib/keyboard.ts`).
+- **URL state:** `useUrlState(schema, { history })` keeps list filters in the query string. The
+  schema is a Zod object whose every field has `.default()` or `.catch()`, so any URL parses
+  (`postsUrlQuery` in `lib/dto/posts.ts` is the one contract, shared with the page's `searchParams`,
+  which the page reduces with `toScalarParams`: a repeated param reads as its last value on server
+  and client alike). `setState(patch)` is one navigation per patch and builds on the last query
+  requested, not the committed URL, so two patches issued before the first lands both survive. Keys
+  that are empty or equal to the default leave the URL, unknown params stay, values are scalars. A
+  filter change resets `page` in the same patch.
+- **Return path:** the NavBar's log in link calls `useReturnPath().remember` so login and signup
+  send the visitor back to the page they left; an explicit `next` always wins.
+
 ## Styling
 
 - `styles/global.css` is the single theme source: stock neutral `:root` / `.dark` tokens and the
@@ -204,8 +232,22 @@ docs/DECISIONS.md        # Framework and library choices, with reasons; what was
   `<Button render={<Link />} nativeButton={false}>`: Base UI's Button sets `role="button"`, which
   hides the link from assistive tech. A `Select` gets an `items` map so its trigger shows the
   label, and its `onValueChange` receives `value | null`.
+- Icons follow the stock Button's own convention: `data-icon="inline-start"` (or `inline-end`) on
+  an icon beside a label, and `size="icon-*"` with an `aria-label` for an icon-only button. An
+  icon-only button carries its label as a tooltip (`ActionButton`, `ActionLink`) unless the glyph is
+  universal on its own (a magnifier). A button that keeps its words keeps them: dialog footers and
+  sentence-length link actions never go icon-only. `LoadingButton` takes an `icon` that its spinner
+  replaces while loading.
+- A record's view, edit and delete are `ActionLink` / `ActionButton` (colour and icon come from
+  `RECORD_ACTIONS`), always in that order, in an `ActionGroup` at the end of the row or header;
+  `ConfirmDialog` takes `triggerAction="delete"` for the delete button.
+- Accessibility baseline: a page has one `main` landmark and one `h1` (the auth pages through
+  `AuthHeader`); a link inside running text is underlined; every `role="search"` landmark has its own
+  `aria-label`; the `(site)` layout starts with a skip link.
 - `Providers` uses `next-themes` with `attribute="class"`, system default, and transition suppression
   on theme changes. `ThemeToggle` offers light/dark/system; the stock Toaster follows the theme.
+  While `PINNED_THEME` (`lib/constants-theme.ts`) is set, the site is forced to that theme and the
+  toggle is hidden (kept, not removed); `null` leaves the menu on.
 
 ## Data Access Layer
 
@@ -271,7 +313,14 @@ catch (error) { return toActionFailure(error) }`. Return `ActionResult<T>`; neve
   `requireUser()` first for a write, a JSON body only (refuse any other `Content-Type`; with the
   `SameSite=Lax` cookie that is the CSRF guard), decode with the DTO schema, call the DAL, return
   JSON or `toErrorResponse(error)`. 201 for a create, 200 for reads and updates, 204 for a delete.
-  A new public handler also gets a path in `lib/openapi.ts`.
+  A new public handler also gets a path in `lib/openapi.ts`. Handlers type their context with the
+  generated `RouteContext<'/api/v1/posts/[id]'>` and await `params`, and hand the raw id to the DAL.
+- A client component that must fetch calls a Route Handler through a small facade function that
+  parses the response with the shared `lib/dto` schema (so dates come back as `Date`s), never an
+  inline `fetch`. No page does this today: every list is server-rendered and every write is a Server
+  Action.
+- `GET /api/health` (database `SELECT 1` and Redis `PING`, 2 s timeout each, ok/fail only, no error
+  text) and `app/api/auth/[...all]` (Better Auth's router) are the other two handlers.
 
 ## Errors
 
@@ -289,9 +338,108 @@ catch (error) { return toActionFailure(error) }`. Return `ActionResult<T>`; neve
 One cache: the Redis data cache (`remember()` in `lib/server/cache.ts`), used inside the DAL for data
 that is the same for every viewer. Next's Cache Components are off, so `'use cache'` is not
 available. Check auth first, `remember()` only the viewer-independent part, then compute
-viewer-specific fields after; invalidate inside the DAL right after the write succeeds. Searches and
-author lists are never cached. Redis is an optimization, never a dependency. Full rules:
-`docs/guides/caching.md`.
+viewer-specific fields after; invalidate inside the DAL right after the write succeeds, so a caller
+cannot forget (actions still call `revalidatePath` / `refresh` for the router cache). Never cache
+something that varies by viewer under a shared key. Searches, author lists and lists that let drafts
+in are never cached: their keys are unbounded or viewer dependent. Tags live in
+`lib/data/cacheTags.ts`. Keys are built from unambiguous parts (`JSON.stringify([...])`, never a
+join of user-controlled strings) and every input that reaches a key is bounded in its DTO. Do not
+turn `cacheComponents` on to cache data: a second cache is a copy Redis invalidation cannot reach.
+Redis is an optimization, never a dependency: read, write and invalidation errors are logged and the
+request falls through to the database; a `load()` that throws is never cached. Redis must be 7 or
+newer (the rate limiter uses `PEXPIRE ... NX`) and run with `maxmemory-policy volatile-lru` (as
+`docker-compose.yml` does): tag versions have no TTL and must never be evicted.
+
+## Auth
+
+- Only `lib/data/auth.ts`, `lib/data/admin.ts`, `actions/auth.ts`, `app/api/auth/[...all]`,
+  `proxy.ts` and `prisma/seed.ts` import `better-auth`. Everything else asks the DAL:
+  `getSessionUser()`, `requireUser()`, `requireAdmin()`, `getViewer()`.
+- Better Auth's HTTP router has `disabledPaths` for every route whose rules live in a Server Action
+  or the DAL. Remove an entry only together with the code that enforces the same rules; what stays
+  open is what an email link or OAuth needs, plus session reads and sign-out. Direct `auth.api.*`
+  calls from server code are unaffected.
+- `proxy.ts` is optimistic: it checks that the session cookie exists and treats unknown paths as
+  private. It has no guest-only redirect, because a stale cookie must not lock anyone out of
+  `/login`; the `/login` and `/signup` pages redirect signed-in viewers themselves. The real check is
+  always in the DAL.
+- Auth and account actions that an attacker could spam are rate limited in production with
+  `consumeRateLimit` (Redis-backed so the limit holds across instances, fail-open). Per-IP limits
+  read `x-forwarded-for` through `getClientIp`, which assumes `TRUSTED_PROXY_HOPS` proxies (default
+  1. append the client address. Content creation is limited inside the DAL instead, so every path to
+     it shares the limit.
+- Sessions refresh only through Server Actions or the auth route (Server Components cannot set
+  cookies); client code never reads or sends a token.
+- Google sign-in is built only when both `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set.
+  `lib/data/auth.ts` reads that pair from `process.env` directly, because the config is built at
+  import; its callback `/api/auth/callback/google` must stay out of `disabledPaths`.
+
+## Configuration & Infrastructure
+
+- Public config is `NEXT_PUBLIC_*` read once in `lib/env.ts`; never hard-code a URL or the app name.
+  Server config goes through `serverEnv()` (`lib/server/env.ts`): Zod-validated, parsed on first use
+  (so `next build` works without it), one error listing every bad variable, an empty optional
+  variable counts as unset, validated at boot in production by `instrumentation.ts` and the worker.
+  Do not read these from `process.env` elsewhere; the exceptions are `BETTER_AUTH_SECRET` /
+  `BETTER_AUTH_URL` and the Google pair (the auth config is built at import) and `LOG_LEVEL` (the
+  logger works before `serverEnv()` validates). When you add a variable, update `.env.example` and
+  `.env.test.example`.
+- Security headers live in `next.config.ts` (`SECURITY_HEADERS`); the Content-Security-Policy is
+  `proxy.ts`'s (`lib/csp.ts`). Changing either calls for `bun run build`.
+- `lib/server/*` is server-only infrastructure; only `lib/data`, `jobs/`, `worker/` and tests import
+  it (ESLint forbids it elsewhere). A page or action that needs infrastructure asks the DAL.
+  Singletons (Prisma client, Redis, pg-boss, the R2 client) hang off `globalThis` and are created
+  lazily, so importing a file never needs its environment variables.
+- Logging: every module makes a child logger (`const log = logger.child({ module: 'cache' })`) and
+  logs structured fields first, message second: `log.error({ err: error }, 'read failed')`. Never log
+  a payload or a message body (job payloads carry live links); the logger redacts links, tokens,
+  passwords and credential headers anyway. `console` is forbidden in `lib/data`, `lib/server`,
+  `jobs` and the worker.
+
+## Jobs & Email
+
+- Background work runs on pg-boss in the separate worker process (`worker/index.ts`), the only
+  process that owns pg-boss; without it nothing queued ever runs. `jobs/definitions.ts` has one entry
+  per job (name, Zod payload, queue options, optional cron). A handler is `handleXxx(payload:
+unknown)`: it re-parses the payload, does the work, and lets an error propagate so pg-boss retries.
+  To add a job: definition → handler → register it in `worker/index.ts` → tests in `tests/jobs/`.
+- Enqueue from the DAL or a Better Auth callback, never from a component; after a transaction
+  commits, not inside it; and without awaiting where response time could reveal whether an account
+  exists. `send-email` keeps finished jobs for an hour, because its payloads carry live links.
+- Job-only functions with no viewer belong in `lib/data/maintenance.ts` (the system DAL, importable
+  from `jobs/**` only); anything a user can trigger belongs in a normal DAL file with auth.
+- Nothing sends mail inside a request: callbacks enqueue a `send-email` job and the worker renders
+  and sends it. Templates are plain functions in `emails/` that return `{ subject, html, text }`
+  through `buildEmail`: inline styles are allowed there, every interpolated value goes through
+  `escapeHtml`, and the action link sits on its own line of the plain text. A new email is a new file
+  in `emails/`, a new member of `sendEmailPayload`, a new case in `renderEmail` and tests in
+  `tests/emails/` and `tests/jobs/`. Without `RESEND_API_KEY` the mailer logs the mail outside
+  production and throws in production.
+
+## Adding a Resource
+
+Posts are the worked example: copy their shape, in this order.
+
+1. **Schema** in `prisma/schema.prisma`: UUIDv7 id, camelCase fields with snake_case `@map`s, an index
+   on every foreign key you filter by, `onDelete: Cascade` where the child cannot outlive its parent;
+   `bun run db:migrate`, then `bun run db:test:prepare`. A table that does not hang off `users` goes
+   into `resetDatabase()`'s TRUNCATE list (`tests/helpers/server.ts`).
+2. **DTOs** in `lib/dto/<name>.ts`: an input schema per write, an output schema per read shape, list
+   query schemas with every field bounded, and an `xxxUrlQuery` twin with `.catch()` on every field if
+   the list keeps its filters in the URL.
+3. **DAL** in `lib/data/<name>.ts` (rules above), its record-level rules in
+   `lib/data/policies/<name>.ts`, tested per viewer (signed out, owner, other user, admin) in
+   `tests/lib/data/<name>.test.ts` first.
+4. **Server Actions** in `actions/<name>.ts`; a Route Handler only for an HTTP API or a client fetch.
+5. **Pages and forms**: `page.tsx` loads through `loadPage`; a `view.tsx` only for the interactive
+   part; forms as in **Hooks & Forms**; styles in an SCSS module.
+6. **Routes**: constants in `lib/constants-routes.ts` (public in `PUBLIC_ROUTES`, private by
+   default), the NavBar link, `app/sitemap.ts` when indexable, metadata per **React Components**.
+7. A presenter only if a view needs reshaped fields; extend `prisma/seed.ts`; tests under the mirrored
+   paths. Tests that create records and expect them to be public set that flag explicitly (a post
+   defaults to a draft).
+
+`docs/guides/getting-started.md` lists what to delete to remove the posts example.
 
 ## Helpers & Presenters
 
@@ -345,6 +493,8 @@ author lists are never cached. Redis is an optimization, never a dependency. Ful
   queue (`@/lib/server/queue`) is mocked globally in `tests/setup.ts`; `tests/helpers/mail.ts` turns
   the queued `send-email` payloads back into mails and reads their links and tokens. Tests never send
   mail or reach Google.
+- Each checkout or worktree needs its own test database, because `resetDatabase()` truncates the one
+  it points at and tests from two checkouts would corrupt each other (see `getting-started.md`).
 
 ## Test Pages
 
@@ -379,8 +529,11 @@ run:
 ```bash
 bun run typecheck   # type errors, broken imports, bad props
 bun run lint        # syntax errors, unused vars, bad patterns
-bun run test        # behavior
+bun run test <files>  # behavior: only the test files the change touches
 ```
+
+Do not run the whole suite: it truncates the shared test database and takes minutes. Name the files
+(`bun run test tests/lib/data/posts.test.ts`) or a pattern (`-t "formats validation"`).
 
 Run `bun run build` when you touch `next.config.ts`, `proxy.ts`, route segment config, dynamic
 rendering, or the Server/Client Component boundary — those failures only surface at build time.

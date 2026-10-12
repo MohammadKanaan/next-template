@@ -16,4 +16,4 @@ app/test
 next-env.d.ts
 Dockerfile
 .dockerignore
-docker-compose.yml
+docker-compose*.yml

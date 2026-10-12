@@ -1,6 +1,6 @@
 # Getting started
 
-Stack, setup, Docker, scripts and tests. The README has the short version.
+Stack, setup, Docker, scripts, tests, and how to make the template your own. The README has the short version.
 
 ## Stack
 
@@ -53,8 +53,48 @@ everything else works.
 `db:seed` and `db:reset` write straight to PostgreSQL and do not flush the Redis cache, so `/posts`
 can show pre-reset data for up to 5 minutes. `redis-cli -n 0 flushdb` clears it.
 
-Renaming the app for a new project means `NEXT_PUBLIC_APP_NAME`, `package.json` and the database
-names in `docker-compose.yml`.
+Google sign-in is optional too: set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` (both or neither)
+and add the authorized redirect URI `<BETTER_AUTH_URL>/api/auth/callback/google` in the Google Cloud
+Console. The round trip with Google needs real credentials and is not covered by tests.
+
+## Making it yours
+
+### Rename checklist
+
+The name appears as `next_template` (database names), `next-template` (package and image) and
+`Next Template` (display name). Change every one:
+
+- `package.json` (`name`) and `docker-compose.yml` (the `next_template_dev` database in
+  `DATABASE_URL`, `POSTGRES_DB` and the healthcheck, the `next-template-app` image on three services,
+  the `EMAIL_FROM` and `NEXT_PUBLIC_APP_NAME` defaults)
+- `.env.example`, `.env.test.example` and your own `.env` / `.env.test` (`DATABASE_URL`,
+  `NEXT_PUBLIC_APP_NAME`, `EMAIL_FROM`)
+- `.github/workflows/ci.yml` (`POSTGRES_DB` and the comment about `next_template_test`)
+- `tests/helpers/server.ts`: `assertTestDatabase()` insists the test URL contains `next_template_test`,
+  so change that string and its error message together with the database name
+- `lib/env.ts` (the `appName` fallback), `app/(site)/ui-kit/` (the badge and the page description)
+  and the heading of `AGENTS.md` and `README.md`
+- `grep -rIni "next.template" . --exclude-dir=node_modules --exclude-dir=.git` finds the rest
+
+### Removing the posts example
+
+Once your first resource looks like posts, delete posts. `bun run typecheck` and `bun run lint` find
+whatever this list misses.
+
+- `actions/posts.ts`, `app/(site)/posts/**`, `app/api/v1/posts/**`, `components/Posts/**`
+- `lib/dto/posts.ts`, `lib/data/posts.ts`, `lib/data/policies/posts.ts`, `lib/excerpt.ts`
+- the `Post` model and the `posts` relation on `User` in `prisma/schema.prisma`, then
+  `bun run db:migrate`
+- `POSTS_TAG` and `postTag` in `lib/data/cacheTags.ts`, and their uses in `lib/data/users.ts` and
+  `lib/data/auth.ts`
+- the post routes in `lib/constants-routes.ts`, `components/Layout/NavBar`, `app/sitemap.ts` with
+  `lib/data/sitemap.ts` and `lib/dto/sitemap.ts`, the posts in `lib/openapi.ts`,
+  `lib/structuredData.ts` and `lib/seo.ts`, and the post counts and lists of the admin overview and
+  user page (`lib/data/admin.ts`, `lib/dto/admin.ts`, `app/(admin)`)
+- the posts in `prisma/seed.ts` and `posts` in `resetDatabase()` (`tests/helpers/server.ts`)
+- the posts sections of `app/(site)/ui-kit/view.tsx`, the wording about posts in `/settings`, and the
+  matching tests under `tests/`; `grep -rIli post . --exclude-dir=node_modules --exclude-dir=.git`
+  finds the rest
 
 ## Docker
 
@@ -124,3 +164,12 @@ whenever the test DB may be dirty, then `bun run test`. Server tests call the DA
 Route Handlers directly against `next_template_test` and Redis database 15, which is flushed between
 tests, and never touch the dev database. The job queue is mocked, so no email leaves the machine.
 Component, presenter and DTO tests need no database.
+
+Run only the test files a change touches (`bun run test tests/lib/data/posts.test.ts`), not the whole
+suite. `resetDatabase()` truncates the database `.env.test` points at and flushes its Redis, so two
+checkouts or git worktrees that share one test database corrupt each other's runs whenever they test
+at the same time. Give every checkout its own: a database name that still contains
+`next_template_test` (for example `next_template_test_feature_x`; `assertTestDatabase()` insists on
+the substring), created and prepared with `bun run db:test:prepare`, and, because `assertTestRedis()`
+accepts only database 15, its own Redis instance (another port in `REDIS_URL`) or no concurrent test
+runs.
