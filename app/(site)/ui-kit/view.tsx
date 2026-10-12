@@ -29,9 +29,9 @@ import {
   AvatarGroup,
   AvatarGroupCount,
   AvatarImage,
-} from '@/components/SCN/avatar'
-import { Badge } from '@/components/SCN/badge'
-import { Button } from '@/components/SCN/button'
+} from '@/components/ui/avatar'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
   Card,
   CardContent,
@@ -39,8 +39,8 @@ import {
   CardFooter,
   CardHeader,
   CardTitle,
-} from '@/components/SCN/card'
-import { Checkbox } from '@/components/SCN/checkbox'
+} from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogClose,
@@ -50,17 +50,17 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from '@/components/SCN/dialog'
-import { Label } from '@/components/SCN/label'
+} from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/SCN/select'
-import { Separator } from '@/components/SCN/separator'
-import { Spinner } from '@/components/SCN/spinner'
+} from '@/components/ui/select'
+import { Separator } from '@/components/ui/separator'
+import { Spinner } from '@/components/ui/spinner'
 import {
   Table,
   TableBody,
@@ -69,8 +69,8 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/SCN/table'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/SCN/tooltip'
+} from '@/components/ui/table'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { UserAvatar } from '@/components/UserAvatar'
 import type { ActionResult } from '@/types/api'
 import styles from './styles.module.scss'

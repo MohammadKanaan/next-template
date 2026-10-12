@@ -2,7 +2,7 @@
 
 import { Camera } from 'lucide-react'
 import { LoadingButton } from '@/components/LoadingButton'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/SCN/tooltip'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { UserAvatar } from '@/components/UserAvatar'
 import { useImageUpload } from '@/hooks/useImageUpload'
 import { AVATAR_CONTENT_TYPES, type CreateUploadInput, type UploadTicket } from '@/lib/dto/uploads'

@@ -2,14 +2,14 @@
 
 import { SunMoonIcon } from 'lucide-react'
 import { useTheme } from 'next-themes'
-import { Button } from '@/components/SCN/button'
+import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
-} from '@/components/SCN/dropdown-menu'
+} from '@/components/ui/dropdown-menu'
 
 export const ThemeToggle = () => {
   const { theme, setTheme } = useTheme()

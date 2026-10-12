@@ -1,4 +1,4 @@
-import { Spinner } from '@/components/SCN/spinner'
+import { Spinner } from '@/components/ui/spinner'
 import styles from './styles.module.scss'
 
 /** Suspense fallback for a page section that is still loading. */

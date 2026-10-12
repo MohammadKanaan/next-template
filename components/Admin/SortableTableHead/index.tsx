@@ -1,5 +1,5 @@
 import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react'
-import { TableHead } from '@/components/SCN/table'
+import { TableHead } from '@/components/ui/table'
 import type { SortDirection } from '@/lib/dto/common'
 import styles from './styles.module.scss'
 

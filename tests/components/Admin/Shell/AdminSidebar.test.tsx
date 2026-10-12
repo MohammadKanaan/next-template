@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AdminSidebar } from '@/components/Admin/Shell/AdminSidebar'
-import { SidebarProvider } from '@/components/SCN/sidebar'
+import { SidebarProvider } from '@/components/ui/sidebar'
 import type { CurrentUser } from '@/lib/dto/users'
 
 const navigation = vi.hoisted(() => ({ pathname: '/admin' }))

@@ -1,7 +1,7 @@
 import type { ComponentProps } from 'react'
 import type { VariantProps } from 'class-variance-authority'
 import Link from 'next/link'
-import { buttonVariants } from '@/components/SCN/button'
+import { buttonVariants } from '@/components/ui/button'
 
 type ButtonLinkProps = Omit<ComponentProps<typeof Link>, 'className' | 'style'> &
   VariantProps<typeof buttonVariants>

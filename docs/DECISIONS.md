@@ -12,7 +12,7 @@ What this project uses and why. How each choice is applied is in `AGENTS.md` and
   behaviour lives in application wrappers. Links styled as buttons are `ButtonLink`, because Base
   UI's Button forces `role="button"`. Theme follows the
   [official Next.js guide](https://ui.shadcn.com/docs/dark-mode/next).
-- **SCSS CSS Modules with the stock shadcn neutral tokens; Tailwind only in `components/SCN`:**
+- **SCSS CSS Modules with the stock shadcn neutral tokens; Tailwind only in `components/ui`:**
   component-scoped styles, one theme source, no custom palette.
 - **No global client state:** the viewer is read on the server. Add a store when real
   cross-component client state appears.

@@ -1,4 +1,4 @@
-import { Badge } from '@/components/SCN/badge'
+import { Badge } from '@/components/ui/badge'
 
 type PostStatusBadgeProps = {
   published: boolean

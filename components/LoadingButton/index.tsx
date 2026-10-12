@@ -1,7 +1,7 @@
 import type { LucideIcon } from 'lucide-react'
 import type { ComponentProps } from 'react'
-import { Button } from '@/components/SCN/button'
-import { Spinner } from '@/components/SCN/spinner'
+import { Button } from '@/components/ui/button'
+import { Spinner } from '@/components/ui/spinner'
 
 type LoadingButtonProps = Omit<
   ComponentProps<typeof Button>,

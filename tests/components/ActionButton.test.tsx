@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { ActionButton } from '@/components/ActionButton'
-import { Dialog, DialogContent, DialogTitle, DialogTrigger } from '@/components/SCN/dialog'
+import { Dialog, DialogContent, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 
 describe('ActionButton', () => {
   it('is an icon button named by its label', async () => {

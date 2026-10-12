@@ -2,8 +2,8 @@
 
 import type { ReactNode } from 'react'
 import { ThemeProvider } from 'next-themes'
-import { Toaster } from '@/components/SCN/sonner'
-import { TooltipProvider } from '@/components/SCN/tooltip'
+import { Toaster } from '@/components/ui/sonner'
+import { TooltipProvider } from '@/components/ui/tooltip'
 import { PINNED_THEME } from '@/lib/constants-theme'
 
 type ProvidersProps = {

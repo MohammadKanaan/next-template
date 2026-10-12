@@ -3,8 +3,8 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { cache } from 'react'
 import { UserActions } from '@/components/Admin/Users/UserActions'
-import { Badge } from '@/components/SCN/badge'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/SCN/card'
+import { Badge } from '@/components/ui/badge'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Table,
   TableBody,
@@ -12,7 +12,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/SCN/table'
+} from '@/components/ui/table'
 import { UserAvatar } from '@/components/UserAvatar'
 import { adminUserPath, ROUTE_ADMIN_USERS, ROUTE_POST_DETAILS } from '@/lib/constants-routes'
 import { getAdminUser } from '@/lib/data/admin'

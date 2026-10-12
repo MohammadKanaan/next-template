@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { StatCard } from '@/components/Admin/StatCard'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge } from '@/components/SCN/badge'
+import { Badge } from '@/components/ui/badge'
 import { UserAvatar } from '@/components/UserAvatar'
 import {
   adminUserPath,

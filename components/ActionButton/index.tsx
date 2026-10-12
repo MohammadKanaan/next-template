@@ -1,6 +1,6 @@
 import { useId, type ComponentProps } from 'react'
-import { Button } from '@/components/SCN/button'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/SCN/tooltip'
+import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { RECORD_ACTIONS, type RecordAction } from './actions'
 import styles from './styles.module.scss'
 

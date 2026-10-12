@@ -68,7 +68,7 @@ rendering or the Server/Client Component boundary, whose failures only surface a
 ## Tech Stack
 
 - **Framework:** Next.js 16 App Router, React 19, TypeScript (strict), React Compiler on
-- **UI:** shadcn/ui on Base UI (`base-vega`), vendored as flat files in `components/SCN/`
+- **UI:** shadcn/ui on Base UI (`base-vega`), vendored as flat files in `components/ui/`
 - **Data:** server-only DAL in `lib/data`, Zod DTOs in `lib/dto`, Server Actions for writes
 - **Database:** Prisma ORM 7.10 (`prisma-client` generator, `@prisma/adapter-pg`) on PostgreSQL 18
 - **Cache + rate limits:** Redis (`ioredis`) behind `lib/server`, the only cache: Next's Cache
@@ -81,7 +81,7 @@ rendering or the Server/Client Component boundary, whose failures only surface a
 - **Auth:** Better Auth (email + password, Prisma adapter, `admin` plugin, `nextCookies`)
 - **Forms:** React Hook Form + Zod 4
 - **Styling:** SCSS CSS Modules beside components; shadcn tokens in `styles/global.css`; Tailwind
-  only in `components/SCN`
+  only in `components/ui`
 - **Testing:** Vitest + Testing Library (jsdom; server tests in node against a real test DB)
 
 ## Project Structure
@@ -91,7 +91,7 @@ app/                     # route groups (site), (minimal), (admin); api/auth, ap
   (site)/<route>/        # page.tsx (Server Component) + optional view.tsx ('use client') + styles.module.scss
 actions/                 # 'use server' Server Actions
 components/              # <Area>/<Name>/index.tsx + styles.module.scss
-components/SCN/          # shadcn/ui primitives (the only place Tailwind is allowed)
+components/ui/          # shadcn/ui primitives (the only place Tailwind is allowed)
 hooks/                   # Reusable hooks (useXxx)
 presenters/              # Overrides for views that need reshaped data
 types/                   # Cross-cutting types (types/api.ts: ActionResult, ErrorBody, FieldErrors)
@@ -125,7 +125,7 @@ tests/                   # Vitest, mirroring the source tree
 ## React Components
 
 - **Every function is a `const` arrow function**, components, hooks, helpers, DAL functions and
-  actions alike (ESLint `func-style`). Only the generated `components/SCN` has `function`
+  actions alike (ESLint `func-style`). Only the generated `components/ui` has `function`
   declarations.
 - Components use **named exports**. Route files (`page.tsx`, `layout.tsx`, `not-found.tsx`,
   `route.ts`) use the default export Next requires: `const PostsPage = async (…) => { … }` then
@@ -176,10 +176,10 @@ tests/                   # Vitest, mirroring the source tree
 
 - `styles/global.css` is the single theme source: stock shadcn neutral tokens and the Tailwind base
   layer. No secondary palette or token aliases.
-- Outside `components/SCN`: semantic class names in CSS Modules using shadcn tokens directly
+- Outside `components/ui`: semantic class names in CSS Modules using shadcn tokens directly
   (`var(--foreground)`, `var(--border)`, …). No Tailwind utilities, `@apply` or inline `style`
   unless the value is runtime-only (emails in `emails/` are the exception).
-- `components/SCN` holds CLI-generated primitives, unchanged apart from Prettier. Update them with
+- `components/ui` holds CLI-generated primitives, unchanged apart from Prettier. Update them with
   `bunx shadcn@latest add <names> --overwrite --yes`, never local rewrites. Behaviour such as labels,
   errors and loading lives in application wrappers (`components/Form/Input`, `Textarea`,
   `LoadingButton`).
@@ -424,7 +424,7 @@ changes.
 ## Working Principles
 
 - Keep changes focused; do not refactor unrelated areas. Match the style of the file you edit.
-- Prefer the existing `components/SCN` primitives (add more with `bunx shadcn@latest add`) before a
+- Prefer the existing `components/ui` primitives (add more with `bunx shadcn@latest add`) before a
   new UI library.
 - Do not introduce patterns the codebase doesn't use: no class-based presenters, no hand-written
   types that duplicate a DTO schema, no `fetch` in components, no Server Components calling the

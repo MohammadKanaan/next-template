@@ -10,7 +10,7 @@ import { toast } from 'sonner'
 import { banUserAction } from '@/actions/admin'
 import { Input } from '@/components/Form/Input'
 import { LoadingButton } from '@/components/LoadingButton'
-import { Button } from '@/components/SCN/button'
+import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogClose,
@@ -20,7 +20,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from '@/components/SCN/dialog'
+} from '@/components/ui/dialog'
 import { banUserInput, type AdminUser, type BanUserInput } from '@/lib/dto/users'
 import { applyActionErrors } from '@/lib/formErrors'
 import styles from './styles.module.scss'

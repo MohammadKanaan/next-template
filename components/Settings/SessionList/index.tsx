@@ -3,7 +3,7 @@
 import { LogOut } from 'lucide-react'
 import { useState } from 'react'
 import { LoadingButton } from '@/components/LoadingButton'
-import { Badge } from '@/components/SCN/badge'
+import { Badge } from '@/components/ui/badge'
 import {
   Table,
   TableBody,
@@ -11,7 +11,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/SCN/table'
+} from '@/components/ui/table'
 import { formatDateTime } from '@/lib/formatDate'
 import type { SessionSummary } from '@/lib/dto/users'
 import type { ActionResult } from '@/types/api'

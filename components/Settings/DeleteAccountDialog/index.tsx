@@ -8,7 +8,7 @@ import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { Input } from '@/components/Form/Input'
 import { LoadingButton } from '@/components/LoadingButton'
-import { Button } from '@/components/SCN/button'
+import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogClose,
@@ -18,7 +18,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from '@/components/SCN/dialog'
+} from '@/components/ui/dialog'
 import { deleteAccountInput, type DeleteAccountInput } from '@/lib/dto/auth'
 import { applyActionErrors } from '@/lib/formErrors'
 import type { ActionResult } from '@/types/api'

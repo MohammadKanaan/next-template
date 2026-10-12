@@ -2,7 +2,7 @@
 
 import { RotateCcw } from 'lucide-react'
 import { Empty } from '@/components/Empty'
-import { Button } from '@/components/SCN/button'
+import { Button } from '@/components/ui/button'
 import styles from './not-found.module.scss'
 
 type ErrorPageProps = {

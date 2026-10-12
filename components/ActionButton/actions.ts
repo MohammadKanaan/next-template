@@ -1,5 +1,5 @@
 import { Eye, Pencil, Trash2, type LucideIcon } from 'lucide-react'
-import type { buttonVariants } from '@/components/SCN/button'
+import type { buttonVariants } from '@/components/ui/button'
 
 type ButtonVariant = NonNullable<Parameters<typeof buttonVariants>[0]>['variant']
 

@@ -4,7 +4,7 @@ import { useState, type ComponentProps } from 'react'
 import { ActionButton } from '@/components/ActionButton'
 import type { RecordAction } from '@/components/ActionButton/actions'
 import { LoadingButton } from '@/components/LoadingButton'
-import { Button } from '@/components/SCN/button'
+import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogClose,
@@ -14,7 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from '@/components/SCN/dialog'
+} from '@/components/ui/dialog'
 import type { ActionResult } from '@/types/api'
 import styles from './styles.module.scss'
 

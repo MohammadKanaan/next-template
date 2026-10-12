@@ -1,7 +1,7 @@
 'use client'
 
 import { ChevronLeft, ChevronRight } from 'lucide-react'
-import { Button } from '@/components/SCN/button'
+import { Button } from '@/components/ui/button'
 import styles from './styles.module.scss'
 
 type PaginationProps = {

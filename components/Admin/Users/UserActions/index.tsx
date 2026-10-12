@@ -10,14 +10,14 @@ import {
   unbanUserAction,
 } from '@/actions/admin'
 import { BanUserDialog } from '@/components/Admin/BanDialog'
-import { Button } from '@/components/SCN/button'
+import { Button } from '@/components/ui/button'
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/SCN/select'
+} from '@/components/ui/select'
 import { ROUTE_HOME } from '@/lib/constants-routes'
 import { roleSchema, type AdminUser } from '@/lib/dto/users'
 import type { ActionResult } from '@/types/api'

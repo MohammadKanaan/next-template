@@ -2,15 +2,15 @@
 
 import { useEffect, useId, useRef, useState } from 'react'
 import { Input } from '@/components/Form/Input'
-import { Button } from '@/components/SCN/button'
-import { Label } from '@/components/SCN/label'
+import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/SCN/select'
+} from '@/components/ui/select'
 import { POST_SEARCH_MAX_LENGTH, postsSortSchema, type PostsSort } from '@/lib/dto/posts'
 import styles from './styles.module.scss'
 

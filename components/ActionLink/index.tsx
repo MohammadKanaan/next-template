@@ -1,8 +1,8 @@
 import Link from 'next/link'
 import type { ComponentProps } from 'react'
 import { RECORD_ACTIONS, type RecordAction } from '@/components/ActionButton/actions'
-import { buttonVariants } from '@/components/SCN/button'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/SCN/tooltip'
+import { buttonVariants } from '@/components/ui/button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
 type ActionLinkProps = Omit<ComponentProps<typeof Link>, 'className' | 'style' | 'children'> & {
   action: RecordAction

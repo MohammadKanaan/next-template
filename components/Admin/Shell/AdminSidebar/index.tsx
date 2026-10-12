@@ -16,7 +16,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
-} from '@/components/SCN/sidebar'
+} from '@/components/ui/sidebar'
 import { UserAvatar } from '@/components/UserAvatar'
 import { ROUTE_ADMIN, ROUTE_SETTINGS } from '@/lib/constants-routes'
 import type { CurrentUser } from '@/lib/dto/users'

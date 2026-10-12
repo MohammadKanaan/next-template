@@ -1,7 +1,7 @@
 'use client'
 
 import { useSyncExternalStore } from 'react'
-import { Kbd, KbdGroup } from '@/components/SCN/kbd'
+import { Kbd, KbdGroup } from '@/components/ui/kbd'
 import { isApplePlatform } from '@/lib/keyboard'
 import styles from './styles.module.scss'
 

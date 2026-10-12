@@ -14,7 +14,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/SCN/table'
+} from '@/components/ui/table'
 import { useUrlState } from '@/hooks/useUrlState'
 import { ROUTE_POST_DETAILS, ROUTE_POST_EDIT, ROUTE_POST_NEW } from '@/lib/constants-routes'
 import type { Page } from '@/lib/dto/common'

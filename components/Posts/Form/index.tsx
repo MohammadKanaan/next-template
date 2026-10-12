@@ -8,9 +8,9 @@ import { Controller, useForm } from 'react-hook-form'
 import { Input } from '@/components/Form/Input'
 import { Textarea } from '@/components/Form/Textarea'
 import { LoadingButton } from '@/components/LoadingButton'
-import { Button } from '@/components/SCN/button'
-import { Checkbox } from '@/components/SCN/checkbox'
-import { Label } from '@/components/SCN/label'
+import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Label } from '@/components/ui/label'
 import { ShortcutHint } from '@/components/ShortcutHint'
 import {
   createPostInput,

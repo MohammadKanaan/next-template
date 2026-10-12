@@ -7,7 +7,7 @@ import { toast } from 'sonner'
 import { deletePostAction } from '@/actions/posts'
 import { ActionButton } from '@/components/ActionButton'
 import { LoadingButton } from '@/components/LoadingButton'
-import { Button } from '@/components/SCN/button'
+import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogClose,
@@ -17,7 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from '@/components/SCN/dialog'
+} from '@/components/ui/dialog'
 import { ROUTE_POSTS } from '@/lib/constants-routes'
 
 type DeletePostButtonProps = {

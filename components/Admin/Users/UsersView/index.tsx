@@ -9,15 +9,15 @@ import { SortableTableHead } from '@/components/Admin/SortableTableHead'
 import { Empty } from '@/components/Empty'
 import { Input } from '@/components/Form/Input'
 import { Pagination } from '@/components/Pagination'
-import { Badge } from '@/components/SCN/badge'
-import { Button } from '@/components/SCN/button'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/SCN/select'
+} from '@/components/ui/select'
 import {
   Table,
   TableBody,
@@ -25,7 +25,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/SCN/table'
+} from '@/components/ui/table'
 import { useUrlState } from '@/hooks/useUrlState'
 import { adminUserPath } from '@/lib/constants-routes'
 import type { Page } from '@/lib/dto/common'

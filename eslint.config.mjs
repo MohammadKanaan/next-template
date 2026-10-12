@@ -42,7 +42,7 @@ const eslintConfig = defineConfig([
   // CLI-generated shadcn primitives (and the `use-mobile` hook the sidebar installs) stay as
   // upstream writes them.
   {
-    files: ['components/SCN/**', 'hooks/use-mobile.ts'],
+    files: ['components/ui/**', 'hooks/use-mobile.ts'],
     rules: { 'func-style': 'off', 'react-hooks/set-state-in-effect': 'off' },
   },
   {
@@ -84,7 +84,7 @@ const eslintConfig = defineConfig([
   // that uses the library must opt out, or its form stops following resets and new `values`.
   {
     files: ['app/**/*.tsx', 'components/**/*.tsx', 'hooks/**/*.{ts,tsx}'],
-    ignores: ['components/SCN/**'],
+    ignores: ['components/ui/**'],
     rules: {
       'no-restricted-syntax': [
         'error',
