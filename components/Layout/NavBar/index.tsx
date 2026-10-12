@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useEffectEvent, useState } from 'react'
 import { SignOutButton } from '@/components/Auth/SignOutButton'
-import { Button } from '@/components/SCN/button'
+import { ButtonLink } from '@/components/ButtonLink'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { UserAvatar } from '@/components/UserAvatar'
 import { useScrollLock } from '@/hooks/useScrollLock'
@@ -73,9 +73,9 @@ type AccountActionsProps = {
 const AccountActions = ({ user }: AccountActionsProps) => {
   if (!user) {
     return (
-      <Button asChild size="sm">
-        <Link href={ROUTE_LOGIN}>Log in</Link>
-      </Button>
+      <ButtonLink href={ROUTE_LOGIN} size="sm">
+        Log in
+      </ButtonLink>
     )
   }
   return (

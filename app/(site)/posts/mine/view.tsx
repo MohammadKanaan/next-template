@@ -1,11 +1,10 @@
 'use client'
 
-import Link from 'next/link'
+import { ButtonLink } from '@/components/ButtonLink'
 import { Empty } from '@/components/Empty'
 import { Pagination } from '@/components/Pagination'
 import { PostsFilters } from '@/components/Posts/Filters'
 import { PostStatusBadge } from '@/components/Posts/StatusBadge'
-import { Button } from '@/components/SCN/button'
 import {
   Table,
   TableBody,
@@ -40,11 +39,7 @@ export const MyPostsView = ({ posts }: MyPostsViewProps) => {
           <Empty
             title="No posts yet"
             description="Write your first post. It stays a draft until you publish it."
-            action={
-              <Button asChild>
-                <Link href={ROUTE_POST_NEW}>Write a post</Link>
-              </Button>
-            }
+            action={<ButtonLink href={ROUTE_POST_NEW}>Write a post</ButtonLink>}
           />
         ) : posts.totalItems === 0 ? (
           <Empty title="No matching posts" description="No post matches your search." />
@@ -76,12 +71,12 @@ export const MyPostsView = ({ posts }: MyPostsViewProps) => {
                 <TableCell>{formatDateTime(post.createdAt)}</TableCell>
                 <TableCell>
                   <div className={styles.actions}>
-                    <Button asChild size="sm" variant="secondary">
-                      <Link href={ROUTE_POST_DETAILS(post.id)}>View</Link>
-                    </Button>
-                    <Button asChild size="sm" variant="outline">
-                      <Link href={ROUTE_POST_EDIT(post.id)}>Edit</Link>
-                    </Button>
+                    <ButtonLink href={ROUTE_POST_DETAILS(post.id)} size="sm" variant="secondary">
+                      View
+                    </ButtonLink>
+                    <ButtonLink href={ROUTE_POST_EDIT(post.id)} size="sm" variant="outline">
+                      Edit
+                    </ButtonLink>
                   </div>
                 </TableCell>
               </TableRow>

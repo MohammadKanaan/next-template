@@ -62,10 +62,10 @@ export const BanUserDialog = ({ user, disabled }: BanUserDialogProps) => {
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>
-        <Button type="button" size="sm" variant="destructive" disabled={disabled}>
-          Ban
-        </Button>
+      <DialogTrigger
+        render={<Button type="button" size="sm" variant="destructive" disabled={disabled} />}
+      >
+        Ban
       </DialogTrigger>
       <DialogContent>
         <form className={styles.form} onSubmit={submit} noValidate>
@@ -87,11 +87,7 @@ export const BanUserDialog = ({ user, disabled }: BanUserDialogProps) => {
             </p>
           )}
           <DialogFooter>
-            <DialogClose asChild>
-              <Button type="button" variant="secondary">
-                Cancel
-              </Button>
-            </DialogClose>
+            <DialogClose render={<Button type="button" variant="secondary" />}>Cancel</DialogClose>
             <LoadingButton type="submit" variant="destructive" loading={isSubmitting}>
               Ban user
             </LoadingButton>

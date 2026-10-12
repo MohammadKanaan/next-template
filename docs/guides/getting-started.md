@@ -6,7 +6,7 @@ Stack, setup, Docker, scripts and tests. The README has the short version.
 
 - Next.js 16 (App Router, Turbopack), React 19 with the React Compiler, TypeScript 5.9
 - Bun as the package manager; scripts run on Node 24
-- SCSS CSS Modules everywhere, shadcn/ui on Radix plus Tailwind CSS 4 inside `components/SCN`
+- SCSS CSS Modules everywhere, shadcn/ui on Base UI plus Tailwind CSS 4 inside `components/SCN`
 - lucide-react icons, sonner toasts
 - Prisma ORM 7.10 (`prisma-client` generator, `@prisma/adapter-pg`) on PostgreSQL 18
 - Better Auth 1.7: email and password, optional Google sign-in, the admin plugin, the official

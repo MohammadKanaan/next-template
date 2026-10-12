@@ -16,10 +16,10 @@ export const ThemeToggle = () => {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="icon" aria-label="Change theme">
-          <SunMoonIcon aria-hidden="true" />
-        </Button>
+      <DropdownMenuTrigger
+        render={<Button variant="outline" size="icon" aria-label="Change theme" />}
+      >
+        <SunMoonIcon aria-hidden="true" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuRadioGroup value={theme} onValueChange={setTheme}>

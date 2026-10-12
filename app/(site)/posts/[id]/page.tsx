@@ -1,9 +1,8 @@
 import type { Metadata } from 'next'
-import Link from 'next/link'
+import { ButtonLink } from '@/components/ButtonLink'
 import { PageHeader } from '@/components/PageHeader'
 import { DeletePostButton } from '@/components/Posts/DeleteButton'
 import { PostStatusBadge } from '@/components/Posts/StatusBadge'
-import { Button } from '@/components/SCN/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/SCN/card'
 import { ROUTE_POST_DETAILS, ROUTE_POST_EDIT, ROUTE_POSTS } from '@/lib/constants-routes'
 import { loadPage } from '@/lib/data/page'
@@ -32,13 +31,13 @@ const PostDetailPage = async ({ params }: PageProps<'/posts/[id]'>) => {
         description={`By ${author.name} · ${formatDateTime(post.createdAt)}`}
         actions={
           <>
-            <Button asChild variant="secondary">
-              <Link href={ROUTE_POSTS}>Back</Link>
-            </Button>
+            <ButtonLink href={ROUTE_POSTS} variant="secondary">
+              Back
+            </ButtonLink>
             {post.permissions.update && (
-              <Button asChild variant="outline">
-                <Link href={ROUTE_POST_EDIT(post.id)}>Edit</Link>
-              </Button>
+              <ButtonLink href={ROUTE_POST_EDIT(post.id)} variant="outline">
+                Edit
+              </ButtonLink>
             )}
             {post.permissions.delete && <DeletePostButton postId={post.id} />}
           </>

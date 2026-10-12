@@ -42,21 +42,15 @@ export const DeletePostButton = ({ postId }: DeletePostButtonProps) => {
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger asChild>
-        <Button type="button" variant="destructive">
-          Delete
-        </Button>
-      </DialogTrigger>
+      <DialogTrigger render={<Button type="button" variant="destructive" />}>Delete</DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Delete this post?</DialogTitle>
           <DialogDescription>This cannot be undone.</DialogDescription>
         </DialogHeader>
         <DialogFooter>
-          <DialogClose asChild>
-            <Button type="button" variant="outline" disabled={isPending}>
-              Cancel
-            </Button>
+          <DialogClose render={<Button type="button" variant="outline" disabled={isPending} />}>
+            Cancel
           </DialogClose>
           <LoadingButton
             type="button"

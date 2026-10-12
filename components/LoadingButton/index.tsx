@@ -2,7 +2,10 @@ import type { ComponentProps } from 'react'
 import { Button } from '@/components/SCN/button'
 import { Spinner } from '@/components/SCN/spinner'
 
-type LoadingButtonProps = Omit<ComponentProps<typeof Button>, 'className' | 'style' | 'asChild'> & {
+type LoadingButtonProps = Omit<
+  ComponentProps<typeof Button>,
+  'className' | 'style' | 'render' | 'nativeButton'
+> & {
   loading?: boolean
 }
 

@@ -27,6 +27,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1146.0",
     "@aws-sdk/s3-request-presigner": "^3.1146.0",
+    "@base-ui/react": "^1.9.0",
     "@hookform/resolvers": "^5.9.1",
     "@prisma/adapter-pg": "7.10.0",
     "@prisma/client": "7.10.0",
@@ -41,7 +42,6 @@
     "pg": "8.23.1",
     "pg-boss": "^12.36.0",
     "pino": "^10.4.0",
-    "radix-ui": "^1.6.7",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-hook-form": "^7.89.0",

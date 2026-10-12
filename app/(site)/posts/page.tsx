@@ -1,9 +1,8 @@
 import type { Metadata } from 'next'
-import Link from 'next/link'
+import { ButtonLink } from '@/components/ButtonLink'
 import { Empty } from '@/components/Empty'
 import { PageHeader } from '@/components/PageHeader'
 import { PostList } from '@/components/Posts/List'
-import { Button } from '@/components/SCN/button'
 import { ROUTE_POST_NEW, ROUTE_POSTS } from '@/lib/constants-routes'
 import { loadPage } from '@/lib/data/page'
 import { listPosts } from '@/lib/data/posts'
@@ -32,11 +31,7 @@ const PostsPage = async ({ searchParams }: PageProps<'/posts'>) => {
       <PageHeader
         title="Posts"
         description="Everything that has been published."
-        actions={
-          <Button asChild>
-            <Link href={ROUTE_POST_NEW}>Write a post</Link>
-          </Button>
-        }
+        actions={<ButtonLink href={ROUTE_POST_NEW}>Write a post</ButtonLink>}
       />
       {/* The view is the client part (search, sort, pagination); the list stays server-rendered. */}
       <PostsView page={posts.page} totalPages={posts.totalPages}>

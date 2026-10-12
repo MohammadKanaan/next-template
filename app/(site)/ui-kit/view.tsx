@@ -7,6 +7,7 @@ import { Empty } from '@/components/Empty'
 import { FileUploader } from '@/components/Form/FileUploader'
 import { Input } from '@/components/Form/Input'
 import { Textarea } from '@/components/Form/Textarea'
+import { ButtonLink } from '@/components/ButtonLink'
 import { LoadingButton } from '@/components/LoadingButton'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { PageHeader } from '@/components/PageHeader'
@@ -95,6 +96,7 @@ const AVATAR_SAMPLE_IMAGE = `data:image/svg+xml,${encodeURIComponent(
 )}`
 
 const AVATAR_SIZES = ['sm', 'default', 'lg'] as const
+const FRUITS = { apple: 'Apple', banana: 'Banana', cherry: 'Cherry' }
 
 const TABLE_ROWS = [
   { id: 'INV-001', name: 'Ada Lovelace', status: 'Active' },
@@ -168,6 +170,9 @@ export const UiKitView = () => {
           <div className={styles.row}>
             <LoadingButton loading>Loading</LoadingButton>
             <Button disabled>Disabled</Button>
+            <ButtonLink href="#button" variant="outline">
+              Link
+            </ButtonLink>
           </div>
         </div>
       </Section>
@@ -270,14 +275,16 @@ export const UiKitView = () => {
         title="Select"
         description="Single choice from a short list, with a placeholder."
       >
-        <Select>
+        <Select items={FRUITS}>
           <SelectTrigger aria-label="Fruit">
             <SelectValue placeholder="Pick a fruit" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="apple">Apple</SelectItem>
-            <SelectItem value="banana">Banana</SelectItem>
-            <SelectItem value="cherry">Cherry</SelectItem>
+            {Object.entries(FRUITS).map(([value, label]) => (
+              <SelectItem key={value} value={value}>
+                {label}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </Section>
@@ -409,21 +416,15 @@ export const UiKitView = () => {
         description="Modal dialog with title, description, and footer actions."
       >
         <Dialog>
-          <DialogTrigger asChild>
-            <Button variant="outline">Open dialog</Button>
-          </DialogTrigger>
+          <DialogTrigger render={<Button variant="outline" />}>Open dialog</DialogTrigger>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Dialog title</DialogTitle>
               <DialogDescription>A short description of what this dialog does.</DialogDescription>
             </DialogHeader>
             <DialogFooter>
-              <DialogClose asChild>
-                <Button variant="outline">Cancel</Button>
-              </DialogClose>
-              <DialogClose asChild>
-                <Button>Confirm</Button>
-              </DialogClose>
+              <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
+              <DialogClose render={<Button />}>Confirm</DialogClose>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -436,9 +437,7 @@ export const UiKitView = () => {
         description="Short hint shown on hover and focus."
       >
         <Tooltip>
-          <TooltipTrigger asChild>
-            <Button variant="outline">Hover me</Button>
-          </TooltipTrigger>
+          <TooltipTrigger render={<Button variant="outline" />}>Hover me</TooltipTrigger>
           <TooltipContent>Tooltip text</TooltipContent>
         </Tooltip>
       </Section>

@@ -77,7 +77,8 @@ such a feature; never treat it as a description of existing code.
 
 - **Framework:** Next.js 16 App Router / React 19 / TypeScript (strict mode), with the React
   Compiler on (`reactCompiler: true`)
-- **UI primitives:** shadcn/ui on Radix, vendored as flat files in `components/SCN/`
+- **UI primitives:** shadcn/ui on Base UI (`base-vega` style), vendored as flat files in
+  `components/SCN/`
 - **Data layer:** server-only DAL in `lib/data`; Zod DTOs in `lib/dto`; Server Actions for writes
 - **Database:** Prisma ORM 7.10 (`prisma-client` generator, `@prisma/adapter-pg`) on PostgreSQL 18
 - **Cache + rate limits:** Redis (`ioredis`) behind `lib/server`. It is the only cache: Next's
@@ -187,6 +188,12 @@ docs/DECISIONS.md        # Framework and library choices, with reasons; what was
 - Form controls in `components/Form/Input` and `components/Form/Textarea` own `label`, `required`,
   and `error`, forwarding native props and React 19 `ref` to the stock controls. `LoadingButton`
   composes stock Button and Spinner. These behaviors must stay outside `components/SCN`.
+- Primitives compose with Base UI's `render` prop, not Radix's `asChild`:
+  `<DialogTrigger render={<Button variant="outline" />}>Open</DialogTrigger>`. A link that looks
+  like a button is `ButtonLink` (a `next/link` with `buttonVariants`), never
+  `<Button render={<Link />} nativeButton={false}>`: Base UI's Button sets `role="button"`, which
+  hides the link from assistive tech. A `Select` gets an `items` map so its trigger shows the
+  label, and its `onValueChange` receives `value | null`.
 - `Providers` uses `next-themes` with `attribute="class"`, system default, and transition suppression
   on theme changes. `ThemeToggle` offers light/dark/system; the stock Toaster follows the theme.
 

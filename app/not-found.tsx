@@ -1,6 +1,5 @@
-import Link from 'next/link'
+import { ButtonLink } from '@/components/ButtonLink'
 import { Empty } from '@/components/Empty'
-import { Button } from '@/components/SCN/button'
 import { ROUTE_HOME } from '@/lib/constants-routes'
 import styles from './not-found.module.scss'
 
@@ -10,11 +9,7 @@ const NotFound = () => {
       <Empty
         title="Page not found"
         description="The page you are looking for does not exist."
-        action={
-          <Button asChild>
-            <Link href={ROUTE_HOME}>Go home</Link>
-          </Button>
-        }
+        action={<ButtonLink href={ROUTE_HOME}>Go home</ButtonLink>}
       />
     </div>
   )

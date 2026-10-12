@@ -56,10 +56,8 @@ export const DeleteAccountDialog = ({ onConfirm }: DeleteAccountDialogProps) => 
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>
-        <Button type="button" variant="destructive">
-          Delete account
-        </Button>
+      <DialogTrigger render={<Button type="button" variant="destructive" />}>
+        Delete account
       </DialogTrigger>
       <DialogContent>
         <form className={styles.form} onSubmit={submit} noValidate>
@@ -84,11 +82,7 @@ export const DeleteAccountDialog = ({ onConfirm }: DeleteAccountDialogProps) => 
             </p>
           )}
           <DialogFooter>
-            <DialogClose asChild>
-              <Button type="button" variant="secondary">
-                Cancel
-              </Button>
-            </DialogClose>
+            <DialogClose render={<Button type="button" variant="secondary" />}>Cancel</DialogClose>
             <LoadingButton type="submit" variant="destructive" loading={isSubmitting}>
               Delete my account
             </LoadingButton>

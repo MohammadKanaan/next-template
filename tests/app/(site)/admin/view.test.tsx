@@ -1,6 +1,6 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { toast } from 'sonner'
 import {
   banUserAction,
@@ -25,14 +25,6 @@ vi.mock('@/actions/admin', () => ({
   unbanUserAction: vi.fn(),
 }))
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
-
-// Radix Select measures and captures pointers, which jsdom does not implement.
-beforeAll(() => {
-  Element.prototype.hasPointerCapture ??= () => false
-  Element.prototype.setPointerCapture ??= () => {}
-  Element.prototype.releasePointerCapture ??= () => {}
-  Element.prototype.scrollIntoView ??= () => {}
-})
 
 const ada: AdminUser = {
   id: 'u-ada',
@@ -141,6 +133,14 @@ describe('AdminView', () => {
     expect(screen.getByRole('combobox', { name: 'Role of Grace Hopper' })).toBeEnabled()
     expect(within(other).getByRole('button', { name: 'Ban' })).toBeEnabled()
     expect(within(other).getByRole('button', { name: 'Impersonate' })).toBeEnabled()
+  })
+
+  it('shows each user’s role by its label', () => {
+    render(<AdminView users={page([ada, grace])} viewerId="u-ada" />)
+    expect(screen.getByRole('combobox', { name: 'Role of Ada Lovelace' })).toHaveTextContent(
+      'Admin',
+    )
+    expect(screen.getByRole('combobox', { name: 'Role of Grace Hopper' })).toHaveTextContent('User')
   })
 
   it('offers Ban but not Impersonate for another admin, and Unban only for a banned user', () => {
