@@ -71,11 +71,10 @@ describe('sessions DAL', () => {
     expect(sessions.find((session) => session.id === second.id)).toMatchObject({
       current: false,
       userAgent: 'Firefox on Linux',
-      ipAddress: '203.0.113.7',
     })
     for (const session of sessions) {
       expect(Object.keys(session).sort()).toEqual(
-        ['createdAt', 'current', 'expiresAt', 'id', 'ipAddress', 'userAgent'].sort(),
+        ['createdAt', 'current', 'expiresAt', 'id', 'userAgent'].sort(),
       )
     }
   })

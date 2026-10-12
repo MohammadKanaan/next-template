@@ -17,6 +17,8 @@ import { auth, requireAdmin, requireUser, toRole } from './auth'
 import { db } from './db'
 import { escapeLike } from './escapeLike'
 import { ForbiddenError, NotFoundError, parseInput } from './errors'
+import { userPolicy } from './policies/users'
+import { authorize } from './policy'
 
 // The admin area. Reads are this app's own queries; writes go through Better Auth's admin plugin
 // (`auth.api.*`), which owns the semantics (a ban revokes the sessions, impersonation opens a
@@ -90,16 +92,23 @@ export const listUsers = async (query: ListUsersQuery): Promise<Page<AdminUser>>
 }
 
 /**
- * Admin only, in this order: admin (401/403) → input valid (422) → not the admin's own account
- * (403, so the last admin cannot demote themselves) → the user exists (404). Roles are read from
- * the database session on every request, so the change applies on the target's next request.
+ * Admin only, in this order: admin (401/403) → input valid (422) → the user exists (404) → allowed
+ * (403: never the admin's own account, so the last admin cannot demote themselves, and never
+ * another admin; see `userPolicy`). Roles are read from the database session on every request, so
+ * the change applies on the target's next request.
  */
 export const setUserRole = async (input: SetUserRoleInput): Promise<AdminUser> => {
   const viewer = await requireAdmin()
   const { id, role } = parseInput(setUserRoleInput, input)
-  if (id === viewer.id) {
-    throw new ForbiddenError('You cannot change your own role')
-  }
+  const target = await readAdminUser(id)
+  authorize(
+    userPolicy.setRole,
+    viewer,
+    target,
+    target.id === viewer.id
+      ? 'You cannot change your own role'
+      : 'Another admin’s role cannot be changed',
+  )
   await auth.api
     .setRole({ body: { userId: id, role }, headers: await headers() })
     .catch(fromAdminApi)
@@ -107,17 +116,46 @@ export const setUserRole = async (input: SetUserRoleInput): Promise<AdminUser> =
 }
 
 /**
- * Admin only: bans a user. Better Auth deletes their sessions and refuses their sign-ins with the
- * reason until `unbanUser`. The plugin checks that the user exists (404) and then refuses the
- * admin's own account (403).
+ * Admin only → input valid → the user exists (404) → allowed (403: not the admin's own account and
+ * not another admin; see `userPolicy`) → banned. Better Auth deletes their sessions and refuses
+ * their sign-ins with the reason until `unbanUser`.
  */
 export const banUser = async (input: BanUserInput): Promise<AdminUser> => {
-  await requireAdmin()
+  const viewer = await requireAdmin()
   const { id, reason } = parseInput(banUserInput, input)
+  const target = await readAdminUser(id)
+  authorize(
+    userPolicy.ban,
+    viewer,
+    target,
+    target.id === viewer.id ? 'You cannot ban your own account' : 'Another admin cannot be banned',
+  )
   await auth.api
     .banUser({ body: { userId: id, banReason: reason || undefined }, headers: await headers() })
     .catch(fromAdminApi)
   return readAdminUser(id)
+}
+
+/**
+ * Admin only → id valid → the user exists (404; the plugin does not check) → allowed (403: not the
+ * admin's own account and not another admin; see `userPolicy`) → every session of the user ends
+ * (they are signed out everywhere, and may sign in again).
+ */
+export const revokeUserSessions = async (id: string): Promise<void> => {
+  const viewer = await requireAdmin()
+  const userId = parseInput(userIdSchema, id)
+  const target = await readAdminUser(userId)
+  authorize(
+    userPolicy.revokeSessions,
+    viewer,
+    target,
+    target.id === viewer.id
+      ? 'Sign your other sessions out from your settings'
+      : 'Another admin cannot be signed out',
+  )
+  await auth.api
+    .revokeUserSessions({ body: { userId }, headers: await headers() })
+    .catch(fromAdminApi)
 }
 
 export const unbanUser = async (id: string): Promise<AdminUser> => {

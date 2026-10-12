@@ -8,6 +8,7 @@ import {
   type S3ServiceException,
 } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
+import { MINUTE } from '@/lib/constants-time'
 import { serverEnv, type ServerEnv } from './env'
 
 // Cloudflare R2 through its S3 API. The five `R2_*` variables are optional as a group: without
@@ -89,7 +90,7 @@ export const createUploadTicket = async ({
   key,
   contentType,
   size,
-  expiresIn = 300,
+  expiresIn = 5 * MINUTE,
 }: PresignOptions): Promise<PresignedPut> => {
   const url = await getSignedUrl(
     getClient(),

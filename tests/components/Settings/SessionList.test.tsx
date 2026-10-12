@@ -9,7 +9,6 @@ const sessions: SessionSummary[] = [
     id: 's-current',
     current: true,
     userAgent: 'Firefox on Linux',
-    ipAddress: '203.0.113.7',
     createdAt: new Date('2026-10-05T15:04:00.000Z'),
     expiresAt: new Date('2026-10-12T15:04:00.000Z'),
   },
@@ -17,7 +16,6 @@ const sessions: SessionSummary[] = [
     id: 's-phone',
     current: false,
     userAgent: null,
-    ipAddress: null,
     createdAt: new Date('2026-10-04T08:00:00.000Z'),
     expiresAt: new Date('2026-10-11T08:00:00.000Z'),
   },
@@ -37,7 +35,6 @@ describe('SessionList', () => {
     expect(within(rows[0]).queryByRole('button')).not.toBeInTheDocument()
 
     expect(within(rows[1]).getByText('Unknown device')).toBeInTheDocument()
-    expect(within(rows[1]).getByText('Unknown')).toBeInTheDocument()
     expect(within(rows[1]).getByRole('button', { name: 'Revoke' })).toBeInTheDocument()
   })
 

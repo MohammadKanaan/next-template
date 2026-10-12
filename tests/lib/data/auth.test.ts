@@ -264,6 +264,47 @@ describe('DAL auth', () => {
       ).toEqual(['Reset your password', 'Verify your email'])
     })
 
+    it('does not expose the session, account, social sign-in and reset-completion routes either', async () => {
+      const user = await createUser({})
+      await signInAs(user)
+      const cookie = requestHeaders().get('cookie')!
+      const sessions = await db.session.count({ where: { userId: user.id } })
+      const get = (path: string) =>
+        auth.handler(
+          new Request(`http://localhost:3000/api/auth${path}`, {
+            headers: { cookie, origin: 'http://localhost:3000' },
+          }),
+        )
+      const responses = await Promise.all([
+        get('/list-sessions'),
+        get('/list-accounts'),
+        get('/account-info'),
+        post('/revoke-session', { token: 'x' }, cookie),
+        post('/revoke-sessions', {}, cookie),
+        post('/revoke-other-sessions', {}, cookie),
+        post('/update-session', { ipAddress: 'x' }, cookie),
+        post('/unlink-account', { providerId: 'google' }, cookie),
+        post('/link-social', { provider: 'google', callbackURL: '/' }, cookie),
+        post('/sign-in/social', { provider: 'google' }),
+        post('/reset-password', { newPassword: 'another-long-one', token: 'x' }),
+      ])
+      expect(responses.map((response) => response.status)).toEqual(Array(11).fill(404))
+      expect(await db.session.count({ where: { userId: user.id } })).toBe(sessions)
+      // The emailed reset link still lands: its route stays open and answers with a redirect to
+      // the page (here with the error an unknown token gets; a real one carries the token).
+      const link = await auth.handler(
+        new Request(
+          'http://localhost:3000/api/auth/reset-password/some-token?callbackURL=/reset-password',
+          { headers: { origin: 'http://localhost:3000' } },
+        ),
+      )
+      expect(link.status).toBe(302)
+      expect(link.headers.get('location')).toContain('/reset-password?error=INVALID_TOKEN')
+      // What remains open is what the browser needs: the session read and the sign-out.
+      expect((await get('/get-session')).status).toBe(200)
+      expect((await post('/sign-out', {}, cookie)).status).toBe(200)
+    })
+
     it('does not expose the admin plugin routes, even to a signed-in admin', async () => {
       const target = await createUser({})
       const admin = await createUser({ role: 'admin' })

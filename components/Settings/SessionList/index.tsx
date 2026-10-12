@@ -51,7 +51,6 @@ export const SessionList = ({ sessions, onRevoke, onRevokeOthers }: SessionListP
         <TableHeader>
           <TableRow>
             <TableHead>Device</TableHead>
-            <TableHead>IP address</TableHead>
             <TableHead>Signed in</TableHead>
             <TableHead>
               <span className={styles.srOnly}>Actions</span>
@@ -69,7 +68,6 @@ export const SessionList = ({ sessions, onRevoke, onRevokeOthers }: SessionListP
                   {session.current && <Badge variant="secondary">This device</Badge>}
                 </div>
               </TableCell>
-              <TableCell>{session.ipAddress ?? 'Unknown'}</TableCell>
               <TableCell>{formatDateTime(session.createdAt)}</TableCell>
               <TableCell>
                 {!session.current && (

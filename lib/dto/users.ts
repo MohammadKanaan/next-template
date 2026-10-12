@@ -70,7 +70,6 @@ export const sessionSummarySchema = z.object({
   id: z.string(),
   current: z.boolean(),
   userAgent: z.string().nullable(),
-  ipAddress: z.string().nullable(),
   createdAt: z.coerce.date(),
   expiresAt: z.coerce.date(),
 })

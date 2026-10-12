@@ -5,6 +5,7 @@ import {
   banUserAction,
   impersonateUserAction,
   setUserRoleAction,
+  revokeUserSessionsAction,
   stopImpersonatingAction,
   unbanUserAction,
 } from '@/actions/admin'
@@ -154,6 +155,39 @@ describe('admin actions', () => {
       expect(await unbanUserAction(MISSING_ID)).toMatchObject({ ok: false, code: 'NOT_FOUND' })
       expect(refresh).not.toHaveBeenCalled()
       expect(await userRow(admin.id)).toMatchObject({ banned: false })
+    })
+  })
+
+  describe('revokeUserSessionsAction', () => {
+    it('requires an admin, refuses an admin target and does not refresh when it fails', async () => {
+      const target = await createUser({})
+      expect(await revokeUserSessionsAction(target.id)).toMatchObject({
+        ok: false,
+        code: 'UNAUTHORIZED',
+      })
+      const peer = await createUser({ role: 'admin' })
+      await signInAs(peer)
+      const admin = await createUser({ role: 'admin' })
+      await signInAs(admin)
+      expect(await revokeUserSessionsAction(peer.id)).toMatchObject({
+        ok: false,
+        code: 'FORBIDDEN',
+      })
+      expect(await revokeUserSessionsAction(MISSING_ID)).toMatchObject({
+        ok: false,
+        code: 'NOT_FOUND',
+      })
+      expect(refresh).not.toHaveBeenCalled()
+    })
+
+    it('signs the user out everywhere and refreshes', async () => {
+      const target = await createUser({})
+      await signInAs(target)
+      const admin = await createUser({ role: 'admin' })
+      await signInAs(admin)
+      expect(await revokeUserSessionsAction(target.id)).toEqual({ ok: true, data: null })
+      expect(refresh).toHaveBeenCalledTimes(1)
+      expect(await db.session.count({ where: { userId: target.id } })).toBe(0)
     })
   })
 

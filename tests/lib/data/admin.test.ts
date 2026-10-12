@@ -5,6 +5,7 @@ import {
   banUser,
   impersonateUser,
   listUsers,
+  revokeUserSessions,
   setUserRole,
   stopImpersonating,
   unbanUser,
@@ -219,9 +220,17 @@ describe('admin DAL', () => {
       const promoted = await setUserRole({ id: target.id, role: 'admin' })
       expect(promoted).toMatchObject({ id: target.id, name: 'Target', role: 'admin' })
       expect(await userRow(target.id)).toMatchObject({ role: 'admin' })
+    })
 
-      expect((await setUserRole({ id: target.id, role: 'user' })).role).toBe('user')
-      expect(await userRow(target.id)).toMatchObject({ role: 'user' })
+    it('refuses to change another admin’s role: admins are peers', async () => {
+      const peer = await createUser({ role: 'admin' })
+      const admin = await createUser({ role: 'admin' })
+      await signInAs(admin)
+      await expect(setUserRole({ id: peer.id, role: 'user' })).rejects.toMatchObject({
+        code: 'FORBIDDEN',
+        message: 'Another admin’s role cannot be changed',
+      })
+      expect(await userRow(peer.id)).toMatchObject({ role: 'admin' })
     })
 
     it('applies on the target’s next request and refreshes their cached viewer', async () => {
@@ -277,9 +286,27 @@ describe('admin DAL', () => {
     it('refuse to ban the admin’s own account', async () => {
       const admin = await createUser({ role: 'admin' })
       await signInAs(admin)
-      await expect(banUser({ id: admin.id, reason: 'oops' })).rejects.toBeInstanceOf(ForbiddenError)
+      await expect(banUser({ id: admin.id, reason: 'oops' })).rejects.toMatchObject({
+        code: 'FORBIDDEN',
+        message: 'You cannot ban your own account',
+      })
       expect(await userRow(admin.id)).toMatchObject({ banned: false })
       await expect(requireAdmin()).resolves.toMatchObject({ id: admin.id })
+    })
+
+    it('refuse to ban another admin, who keeps their sessions', async () => {
+      const peer = await createUser({ role: 'admin' })
+      await signInAs(peer)
+      const admin = await createUser({ role: 'admin' })
+      await signInAs(admin)
+      await expect(banUser({ id: peer.id, reason: 'rivalry' })).rejects.toMatchObject({
+        code: 'FORBIDDEN',
+        message: 'Another admin cannot be banned',
+      })
+      expect(await userRow(peer.id)).toMatchObject({ banned: false, banReason: null })
+      expect(await db.session.count({ where: { userId: peer.id } })).toBeGreaterThan(0)
+      // Lifting a ban is not managing a peer: it only ever restores access.
+      await expect(unbanUser(peer.id)).resolves.toMatchObject({ id: peer.id, banned: false })
     })
 
     it('ban: signs the user out everywhere and refuses their sign-in with the reason', async () => {
@@ -381,6 +408,49 @@ describe('admin DAL', () => {
       await db.user.update({ where: { id: target.id }, data: { name: 'Renamed' } })
       await signInAs(target)
       expect((await getViewer())?.name).toBe('Renamed')
+    })
+  })
+
+  describe('revokeUserSessions', () => {
+    it('requires an admin: 401 signed out, 403 for a regular user', async () => {
+      const target = await createUser({})
+      await expect(revokeUserSessions(target.id)).rejects.toBeInstanceOf(UnauthorizedError)
+      await signInAs(await createUser({}))
+      await expect(revokeUserSessions(target.id)).rejects.toBeInstanceOf(ForbiddenError)
+    })
+
+    it('validates the id and reports a missing user as not found', async () => {
+      await signInAs(await createUser({ role: 'admin' }))
+      await expect(revokeUserSessions('a b')).rejects.toBeInstanceOf(ValidationError)
+      await expect(revokeUserSessions(MISSING_ID)).rejects.toBeInstanceOf(NotFoundError)
+    })
+
+    it('signs the user out everywhere and leaves the admin signed in', async () => {
+      const target = await createUser({})
+      await signInAs(target)
+      await signInAs(target)
+      const admin = await createUser({ role: 'admin' })
+      await signInAs(admin)
+      expect(await db.session.count({ where: { userId: target.id } })).toBeGreaterThan(0)
+
+      await revokeUserSessions(target.id)
+
+      expect(await db.session.count({ where: { userId: target.id } })).toBe(0)
+      await expect(getSessionUser()).resolves.toMatchObject({ id: admin.id })
+    })
+
+    it("refuses the admin's own account and another admin, sessions kept", async () => {
+      const other = await createUser({ role: 'admin' })
+      await signInAs(other)
+      const sessions = await db.session.count({ where: { userId: other.id } })
+      const admin = await createUser({ role: 'admin' })
+      await signInAs(admin)
+
+      await expect(revokeUserSessions(admin.id)).rejects.toBeInstanceOf(ForbiddenError)
+      await expect(revokeUserSessions(other.id)).rejects.toBeInstanceOf(ForbiddenError)
+
+      expect(await db.session.count({ where: { userId: other.id } })).toBe(sessions)
+      await expect(getSessionUser()).resolves.toMatchObject({ id: admin.id })
     })
   })
 

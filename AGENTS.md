@@ -220,6 +220,11 @@ docs/DECISIONS.md        # Framework and library choices, with reasons; what was
   (`lib/data/policy.ts`, throws `ForbiddenError`) and build a DTO's `permissions` with
   `permissionsFor(policy, actions, viewer, record)`. Do not write inline `viewer.id === authorId` checks.
 - Failures are typed errors (see **Errors**), not return codes.
+- A constraint race the DAL can foresee (a username taken between the check and the write) is
+  turned into a field error with `isUniqueViolation` / `isForeignKeyViolation`
+  (`lib/data/prismaErrors.ts`), never left as a 500.
+- Durations are written with `lib/constants-time.ts` (`SECOND` … `DAY`, in seconds; `MINUTE * 1000`
+  for a millisecond window), not as literal numbers.
 - **Raw SQL** (`db.$queryRaw`) is for what Prisma cannot express. Use the tagged template only, so
   every value is a bound parameter; never build SQL from strings, and never `$queryRawUnsafe`.
   Parse the rows with a Zod schema before they leave the DAL. The Prisma client runs its session in

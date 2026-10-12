@@ -1,5 +1,6 @@
 import 'server-only'
 import { Prisma } from '@/generated/prisma/client'
+import { MINUTE } from '@/lib/constants-time'
 import { idSchema, toPage, type Page } from '@/lib/dto/common'
 import {
   POST_EXCERPT_LENGTH,
@@ -49,7 +50,7 @@ const postDetailSelect = {
 type PostSummaryRow = Prisma.PostGetPayload<{ select: typeof postSummarySelect }>
 type PostDetailRow = Prisma.PostGetPayload<{ select: typeof postDetailSelect }>
 
-const POSTS_CACHE_TTL = 300
+const POSTS_CACHE_TTL = 5 * MINUTE
 
 const toPostSummary = (row: PostSummaryRow): PostSummary => {
   return {
@@ -189,7 +190,7 @@ export const getPost = async (id: string): Promise<PostDetail> => {
 /** Signed in (401) → input valid (422); rate limited per user so one account cannot flood the lists. */
 export const createPost = async (input: CreatePostParams): Promise<PostDetail> => {
   const viewer = await requireUser()
-  await consumeRateLimit(`create-post:user:${viewer.id}`, { max: 20, windowMs: 60_000 })
+  await consumeRateLimit(`create-post:user:${viewer.id}`, { max: 20, windowMs: MINUTE * 1000 })
   const data = parseInput(createPostInput, input)
   const row = await db.post.create({
     data: { ...data, userId: viewer.id },

@@ -4,6 +4,7 @@ import { refresh } from 'next/cache'
 import {
   banUser,
   impersonateUser,
+  revokeUserSessions,
   setUserRole,
   stopImpersonating,
   unbanUser,
@@ -41,6 +42,17 @@ export const unbanUserAction = async (id: string): Promise<ActionResult<AdminUse
     const user = await unbanUser(id)
     refresh()
     return { ok: true, data: user }
+  } catch (error) {
+    return toActionFailure(error)
+  }
+}
+
+/** Signs the user out everywhere; they may sign in again. */
+export const revokeUserSessionsAction = async (id: string): Promise<ActionResult<null>> => {
+  try {
+    await revokeUserSessions(id)
+    refresh()
+    return { ok: true, data: null }
   } catch (error) {
     return toActionFailure(error)
   }

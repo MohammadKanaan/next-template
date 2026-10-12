@@ -5,6 +5,7 @@ import { db } from '@/lib/data/db'
 import { UnauthorizedError, ValidationError } from '@/lib/data/errors'
 import { listPosts } from '@/lib/data/posts'
 import {
+  deleteAccount,
   getCurrentUser,
   getViewer,
   hasPassword,
@@ -14,7 +15,7 @@ import {
 import { getRedis } from '@/lib/server/redis'
 import { cookieJar } from '../../helpers/cookies'
 import { clearMail, flushMail, sentMailsWithSubject, tokenOf } from '../../helpers/mail'
-import { createUser, resetDatabase, signInAs } from '../../helpers/server'
+import { createUser, resetDatabase, signInAs, TEST_PASSWORD } from '../../helpers/server'
 
 const { cookieStore, requestHeaders } = await vi.hoisted(
   async () => import('../../helpers/cookies'),
@@ -219,6 +220,41 @@ describe('users DAL', () => {
       expect((await getViewer())?.name).toBe('After')
       const author = (await listPosts({ page: 1, perPage: 10 })).items[0].author
       expect(author).toMatchObject({ name: 'After', username: 'after_name' })
+    })
+  })
+
+  describe('deleteAccount', () => {
+    it('requires a session before looking at the input', async () => {
+      await expect(deleteAccount({ password: '' })).rejects.toBeInstanceOf(UnauthorizedError)
+    })
+
+    it('validates the password and puts a wrong one on its field, keeping the account', async () => {
+      const user = await createUser({})
+      await signInAs(user)
+      await expect(deleteAccount({ password: '' })).rejects.toMatchObject({
+        code: 'VALIDATION',
+        fieldErrors: { password: ['Password is required'] },
+      })
+      await expect(deleteAccount({ password: 'not-the-password' })).rejects.toMatchObject({
+        code: 'VALIDATION',
+        fieldErrors: { password: ['Password is incorrect'] },
+      })
+      expect(await db.user.count({ where: { id: user.id } })).toBe(1)
+    })
+
+    it('deletes the account and drops every cache that embedded the user', async () => {
+      const user = await createUser({ name: 'Gone' })
+      await db.post.create({ data: { userId: user.id, title: 'T', body: 'B', published: true } })
+      expect((await listPosts({ page: 1, perPage: 10 })).items).toHaveLength(1)
+      await signInAs(user)
+      expect(await getViewer()).toMatchObject({ name: 'Gone' })
+
+      await deleteAccount({ password: TEST_PASSWORD })
+
+      expect(await db.user.count({ where: { id: user.id } })).toBe(0)
+      expect(await db.session.count({ where: { userId: user.id } })).toBe(0)
+      expect((await listPosts({ page: 1, perPage: 10 })).items).toEqual([])
+      expect(await getViewer()).toBeNull()
     })
   })
 })

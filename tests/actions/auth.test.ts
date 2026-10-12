@@ -19,6 +19,7 @@ import {
 import { auth, requireUser } from '@/lib/data/auth'
 import { db } from '@/lib/data/db'
 import { UnauthorizedError } from '@/lib/data/errors'
+import { isUsernameTaken } from '@/lib/data/users'
 import { cookieJar } from '../helpers/cookies'
 import {
   clearMail,
@@ -36,6 +37,11 @@ vi.mock('next/headers', () => ({
   headers: async () => requestHeaders(),
 }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn(), refresh: vi.fn() }))
+// Real by default; one test makes the sign-up's own check miss a taken username, as a race would.
+vi.mock('@/lib/data/users', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/data/users')>()
+  return { ...actual, isUsernameTaken: vi.fn(actual.isUsernameTaken) }
+})
 
 const newUser = {
   name: 'New',
@@ -70,6 +76,17 @@ describe('auth actions', () => {
       code: 'VALIDATION',
       fieldErrors: { username: ['That username is taken'] },
     })
+  })
+
+  it('reports a username taken between its check and the insert as the same field error', async () => {
+    await createUser({ username: 'taken' })
+    vi.mocked(isUsernameTaken).mockResolvedValueOnce(false)
+    expect(await signUpAction({ ...newUser, username: 'taken' })).toMatchObject({
+      ok: false,
+      code: 'VALIDATION',
+      fieldErrors: { username: ['That username is taken'] },
+    })
+    expect(await db.user.count({ where: { email: 'new@example.com' } })).toBe(0)
   })
 
   it('rejects a taken email', async () => {

@@ -9,7 +9,6 @@ import { NotFoundError, parseInput } from './errors'
 const sessionSummarySelect = {
   id: true,
   userAgent: true,
-  ipAddress: true,
   createdAt: true,
   expiresAt: true,
 } satisfies Prisma.SessionSelect

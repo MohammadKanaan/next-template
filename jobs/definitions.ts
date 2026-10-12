@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type { QueueOptions } from 'pg-boss'
+import { HOUR, MINUTE } from '@/lib/constants-time'
 
 const emailAddress = z.email()
 
@@ -44,19 +45,19 @@ export const jobs = {
       retryLimit: 5,
       retryDelay: 30,
       retryBackoff: true,
-      expireInSeconds: 60,
+      expireInSeconds: MINUTE,
       // The payload carries live reset and verification links that expire after an hour, so
       // completed jobs must not keep them for pg-boss's 7-day default.
-      deleteAfterSeconds: 3600,
+      deleteAfterSeconds: HOUR,
     },
   },
   'delete-object': {
     schema: z.object({ key: z.string().min(1) }),
-    options: { retryLimit: 5, retryDelay: 30, retryBackoff: true, expireInSeconds: 60 },
+    options: { retryLimit: 5, retryDelay: 30, retryBackoff: true, expireInSeconds: MINUTE },
   },
   cleanup: {
     schema: z.object({}),
-    options: { retryLimit: 1, expireInSeconds: 300 },
+    options: { retryLimit: 1, expireInSeconds: 5 * MINUTE },
     cron: '0 * * * *',
   },
 } satisfies Record<string, JobDefinition>

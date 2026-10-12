@@ -138,7 +138,12 @@ export const auth = betterAuth({
   // limits that the router would skip; so are the session-bound account changes (change password,
   // change email, verify password), which go only through their actions and are limited per user
   // there, while Better Auth's own limiter is per process and keyed on a spoofable client address.
-  // The admin plugin's routes are closed for the same reason (see `ADMIN_PLUGIN_PATHS`).
+  // The admin plugin's routes are closed for the same reason (see `ADMIN_PLUGIN_PATHS`), and so is
+  // everything else an action or the DAL already owns: completing a password reset, Google sign-in
+  // (`signInWithGoogleAction`), the session list and revocations (`lib/data/sessions.ts`) and the
+  // linked-account routes, which the app does not offer. What stays open is what a browser must
+  // reach on its own: `/get-session`, `/sign-out`, `/verify-email` and `/reset-password/:token`
+  // (the emailed links) and `/callback/:id` (the return from Google).
   // `auth.api.*` calls made directly from server code are unaffected; only the `/api/auth/*`
   // router honours this list.
   disabledPaths: [
@@ -147,11 +152,24 @@ export const auth = betterAuth({
     '/delete-user',
     '/delete-user/callback',
     '/sign-in/email',
+    '/sign-in/social',
     '/request-password-reset',
+    '/reset-password',
     '/send-verification-email',
     '/change-password',
     '/change-email',
     '/verify-password',
+    '/list-sessions',
+    '/revoke-session',
+    '/revoke-sessions',
+    '/revoke-other-sessions',
+    '/update-session',
+    '/list-accounts',
+    '/account-info',
+    '/link-social',
+    '/unlink-account',
+    '/get-access-token',
+    '/refresh-token',
     ...ADMIN_PLUGIN_PATHS,
   ],
   hooks: {
