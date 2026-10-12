@@ -1,12 +1,9 @@
 # Next Template
 
-A small Next.js 16 baseline to start a real app from: App Router, a server-only data layer on Prisma
-and PostgreSQL, Better Auth with its admin plugin, Server Actions for writes, a REST API over the
-same functions, Zod DTOs shared with the forms, and shadcn/ui.
-
-Everything in it is either infrastructure you keep (auth, accounts, admin, cache, rate limits, jobs,
-email, logging) or one example resource, posts, which shows every layer once and is meant to be
-replaced by your first real resource.
+A Next.js 16 starting point: a server-only data layer on Prisma and PostgreSQL, Better Auth with
+its admin plugin, Server Actions and a REST API over the same functions, Zod DTOs shared with the
+forms, and shadcn/ui. Everything is infrastructure you keep (auth, accounts, admin, cache, rate
+limits, jobs, email, logging) except posts, an example resource to replace with your own.
 
 ## Quick start
 
@@ -21,25 +18,16 @@ bun run dev                       # http://localhost:3000
 bun run dev:worker                # second terminal: emails and cleanup
 ```
 
-Log in as `leanne@example.com` or `admin@example.com`; the password is `password123` for both.
-`/signup` creates an account.
+Log in as `leanne@example.com` or `admin@example.com` with `password123`, or sign up at `/signup`.
+Without the worker no email is sent; without `RESEND_API_KEY` it prints each email, links included,
+to its terminal.
 
-The worker is a second process and not optional in practice: without it, no verification or reset
-email is sent. With no `RESEND_API_KEY` it logs each email to the terminal instead of sending it, so
-the verification and reset links are right there.
+## Docs
 
-## Requirements
-
-PostgreSQL and Redis. Redis 7 is a hard floor, because the rate limiter uses `PEXPIRE ... NX`. If you
-run the services yourself, create the `next_template_dev` and `next_template_test` databases and
-point `REDIS_URL` at your instance in both `.env` and `.env.test`. More in the setup guide below.
-
-## Where to look next
-
-- [`AGENTS.md`](AGENTS.md) has the conventions and rules. The code and its comments are the
-  documentation; prose exists only for what they cannot carry.
-- [`docs/guides/getting-started.md`](docs/guides/getting-started.md): the stack, full setup, Docker,
-  every script, testing, the rename checklist and removing the posts example.
-- [`docs/guides/uploads.md`](docs/guides/uploads.md): creating the R2 bucket for profile photos.
-- [`docs/DECISIONS.md`](docs/DECISIONS.md): what was chosen and why, and what was removed.
-- [`docs/recipes/`](docs/recipes/): concurrency and the other patterns the template leaves out.
+- [`AGENTS.md`](AGENTS.md): conventions and rules. The code and its comments are the rest.
+- [`docs/guides/getting-started.md`](docs/guides/getting-started.md): services, optional features,
+  renaming, removing the posts example, Docker, tests.
+- [`docs/guides/uploads.md`](docs/guides/uploads.md): the R2 bucket for profile photos.
+- [`docs/DECISIONS.md`](docs/DECISIONS.md): what was chosen and why.
+- [`docs/recipes/concurrency.md`](docs/recipes/concurrency.md): money, locking and conflicts, which
+  the template leaves out.
