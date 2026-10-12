@@ -5,8 +5,11 @@ export const MAX_PER_PAGE = 100
 /** Caps `page` so unauthenticated callers cannot mint unbounded cache keys and deep OFFSET scans. */
 export const MAX_PAGE = 1000
 
-/** A positive Postgres `int4` id, coerced from a route param or query string. */
-export const idSchema = z.coerce.number().int().positive().max(2147483647)
+/**
+ * A record id. Ids are UUID columns, so anything else would make PostgreSQL throw: a read treats
+ * it as not found, a write reports it as a validation error.
+ */
+export const idSchema = z.uuid('Invalid id')
 
 /** `true` / `false` as a boolean or as the string a query string carries (never `z.coerce.boolean()`, which reads `'false'` as true). */
 export const booleanParamSchema = z.union([z.boolean(), z.stringbool()])

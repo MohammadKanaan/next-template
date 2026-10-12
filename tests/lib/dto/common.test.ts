@@ -31,15 +31,12 @@ describe('pageQuerySchema', () => {
 })
 
 describe('idSchema', () => {
-  it('accepts positive integer strings only', () => {
-    expect(idSchema.parse('7')).toBe(7)
-    expect(idSchema.parse(7)).toBe(7)
-    expect(idSchema.safeParse('abc').success).toBe(false)
-    expect(idSchema.safeParse('1.5').success).toBe(false)
-    expect(idSchema.safeParse('0').success).toBe(false)
-    expect(idSchema.safeParse(-1).success).toBe(false)
-    expect(idSchema.parse('2147483647')).toBe(2147483647)
-    expect(idSchema.safeParse('2147483648').success).toBe(false)
+  it('accepts UUIDs and refuses anything else', () => {
+    const id = '0190d1a2-0000-7000-8000-000000000001'
+    expect(idSchema.parse(id)).toBe(id)
+    for (const value of ['7', 'abc', '', 7, null]) {
+      expect(idSchema.safeParse(value).success).toBe(false)
+    }
   })
 })
 

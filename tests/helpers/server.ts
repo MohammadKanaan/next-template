@@ -6,6 +6,9 @@ import { cookieJar } from './cookies'
 
 export const TEST_PASSWORD = 'correct-horse-battery'
 
+/** A well-formed id that no record has. */
+export const MISSING_ID = '0190d1a2-0000-7000-8000-000000000000'
+
 export const assertTestDatabase = () => {
   if (!process.env.DATABASE_URL?.includes('next_template_test')) {
     throw new Error('Server tests must run against next_template_test')
@@ -29,7 +32,7 @@ export const resetDatabase = async () => {
   assertTestDatabase()
   await resetRedis()
   cookieJar.clear()
-  await db.$executeRaw`TRUNCATE TABLE posts, uploads, sessions, accounts, verifications, users RESTART IDENTITY CASCADE`
+  await db.$executeRaw`TRUNCATE TABLE posts, uploads, sessions, accounts, verifications, users CASCADE`
 }
 
 /** Signs a user up through Better Auth (real password hash and account row), then signs out locally. */

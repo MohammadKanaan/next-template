@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { APIError } from 'better-auth/api'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { auth, getSessionUser, requireAdmin, requireUser } from '@/lib/data/auth'
+import { auth, getSessionUser, requireAdmin, requireUser, toRole } from '@/lib/data/auth'
 import { db } from '@/lib/data/db'
 import { ForbiddenError, UnauthorizedError } from '@/lib/data/errors'
 import { listPosts } from '@/lib/data/posts'
@@ -75,16 +75,20 @@ describe('DAL auth', () => {
     expect(await requireAdmin()).toMatchObject({ id: admin.id, role: 'admin' })
   })
 
-  it('reads a role it does not know as a regular user, so an odd value never grants more', async () => {
-    const user = await createUser({})
-    await db.user.update({ where: { id: user.id }, data: { role: 'owner' } })
-    await signInAs(user)
-    expect(await getSessionUser()).toMatchObject({ id: user.id, role: 'user' })
-    await expect(requireAdmin()).rejects.toBeInstanceOf(ForbiddenError)
-
+  it('reads a role it does not know as a regular user, so an odd value never grants more', () => {
+    expect(toRole('owner')).toBe('user')
     // The plugin allows comma-separated role lists; a list is not one of ours either.
-    await db.user.update({ where: { id: user.id }, data: { role: 'admin,user' } })
-    expect((await getSessionUser())?.role).toBe('user')
+    expect(toRole('admin,user')).toBe('user')
+    expect(toRole(null)).toBe('user')
+    expect(toRole('admin')).toBe('admin')
+  })
+
+  it('keeps odd roles out of the table altogether (users_role_valid)', async () => {
+    const user = await createUser({})
+    await expect(
+      db.user.update({ where: { id: user.id }, data: { role: 'owner' } }),
+    ).rejects.toThrow()
+    expect((await db.user.findUniqueOrThrow({ where: { id: user.id } })).role).toBe('user')
   })
 
   it('exposes the admin behind an impersonated session', async () => {

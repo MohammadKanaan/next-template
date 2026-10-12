@@ -1,5 +1,4 @@
 import 'dotenv/config'
-import { randomUUID } from 'node:crypto'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { hashPassword } from 'better-auth/crypto'
 import { PrismaClient } from '../generated/prisma/client.ts'
@@ -59,16 +58,13 @@ try {
     // Re-seeding replaces the user; sessions, accounts and posts cascade.
     await db.user.deleteMany({ where: { email: data.email } })
 
-    const id = randomUUID()
+    // Ids come from the schema's `@default(uuid(7))`. Better Auth's credential account uses the
+    // user's id as its `accountId`, so the account is created once the id is known.
     const firstName = data.name.split(' ')[0]
-    await db.user.create({
+    const user = await db.user.create({
       data: {
         ...data,
-        id,
         emailVerified: true,
-        accounts: {
-          create: { id: randomUUID(), accountId: id, providerId: 'credential', password },
-        },
         // Three published posts and one draft each.
         posts: {
           create: Array.from({ length: POSTS_PER_USER }, (_, index) => ({
@@ -81,6 +77,10 @@ try {
           })),
         },
       },
+      select: { id: true },
+    })
+    await db.account.create({
+      data: { accountId: user.id, providerId: 'credential', password, userId: user.id },
     })
   }
 

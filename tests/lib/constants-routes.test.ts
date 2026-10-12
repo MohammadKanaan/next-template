@@ -11,7 +11,7 @@ import {
 describe('route helpers', () => {
   it('builds encoded post routes', () => {
     expect(ROUTE_POST_DETAILS('a b')).toBe('/posts/a%20b')
-    expect(ROUTE_POST_EDIT(7)).toBe('/posts/7/edit')
+    expect(ROUTE_POST_EDIT('7')).toBe('/posts/7/edit')
   })
 
   it('treats listing and detail pages as public', () => {

@@ -10,7 +10,7 @@ vi.mock('@/actions/admin', () => ({ banUserAction: vi.fn() }))
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 const grace: AdminUser = {
-  id: 'u-grace',
+  id: '0190d1a2-0000-7000-8000-00000000c0de',
   name: 'Grace Hopper',
   username: 'grace',
   email: 'grace@example.com',
@@ -57,7 +57,7 @@ describe('BanUserDialog', () => {
     render(<BanUserDialog user={grace} />)
     await open()
     await userEvent.click(screen.getByRole('button', { name: 'Ban user' }))
-    expect(banUserAction).toHaveBeenCalledWith({ id: 'u-grace', reason: '' })
+    expect(banUserAction).toHaveBeenCalledWith({ id: '0190d1a2-0000-7000-8000-00000000c0de', reason: '' })
     expect(toast.success).toHaveBeenCalledWith('Grace Hopper is banned')
     await vi.waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   })
@@ -71,7 +71,7 @@ describe('BanUserDialog', () => {
     await open()
     await userEvent.type(screen.getByLabelText('Reason'), '  Spam  ')
     await userEvent.click(screen.getByRole('button', { name: 'Ban user' }))
-    expect(banUserAction).toHaveBeenCalledWith({ id: 'u-grace', reason: 'Spam' })
+    expect(banUserAction).toHaveBeenCalledWith({ id: '0190d1a2-0000-7000-8000-00000000c0de', reason: 'Spam' })
   })
 
   it('refuses a reason that is too long before calling the server', async () => {

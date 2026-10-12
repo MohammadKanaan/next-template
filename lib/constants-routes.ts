@@ -1,6 +1,6 @@
-type RouteParameter = string | number
+type RouteParameter = string
 
-const encode = (value: RouteParameter) => encodeURIComponent(String(value))
+const encode = (value: RouteParameter) => encodeURIComponent(value)
 
 export const ROUTE_HOME = '/'
 export const ROUTE_LOGIN = '/login'

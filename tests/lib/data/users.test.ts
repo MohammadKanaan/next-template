@@ -51,7 +51,6 @@ describe('users DAL', () => {
     await db.account.deleteMany({ where: { userId: user.id, providerId: 'credential' } })
     await db.account.create({
       data: {
-        id: 'google-account',
         accountId: 'google-sub',
         providerId: 'google',
         userId: user.id,

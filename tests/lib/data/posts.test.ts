@@ -10,7 +10,7 @@ import {
 } from '@/lib/data/errors'
 import { createPost, deletePost, getPost, listPosts, updatePost } from '@/lib/data/posts'
 import { getRedis } from '@/lib/server/redis'
-import { createUser, resetDatabase, signInAs, signOut } from '../../helpers/server'
+import { MISSING_ID, createUser, resetDatabase, signInAs, signOut } from '../../helpers/server'
 
 const { cookieStore, requestHeaders } = await vi.hoisted(
   async () => import('../../helpers/cookies'),
@@ -161,13 +161,6 @@ describe('posts DAL', () => {
       ])
     })
 
-    it('keeps an author filter that spells "all" apart from the unfiltered list', async () => {
-      const author = await createUser({})
-      await seedPost(author.id, 'Visible')
-      expect(await titles({ authorId: 'all' })).toEqual([])
-      expect(await titles()).toEqual(['Visible'])
-    })
-
     it('answers an empty page, never an error, for an unknown author', async () => {
       expect(await listPosts({ page: 1, perPage: 10, authorId: crypto.randomUUID() })).toEqual({
         items: [],
@@ -208,7 +201,7 @@ describe('posts DAL', () => {
 
   describe('getPost', () => {
     it('throws NotFoundError for a missing post', async () => {
-      await expect(getPost(999)).rejects.toBeInstanceOf(NotFoundError)
+      await expect(getPost(MISSING_ID)).rejects.toBeInstanceOf(NotFoundError)
     })
 
     it('accepts a route param as the id and treats a malformed one as not found', async () => {
@@ -216,7 +209,7 @@ describe('posts DAL', () => {
       const post = await seedPost(author.id, 'By param')
       expect((await getPost(String(post.id))).title).toBe('By param')
       await expect(getPost('abc')).rejects.toBeInstanceOf(NotFoundError)
-      await expect(getPost(-1)).rejects.toBeInstanceOf(NotFoundError)
+      await expect(getPost('-1')).rejects.toBeInstanceOf(NotFoundError)
       await expect(getPost('1.5')).rejects.toBeInstanceOf(NotFoundError)
       await expect(getPost('2147483648')).rejects.toBeInstanceOf(NotFoundError)
     })
@@ -352,9 +345,9 @@ describe('posts DAL', () => {
 
       await signInAs(intruder)
       await expect(updatePost('abc', { title: 'x' })).rejects.toBeInstanceOf(ValidationError)
-      await expect(updatePost(0, { title: 'x' })).rejects.toBeInstanceOf(ValidationError)
-      await expect(updatePost(999, {})).rejects.toBeInstanceOf(ValidationError)
-      await expect(updatePost(999, { title: 'x' })).rejects.toBeInstanceOf(NotFoundError)
+      await expect(updatePost('0', { title: 'x' })).rejects.toBeInstanceOf(ValidationError)
+      await expect(updatePost(MISSING_ID, {})).rejects.toBeInstanceOf(ValidationError)
+      await expect(updatePost(MISSING_ID, { title: 'x' })).rejects.toBeInstanceOf(NotFoundError)
       await expect(updatePost(post.id, { title: 'x' })).rejects.toBeInstanceOf(ForbiddenError)
 
       await signInAs(owner)
@@ -453,8 +446,8 @@ describe('posts DAL', () => {
 
       await signInAs(intruder)
       await expect(deletePost('abc')).rejects.toBeInstanceOf(ValidationError)
-      await expect(deletePost(1.5)).rejects.toBeInstanceOf(ValidationError)
-      await expect(deletePost(999)).rejects.toBeInstanceOf(NotFoundError)
+      await expect(deletePost('1.5')).rejects.toBeInstanceOf(ValidationError)
+      await expect(deletePost(MISSING_ID)).rejects.toBeInstanceOf(NotFoundError)
       await expect(deletePost(post.id)).rejects.toBeInstanceOf(ForbiddenError)
       expect(await db.post.count()).toBe(1)
 
@@ -472,7 +465,7 @@ describe('posts DAL', () => {
       await signInAs(owner)
       // A genuine P2025 from Prisma: deleting a row that does not exist.
       const vanished = await db.post
-        .delete({ where: { id: 999_999 } })
+        .delete({ where: { id: MISSING_ID } })
         .catch((error: unknown) => error)
       vi.spyOn(db.post, 'update').mockImplementation(() => Promise.reject(vanished) as never)
       await expect(updatePost(post.id, { title: 'x' })).rejects.toBeInstanceOf(NotFoundError)
@@ -823,13 +816,13 @@ describe('posts DAL', () => {
     })
 
     it('does not cache a missing post', async () => {
-      await expect(getPost(999)).rejects.toBeInstanceOf(NotFoundError)
+      await expect(getPost(MISSING_ID)).rejects.toBeInstanceOf(NotFoundError)
       expect(await cachedKeys()).toEqual([])
       const author = await createUser({})
       await db.post.create({
-        data: { id: 999, userId: author.id, title: 'Late', body: 'B', published: true },
+        data: { id: MISSING_ID, userId: author.id, title: 'Late', body: 'B', published: true },
       })
-      expect((await getPost(999)).title).toBe('Late')
+      expect((await getPost(MISSING_ID)).title).toBe('Late')
     })
   })
 })

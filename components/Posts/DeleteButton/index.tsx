@@ -19,7 +19,7 @@ import {
 import { ROUTE_POSTS } from '@/lib/constants-routes'
 
 type DeletePostButtonProps = {
-  postId: number
+  postId: string
 }
 
 export const DeletePostButton = ({ postId }: DeletePostButtonProps) => {

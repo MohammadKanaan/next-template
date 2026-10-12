@@ -91,17 +91,21 @@ describe('listPostsQuery', () => {
     expect(query.published).toBeUndefined()
   })
 
-  it('accepts Better Auth style ids and UUIDs as authorId', () => {
-    for (const authorId of [
-      'aB3dE6gH9jK2mN5pQ8sT1vW4yZ7bC0eF',
-      'f47ac10b-58cc-4372-a567-0e02b2c3d479',
-    ]) {
-      expect(listPostsQuery.parse({ authorId }).authorId).toBe(authorId)
-    }
+  it('accepts a UUID as authorId', () => {
+    const authorId = 'f47ac10b-58cc-4372-a567-0e02b2c3d479'
+    expect(listPostsQuery.parse({ authorId }).authorId).toBe(authorId)
   })
 
-  it('rejects an authorId that is not an id', () => {
-    for (const authorId of ['', 'a b', 'x:y', 'a|b', '*', 'a'.repeat(65), 'é']) {
+  it('rejects an authorId that is not a UUID', () => {
+    for (const authorId of [
+      '',
+      'a b',
+      'x:y',
+      'a|b',
+      '*',
+      'aB3dE6gH9jK2mN5pQ8sT1vW4yZ7bC0eF',
+      'é',
+    ]) {
       expect(listPostsQuery.safeParse({ authorId }).success, authorId).toBe(false)
     }
   })
@@ -197,11 +201,16 @@ describe('toListPostsParams', () => {
 })
 
 describe('output schemas', () => {
-  const author = { id: 'u1', name: 'Ada', username: 'ada', website: null }
+  const author = {
+    id: '0190d1a2-0000-7000-8000-0000000000a1',
+    name: 'Ada',
+    username: 'ada',
+    website: null,
+  }
 
   it('revives the dates of a summary parsed from JSON', () => {
     const summary = postSummarySchema.parse({
-      id: 1,
+      id: '0190d1a2-0000-7000-8000-000000000001',
       title: 'T',
       excerpt: 'E',
       published: true,
@@ -214,7 +223,7 @@ describe('output schemas', () => {
 
   it('requires the permissions on a detail, and leaves them out of the cacheable base', () => {
     const base = {
-      id: 1,
+      id: '0190d1a2-0000-7000-8000-000000000001',
       title: 'T',
       body: 'B',
       published: false,

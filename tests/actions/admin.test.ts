@@ -10,7 +10,7 @@ import {
 } from '@/actions/admin'
 import { getSessionUser } from '@/lib/data/auth'
 import { db } from '@/lib/data/db'
-import { createUser, resetDatabase, signInAs } from '../helpers/server'
+import { MISSING_ID, createUser, resetDatabase, signInAs } from '../helpers/server'
 
 const { cookieStore, requestHeaders } = await vi.hoisted(async () => import('../helpers/cookies'))
 vi.mock('next/headers', () => ({
@@ -77,7 +77,7 @@ describe('admin actions', () => {
         code: 'FORBIDDEN',
         message: 'You cannot change your own role',
       })
-      expect(await setUserRoleAction({ id: 'missing-id', role: 'user' })).toEqual({
+      expect(await setUserRoleAction({ id: MISSING_ID, role: 'user' })).toEqual({
         ok: false,
         code: 'NOT_FOUND',
         message: 'User not found',
@@ -146,12 +146,12 @@ describe('admin actions', () => {
       const admin = await createUser({ role: 'admin' })
       await signInAs(admin)
       expect(await banUserAction({ id: admin.id })).toMatchObject({ ok: false, code: 'FORBIDDEN' })
-      expect(await banUserAction({ id: 'missing-id' })).toEqual({
+      expect(await banUserAction({ id: MISSING_ID })).toEqual({
         ok: false,
         code: 'NOT_FOUND',
         message: 'User not found',
       })
-      expect(await unbanUserAction('missing-id')).toMatchObject({ ok: false, code: 'NOT_FOUND' })
+      expect(await unbanUserAction(MISSING_ID)).toMatchObject({ ok: false, code: 'NOT_FOUND' })
       expect(refresh).not.toHaveBeenCalled()
       expect(await userRow(admin.id)).toMatchObject({ banned: false })
     })
@@ -179,7 +179,7 @@ describe('admin actions', () => {
       const admin = await createUser({ role: 'admin' })
       await signInAs(admin)
       expect(await impersonateUserAction('a b')).toMatchObject({ ok: false, code: 'VALIDATION' })
-      expect(await impersonateUserAction('missing-id')).toMatchObject({
+      expect(await impersonateUserAction(MISSING_ID)).toMatchObject({
         ok: false,
         code: 'NOT_FOUND',
       })

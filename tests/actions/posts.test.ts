@@ -3,7 +3,7 @@ import { revalidatePath } from 'next/cache'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPostAction, deletePostAction, updatePostAction } from '@/actions/posts'
 import { db } from '@/lib/data/db'
-import { createUser, resetDatabase, signInAs } from '../helpers/server'
+import { MISSING_ID, createUser, resetDatabase, signInAs } from '../helpers/server'
 
 const { cookieStore, requestHeaders } = await vi.hoisted(async () => import('../helpers/cookies'))
 vi.mock('next/headers', () => ({
@@ -87,13 +87,16 @@ describe('post actions', () => {
 
   describe('updatePostAction', () => {
     it('answers UNAUTHORIZED before looking at the input when signed out', async () => {
-      expect(await updatePostAction(0, {})).toMatchObject({ ok: false, code: 'UNAUTHORIZED' })
+      expect(await updatePostAction(MISSING_ID, {})).toMatchObject({
+        ok: false,
+        code: 'UNAUTHORIZED',
+      })
       expect(revalidatePath).not.toHaveBeenCalled()
     })
 
     it('rejects an empty update', async () => {
       await signInAs(await createUser({}))
-      expect(await updatePostAction(1, {})).toMatchObject({
+      expect(await updatePostAction(MISSING_ID, {})).toMatchObject({
         ok: false,
         code: 'VALIDATION',
         fieldErrors: { base: ['Provide at least one attribute'] },
@@ -102,7 +105,7 @@ describe('post actions', () => {
 
     it('rejects a bad id', async () => {
       await signInAs(await createUser({}))
-      expect(await updatePostAction(0, { title: 'x' })).toMatchObject({
+      expect(await updatePostAction('0', { title: 'x' })).toMatchObject({
         ok: false,
         code: 'VALIDATION',
       })
@@ -114,7 +117,7 @@ describe('post actions', () => {
 
     it('reports NOT_FOUND for a missing post', async () => {
       await signInAs(await createUser({}))
-      expect(await updatePostAction(999, { title: 'x' })).toMatchObject({
+      expect(await updatePostAction(MISSING_ID, { title: 'x' })).toMatchObject({
         ok: false,
         code: 'NOT_FOUND',
         message: 'Post not found',
@@ -176,8 +179,8 @@ describe('post actions', () => {
       const intruder = await createUser({})
       const post = await seedPost(owner.id)
       await signInAs(intruder)
-      expect(await deletePostAction(1.5)).toMatchObject({ ok: false, code: 'VALIDATION' })
-      expect(await deletePostAction(999)).toMatchObject({ ok: false, code: 'NOT_FOUND' })
+      expect(await deletePostAction('1.5')).toMatchObject({ ok: false, code: 'VALIDATION' })
+      expect(await deletePostAction(MISSING_ID)).toMatchObject({ ok: false, code: 'NOT_FOUND' })
       expect(await deletePostAction(post.id)).toMatchObject({ ok: false, code: 'FORBIDDEN' })
       expect(await db.post.count()).toBe(1)
       expect(revalidatePath).not.toHaveBeenCalled()

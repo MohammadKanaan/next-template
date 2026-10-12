@@ -117,6 +117,7 @@ export const listPosts = async (params: ListPostsParams): Promise<Page<PostSumma
   const viewer = await getSessionUser()
   const published = resolvePublishedFilter(viewer, authorId, requested)
   const load = async () => {
+    const direction = sort === 'oldest' ? 'asc' : 'desc'
     const where: Prisma.PostWhereInput = {
       ...(authorId ? { userId: authorId } : {}),
       ...(published === undefined ? {} : { published }),
@@ -127,7 +128,8 @@ export const listPosts = async (params: ListPostsParams): Promise<Page<PostSumma
       db.post.findMany({
         where,
         select: postSummarySelect,
-        orderBy: { id: sort === 'oldest' ? 'asc' : 'desc' },
+        // Ids are UUIDv7, which sort by creation time, but only to the millisecond: `id` breaks ties.
+        orderBy: [{ createdAt: direction }, { id: direction }],
         skip: (page - 1) * perPage,
         take: perPage,
       }),
@@ -151,7 +153,7 @@ export const listPosts = async (params: ListPostsParams): Promise<Page<PostSumma
  * file: `getPost` applies `postPolicy.view` before any of it reaches a viewer. `id` may come
  * straight from a route param; one that is not a valid id is simply not found.
  */
-const getPostBase = async (id: number | string): Promise<PostDetailBase> => {
+const getPostBase = async (id: string): Promise<PostDetailBase> => {
   const parsedId = idSchema.safeParse(id)
   if (!parsedId.success) {
     throw new NotFoundError('Post not found')
@@ -175,7 +177,7 @@ const getPostBase = async (id: number | string): Promise<PostDetailBase> => {
  * not found, the same answer as a missing post. This is for reads only; a write on someone else's
  * post follows exists (404) → allowed (403), so a stranger who tries to change a draft gets 403.
  */
-export const getPost = async (id: number | string): Promise<PostDetail> => {
+export const getPost = async (id: string): Promise<PostDetail> => {
   // Cached for everyone; the visibility check and `permissions` follow per viewer, never cached.
   const [post, viewer] = await Promise.all([getPostBase(id), getSessionUser()])
   if (!postPolicy.view(viewer, { published: post.published, authorId: post.author.id })) {
@@ -201,7 +203,7 @@ export const createPost = async (input: CreatePostParams): Promise<PostDetail> =
  * The post exists and the viewer may do `action` to it, in that order, so a stranger gets 403 (not
  * 404) for an existing post, draft or not.
  */
-const requirePostChange = async (viewer: SessionUser, id: number, action: 'update' | 'delete') => {
+const requirePostChange = async (viewer: SessionUser, id: string, action: 'update' | 'delete') => {
   const post = await db.post.findUnique({
     where: { id },
     select: { userId: true, published: true },
@@ -226,10 +228,7 @@ const mapMissingRecord = (error: unknown): never => {
 }
 
 /** Signed in (401) → input valid (422) → exists (404) → the author or an admin (403). */
-export const updatePost = async (
-  id: number | string,
-  input: UpdatePostInput,
-): Promise<PostDetail> => {
+export const updatePost = async (id: string, input: UpdatePostInput): Promise<PostDetail> => {
   const viewer = await requireUser()
   const postId = parseInput(idSchema, id)
   const data = parseInput(updatePostInput, input)
@@ -242,7 +241,7 @@ export const updatePost = async (
 }
 
 /** Signed in (401) → input valid (422) → exists (404) → the author or an admin (403). */
-export const deletePost = async (id: number | string): Promise<void> => {
+export const deletePost = async (id: string): Promise<void> => {
   const viewer = await requireUser()
   const postId = parseInput(idSchema, id)
   await requirePostChange(viewer, postId, 'delete')

@@ -4,6 +4,7 @@ import { createAuthMiddleware, getSessionFromCtx } from 'better-auth/api'
 import { prismaAdapter } from 'better-auth/adapters/prisma'
 import { nextCookies } from 'better-auth/next-js'
 import { admin } from 'better-auth/plugins'
+import { adminAc, userAc } from 'better-auth/plugins/admin/access'
 import { headers } from 'next/headers'
 import { cache } from 'react'
 import type { JobPayload } from '@/jobs/definitions'
@@ -100,6 +101,9 @@ const carriesEmailChange = (payload: unknown) =>
 
 export const auth = betterAuth({
   database: prismaAdapter(db, { provider: 'postgresql' }),
+  // Ids are UUID columns. With `uuid` on PostgreSQL, Better Auth leaves the id out of its inserts
+  // and Prisma Client fills it from the schema's `@default(uuid(7))`.
+  advanced: { database: { generateId: 'uuid' } },
   emailAndPassword: {
     enabled: true,
     minPasswordLength: PASSWORD_MIN_LENGTH,
@@ -236,6 +240,9 @@ export const auth = betterAuth({
     // loses their sessions) and impersonation (`session.impersonatedBy`). The DAL wraps its server
     // API in `lib/data/admin.ts`; `requireAdmin()` below is the check every admin read and write runs.
     admin({
+      // The plugin's permissions (manage users and sessions) belong to admins only. Listing the
+      // roles also makes `setRole` refuse any other value.
+      roles: { user: userAc, admin: adminAc },
       defaultRole: 'user',
       adminRoles: ['admin'],
       defaultBanReason: 'no reason given',
@@ -264,7 +271,8 @@ export type SessionUser = {
 /**
  * The admin plugin stores roles as free text (it allows comma-separated lists). Anything that is
  * not one of ours reads as a regular user, so an odd value can never grant more, and never breaks
- * a read either. Every DAL function that maps a user row goes through this before its DTO schema.
+ * a read either (the `users_role_valid` CHECK constraint keeps odd values out of the table anyway).
+ * Every DAL function that maps a user row goes through this before its DTO schema.
  */
 export const toRole = (value: string | null | undefined): Role => {
   const role = roleSchema.safeParse(value)

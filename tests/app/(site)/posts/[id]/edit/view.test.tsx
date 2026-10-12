@@ -25,13 +25,18 @@ beforeAll(() => {
 })
 
 const post: PostDetail = {
-  id: 7,
+  id: '0190d1a2-0000-7000-8000-000000000007',
   title: 'Hello',
   body: 'World',
   published: false,
   createdAt: new Date('2026-01-01T00:00:00.000Z'),
   updatedAt: new Date('2026-01-01T00:00:00.000Z'),
-  author: { id: 'u1', name: 'Leanne Graham', username: 'leanne', website: null },
+  author: {
+    id: '0190d1a2-0000-7000-8000-0000000000a1',
+    name: 'Leanne Graham',
+    username: 'leanne',
+    website: null,
+  },
   permissions: { update: true, delete: true },
 }
 
@@ -55,9 +60,9 @@ describe('PostEditView', () => {
     await userEvent.type(screen.getByLabelText(/Title/), '!')
     await save()
     expect(updatePostAction).toHaveBeenCalledTimes(1)
-    expect(updatePostAction).toHaveBeenCalledWith(7, { title: 'Hello!' })
+    expect(updatePostAction).toHaveBeenCalledWith(post.id, { title: 'Hello!' })
     expect(toast.success).toHaveBeenCalledWith('Post updated')
-    expect(push).toHaveBeenCalledWith('/posts/7')
+    expect(push).toHaveBeenCalledWith('/posts/0190d1a2-0000-7000-8000-000000000007')
   })
 
   it('publishes a draft by sending the published flag alone', async () => {
@@ -65,8 +70,8 @@ describe('PostEditView', () => {
     render(<PostEditView post={post} />)
     await userEvent.click(screen.getByRole('checkbox', { name: 'Published' }))
     await save()
-    expect(updatePostAction).toHaveBeenCalledWith(7, { published: true })
-    expect(push).toHaveBeenCalledWith('/posts/7')
+    expect(updatePostAction).toHaveBeenCalledWith(post.id, { published: true })
+    expect(push).toHaveBeenCalledWith('/posts/0190d1a2-0000-7000-8000-000000000007')
   })
 
   it('sends every changed field together', async () => {
@@ -76,7 +81,7 @@ describe('PostEditView', () => {
     await userEvent.type(screen.getByLabelText(/Body/), '?')
     await userEvent.click(screen.getByRole('checkbox', { name: 'Published' }))
     await save()
-    expect(updatePostAction).toHaveBeenCalledWith(7, {
+    expect(updatePostAction).toHaveBeenCalledWith(post.id, {
       title: 'Hello!',
       body: 'World?',
       published: true,
@@ -127,7 +132,7 @@ describe('PostEditView', () => {
   it('goes back to the post on cancel', async () => {
     render(<PostEditView post={post} />)
     await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
-    expect(push).toHaveBeenCalledWith('/posts/7')
+    expect(push).toHaveBeenCalledWith('/posts/0190d1a2-0000-7000-8000-000000000007')
     expect(updatePostAction).not.toHaveBeenCalled()
   })
 })

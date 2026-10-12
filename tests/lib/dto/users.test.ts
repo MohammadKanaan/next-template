@@ -52,11 +52,13 @@ describe('updateProfileInput', () => {
   })
 })
 
+const USER_ID = '0190d1a2-0000-7000-8000-0000000000a1'
+
 describe('sessions', () => {
-  it('bounds the session id', () => {
-    expect(sessionIdSchema.safeParse('abc').success).toBe(true)
+  it('accepts a UUID session id only', () => {
+    expect(sessionIdSchema.safeParse('0190d1a2-0000-7000-8000-0000000000a1').success).toBe(true)
+    expect(sessionIdSchema.safeParse('abc').success).toBe(false)
     expect(sessionIdSchema.safeParse('').success).toBe(false)
-    expect(sessionIdSchema.safeParse('a'.repeat(65)).success).toBe(false)
   })
 })
 
@@ -77,25 +79,25 @@ describe('admin user list', () => {
   })
 
   it('accepts a user id and a known role only', () => {
-    expect(setUserRoleInput.parse({ id: 'abc-123', role: 'admin' })).toEqual({
-      id: 'abc-123',
+    expect(setUserRoleInput.parse({ id: USER_ID, role: 'admin' })).toEqual({
+      id: USER_ID,
       role: 'admin',
     })
-    expect(setUserRoleInput.safeParse({ id: 'abc-123', role: 'owner' }).success).toBe(false)
+    expect(setUserRoleInput.safeParse({ id: USER_ID, role: 'owner' }).success).toBe(false)
     expect(setUserRoleInput.safeParse({ id: 'a b', role: 'user' }).success).toBe(false)
     expect(setUserRoleInput.safeParse({ id: '', role: 'user' }).success).toBe(false)
   })
 
   it('accepts a user id and an optional, trimmed, bounded ban reason', () => {
-    expect(banUserInput.parse({ id: 'abc-123' })).toEqual({ id: 'abc-123' })
-    expect(banUserInput.parse({ id: 'abc-123', reason: '  Spam  ' })).toEqual({
-      id: 'abc-123',
+    expect(banUserInput.parse({ id: USER_ID })).toEqual({ id: USER_ID })
+    expect(banUserInput.parse({ id: USER_ID, reason: '  Spam  ' })).toEqual({
+      id: USER_ID,
       reason: 'Spam',
     })
-    expect(banUserInput.parse({ id: 'abc-123', reason: '   ' }).reason).toBe('')
+    expect(banUserInput.parse({ id: USER_ID, reason: '   ' }).reason).toBe('')
     expect(banUserInput.safeParse({ id: 'a b', reason: 'Spam' }).success).toBe(false)
     const long = banUserInput.safeParse({
-      id: 'abc-123',
+      id: USER_ID,
       reason: 'x'.repeat(BAN_REASON_MAX_LENGTH + 1),
     })
     expect(long.success).toBe(false)
@@ -108,7 +110,7 @@ describe('admin user list', () => {
 
 describe('adminUserSchema', () => {
   const row = {
-    id: 'u1',
+    id: USER_ID,
     name: 'Ada',
     username: 'ada',
     email: 'ada@example.com',

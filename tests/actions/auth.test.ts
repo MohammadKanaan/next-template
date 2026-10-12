@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { randomUUID } from 'node:crypto'
 import { APIError } from 'better-auth/api'
 import { refresh } from 'next/cache'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -422,7 +423,7 @@ describe('account actions', () => {
   }
 
   const addSession = async (userId: string) => {
-    const id = `session-${Math.random().toString(36).slice(2, 10)}`
+    const id = randomUUID()
     return db.session.create({
       data: { id, token: `token-${id}`, userId, expiresAt: new Date(Date.now() + 3_600_000) },
     })

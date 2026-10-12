@@ -20,7 +20,7 @@ export const createPostAction = async (
 }
 
 export const updatePostAction = async (
-  id: number,
+  id: string,
   input: UpdatePostInput,
 ): Promise<ActionResult<PostDetail>> => {
   try {
@@ -32,7 +32,7 @@ export const updatePostAction = async (
   }
 }
 
-export const deletePostAction = async (id: number): Promise<ActionResult<null>> => {
+export const deletePostAction = async (id: string): Promise<ActionResult<null>> => {
   try {
     await deletePost(id)
     revalidatePath(ROUTE_POSTS, 'layout')

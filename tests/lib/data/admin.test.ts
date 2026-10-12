@@ -21,7 +21,14 @@ import { getViewer } from '@/lib/data/users'
 import { BAN_REASON_MAX_LENGTH } from '@/lib/dto/users'
 import { getRedis } from '@/lib/server/redis'
 import { cookieJar } from '../../helpers/cookies'
-import { createUser, resetDatabase, signInAs, signOut, TEST_PASSWORD } from '../../helpers/server'
+import {
+  MISSING_ID,
+  createUser,
+  resetDatabase,
+  signInAs,
+  signOut,
+  TEST_PASSWORD,
+} from '../../helpers/server'
 
 const { cookieStore, requestHeaders } = await vi.hoisted(
   async () => import('../../helpers/cookies'),
@@ -189,7 +196,7 @@ describe('admin DAL', () => {
     it('reports a missing user as not found', async () => {
       const admin = await createUser({ role: 'admin' })
       await signInAs(admin)
-      await expect(setUserRole({ id: 'missing-id', role: 'admin' })).rejects.toBeInstanceOf(
+      await expect(setUserRole({ id: MISSING_ID, role: 'admin' })).rejects.toBeInstanceOf(
         NotFoundError,
       )
     })
@@ -263,8 +270,8 @@ describe('admin DAL', () => {
     it('report a missing user as not found', async () => {
       const admin = await createUser({ role: 'admin' })
       await signInAs(admin)
-      await expect(banUser({ id: 'missing-id' })).rejects.toBeInstanceOf(NotFoundError)
-      await expect(unbanUser('missing-id')).rejects.toBeInstanceOf(NotFoundError)
+      await expect(banUser({ id: MISSING_ID })).rejects.toBeInstanceOf(NotFoundError)
+      await expect(unbanUser(MISSING_ID)).rejects.toBeInstanceOf(NotFoundError)
     })
 
     it('refuse to ban the admin’s own account', async () => {
@@ -391,7 +398,7 @@ describe('admin DAL', () => {
       const admin = await createUser({ role: 'admin' })
       await signInAs(admin)
       await expect(impersonateUser('a b')).rejects.toBeInstanceOf(ValidationError)
-      await expect(impersonateUser('missing-id')).rejects.toBeInstanceOf(NotFoundError)
+      await expect(impersonateUser(MISSING_ID)).rejects.toBeInstanceOf(NotFoundError)
       await expect(getSessionUser()).resolves.toMatchObject({
         id: admin.id,
         impersonatedBy: null,
