@@ -7,6 +7,7 @@ import { listPosts } from '@/lib/data/posts'
 import { getCurrentUser } from '@/lib/data/users'
 import { postsUrlQuery, toListPostsParams } from '@/lib/dto/posts'
 import { toScalarParams } from '@/lib/searchParams'
+import { NO_INDEX } from '@/lib/seo'
 import styles from '../styles.module.scss'
 import { MyPostsView } from './view'
 
@@ -14,6 +15,7 @@ const PER_PAGE = 10
 
 export const metadata: Metadata = {
   title: 'My posts',
+  robots: NO_INDEX,
 }
 
 const MyPostsPage = async ({ searchParams }: PageProps<'/posts/mine'>) => {

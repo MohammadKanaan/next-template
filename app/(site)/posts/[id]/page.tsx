@@ -1,4 +1,6 @@
 import type { Metadata } from 'next'
+import { cache } from 'react'
+import { JsonLd } from '@/components/JsonLd'
 import { ButtonLink } from '@/components/ButtonLink'
 import { PageHeader } from '@/components/PageHeader'
 import { DeletePostButton } from '@/components/Posts/DeleteButton'
@@ -7,12 +9,38 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/SCN/card'
 import { ROUTE_POST_DETAILS, ROUTE_POST_EDIT, ROUTE_POSTS } from '@/lib/constants-routes'
 import { loadPage } from '@/lib/data/page'
 import { getPost } from '@/lib/data/posts'
+import { siteUrl } from '@/lib/data/site'
 import { formatDateTime } from '@/lib/formatDate'
+import { metaDescription, NO_INDEX, SITE_OPEN_GRAPH } from '@/lib/seo'
+import { postJsonLd } from '@/lib/structuredData'
 import { presentUser } from '@/presenters/UserPresenter'
 import styles from './styles.module.scss'
 
-export const metadata: Metadata = {
-  title: 'Post',
+// `generateMetadata` and the page read the same post: one DAL call per request.
+const loadPost = cache((id: string) => loadPage(() => getPost(id), ROUTE_POST_DETAILS(id)))
+
+export const generateMetadata = async ({ params }: PageProps<'/posts/[id]'>): Promise<Metadata> => {
+  const { id } = await params
+  const post = await loadPost(id)
+  // A draft is visible to its author and admins only: never in search results.
+  if (!post.published) {
+    return { title: post.title, robots: NO_INDEX }
+  }
+  const path = ROUTE_POST_DETAILS(post.id)
+  const description = metaDescription(post.body)
+  return {
+    title: post.title,
+    description,
+    alternates: { canonical: path },
+    openGraph: {
+      ...SITE_OPEN_GRAPH,
+      type: 'article',
+      url: path,
+      publishedTime: post.createdAt.toISOString(),
+      modifiedTime: post.updatedAt.toISOString(),
+      authors: [post.author.name],
+    },
+  }
 }
 
 /**
@@ -21,11 +49,12 @@ export const metadata: Metadata = {
  */
 const PostDetailPage = async ({ params }: PageProps<'/posts/[id]'>) => {
   const { id } = await params
-  const post = await loadPage(() => getPost(id), ROUTE_POST_DETAILS(id))
+  const post = await loadPost(id)
   const author = presentUser(post.author)
 
   return (
     <div className={styles.page}>
+      {post.published && <JsonLd data={postJsonLd(post, siteUrl())} />}
       <PageHeader
         title={post.title}
         description={`By ${author.name} · ${formatDateTime(post.createdAt)}`}

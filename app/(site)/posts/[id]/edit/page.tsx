@@ -4,10 +4,12 @@ import { Empty } from '@/components/Empty'
 import { ROUTE_POST_DETAILS, ROUTE_POST_EDIT } from '@/lib/constants-routes'
 import { loadPage } from '@/lib/data/page'
 import { getPost } from '@/lib/data/posts'
+import { NO_INDEX } from '@/lib/seo'
 import { PostEditView } from './view'
 
 export const metadata: Metadata = {
   title: 'Edit post',
+  robots: NO_INDEX,
 }
 
 const PostEditPage = async ({ params }: PageProps<'/posts/[id]/edit'>) => {

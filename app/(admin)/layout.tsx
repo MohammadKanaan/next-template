@@ -1,12 +1,19 @@
+import type { Metadata } from 'next'
 import { cookies } from 'next/headers'
 import { AdminShell } from '@/components/Admin/Shell/AdminShell'
 import { ROUTE_ADMIN } from '@/lib/constants-routes'
 import { requireAdmin } from '@/lib/data/auth'
 import { loadPage } from '@/lib/data/page'
 import { getCurrentUser } from '@/lib/data/users'
+import { NO_INDEX } from '@/lib/seo'
 
 /** The cookie shadcn's sidebar writes when it is toggled; read so the server renders it as it was left. */
 const SIDEBAR_COOKIE = 'sidebar_state'
+
+// `robots.txt` already keeps crawlers out; this covers a dashboard URL found some other way.
+export const metadata: Metadata = {
+  robots: NO_INDEX,
+}
 
 /**
  * The dashboard's frame. Signed out → login (back to `/admin`), not an admin → the not-found page,

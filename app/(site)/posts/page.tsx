@@ -8,14 +8,23 @@ import { loadPage } from '@/lib/data/page'
 import { listPosts } from '@/lib/data/posts'
 import { postsUrlQuery, toListPostsParams } from '@/lib/dto/posts'
 import { toScalarParams } from '@/lib/searchParams'
+import { NO_INDEX, pagedTitle, postsCanonicalPath } from '@/lib/seo'
 import styles from './styles.module.scss'
 import { PostsView } from './view'
 
 const PER_PAGE = 9
 
-export const metadata: Metadata = {
-  title: 'Posts',
-  description: 'Published posts, rendered on the server through the data access layer.',
+export const generateMetadata = async ({
+  searchParams,
+}: PageProps<'/posts'>): Promise<Metadata> => {
+  const query = postsUrlQuery.parse(toScalarParams(await searchParams))
+  const canonical = postsCanonicalPath(query)
+  return {
+    title: pagedTitle('Posts', query.page),
+    description: 'Published posts, rendered on the server through the data access layer.',
+    // A search or the oldest-first order is the same posts as the list: out of the index.
+    ...(canonical ? { alternates: { canonical } } : { robots: NO_INDEX }),
+  }
 }
 
 const PostsPage = async ({ searchParams }: PageProps<'/posts'>) => {
