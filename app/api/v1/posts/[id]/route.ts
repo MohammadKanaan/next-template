@@ -2,10 +2,12 @@ import { NextResponse } from 'next/server'
 import { requireUser } from '@/lib/data/auth'
 import { parseInput, readJsonBody, toErrorResponse } from '@/lib/data/errors'
 import { deletePost, getPost, updatePost } from '@/lib/data/posts'
+import { consumePublicApiLimit } from '@/lib/data/rateLimit'
 import { updatePostInput } from '@/lib/dto/posts'
 
 export const GET = async (_request: Request, context: RouteContext<'/api/v1/posts/[id]'>) => {
   try {
+    await consumePublicApiLimit('post')
     // The raw route param goes to the DAL, which validates it.
     const { id } = await context.params
     return NextResponse.json(await getPost(id))

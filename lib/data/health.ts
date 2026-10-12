@@ -1,15 +1,12 @@
 import 'server-only'
+import type { Health, HealthCheck } from '@/lib/dto/health'
 import { logger } from '@/lib/server/logger'
 import { getRedis } from '@/lib/server/redis'
 import { db } from './db'
 
 const log = logger.child({ module: 'health' })
 
-export type HealthCheck = 'ok' | 'fail'
-export type Health = {
-  status: 'ok' | 'degraded'
-  checks: { db: HealthCheck; redis: HealthCheck }
-}
+export type { Health, HealthCheck } from '@/lib/dto/health'
 
 const CHECK_TIMEOUT_MS = 2000
 

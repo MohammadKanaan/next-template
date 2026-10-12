@@ -107,7 +107,8 @@ components/SCN/          # shadcn/ui primitives (the only place Tailwind is allo
 hooks/                   # Reusable React hooks (useXxx)
 presenters/              # Override functions for views that need reshaped data
 types/                   # Cross-cutting types (types/api.ts: ActionResult, ErrorBody, FieldErrors)
-lib/                     # Pure helpers, constants, env, formErrors, username derivation
+lib/                     # Pure helpers, constants, env, formErrors, username derivation, csp, and
+                         # openapi (the generated spec of the public handlers)
 lib/dto/                 # Zod schemas + inferred types (inputs and outputs); client- and server-safe
 lib/client/              # Browser-side helpers: uploadFile (the one fetch to a non-app URL), RequestError
 lib/data/                # Server-only DAL: db client, auth (Better Auth config), errors, users, admin,
@@ -121,7 +122,7 @@ emails/                  # Plain email templates ({ subject, html, text }), rend
 prisma/                  # schema.prisma, migrations, seed
 generated/               # Generated Prisma client (git-ignored; `postinstall` regenerates it)
 styles/                  # global.css: official shadcn theme tokens and Tailwind base styles
-proxy.ts                 # Optimistic auth redirects (Next 16's renamed middleware)
+proxy.ts                 # Optimistic auth redirects and the per-request CSP nonce (lib/csp.ts)
 tests/                   # Vitest tests mirroring the source structure
 docs/DECISIONS.md        # Framework and library choices, with reasons; what was removed and why
 ```
@@ -256,6 +257,12 @@ catch (error) { return toActionFailure(error) }`. Return `ActionResult<T>`; neve
   `refresh()`. There is no DAL function behind those calls, so these actions are the exception that
   runs `parseInput` themselves (in `actions/auth.ts`).
 - The calling view owns navigation and toasts; the form owns field errors.
+- Route Handlers (`app/api/v1/<resource>`) exist only for an HTTP API or a client component that
+  must fetch. A handler is thin: `consumePublicApiLimit('<endpoint>')` first for a public read,
+  `requireUser()` first for a write, a JSON body only (refuse any other `Content-Type`; with the
+  `SameSite=Lax` cookie that is the CSRF guard), decode with the DTO schema, call the DAL, return
+  JSON or `toErrorResponse(error)`. 201 for a create, 200 for reads and updates, 204 for a delete.
+  A new public handler also gets a path in `lib/openapi.ts`.
 
 ## Errors
 

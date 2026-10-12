@@ -1,7 +1,10 @@
 // @vitest-environment node
-import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DELETE, GET, PATCH } from '@/app/api/v1/posts/[id]/route'
+import { PUBLIC_API_LIMIT } from '@/lib/constants-rateLimit'
 import { db } from '@/lib/data/db'
+import { resetServerEnv } from '@/lib/server/env'
+import { getRedis } from '@/lib/server/redis'
 import {
   MISSING_ID,
   createUser,
@@ -52,6 +55,10 @@ const titleOf = async (id: string) => {
 
 describe('/api/v1/posts/[id]', () => {
   beforeEach(resetDatabase)
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    resetServerEnv()
+  })
   afterAll(() => db.$disconnect())
 
   describe('GET', () => {
@@ -106,6 +113,18 @@ describe('/api/v1/posts/[id]', () => {
       expect((await show(draft.id)).status).toBe(200)
       await signInAs(admin)
       expect((await show(draft.id)).status).toBe(200)
+    })
+  })
+
+  describe('GET rate limit', () => {
+    it('answers 429 once the client address is past the limit, before reading anything', async () => {
+      vi.stubEnv('NODE_ENV', 'production')
+      resetServerEnv()
+      await getRedis().set('ratelimit:api:post:ip:unknown', PUBLIC_API_LIMIT.max)
+
+      const response = await show(MISSING_ID)
+      expect(response.status).toBe(429)
+      expect(await response.json()).toMatchObject({ code: 'RATE_LIMITED' })
     })
   })
 

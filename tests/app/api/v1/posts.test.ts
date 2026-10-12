@@ -1,7 +1,10 @@
 // @vitest-environment node
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { GET, POST } from '@/app/api/v1/posts/route'
+import { PUBLIC_API_LIMIT } from '@/lib/constants-rateLimit'
 import { db } from '@/lib/data/db'
+import { resetServerEnv } from '@/lib/server/env'
+import { getRedis } from '@/lib/server/redis'
 import { createUser, resetDatabase, signInAs, signOut } from '../../../helpers/server'
 
 const { cookieStore, requestHeaders } = await vi.hoisted(
@@ -26,6 +29,10 @@ const titlesOf = async (response: Response) => {
 
 describe('GET /api/v1/posts', () => {
   beforeEach(resetDatabase)
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    resetServerEnv()
+  })
   afterAll(() => db.$disconnect())
 
   it('returns a page of summaries with ISO date strings', async () => {
@@ -135,6 +142,17 @@ describe('GET /api/v1/posts', () => {
     const response = await GET(request('?published=maybe'))
     expect(response.status).toBe(422)
     expect((await response.json()).fieldErrors.published).toHaveLength(1)
+  })
+
+  it('answers 429 once the client address is past the limit, before reading anything', async () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    resetServerEnv()
+    // No proxy headers in a test request: the limiter's address is `unknown`.
+    await getRedis().set('ratelimit:api:posts:ip:unknown', PUBLIC_API_LIMIT.max)
+
+    const response = await GET(request('?page=garbage'))
+    expect(response.status).toBe(429)
+    expect(await response.json()).toMatchObject({ code: 'RATE_LIMITED' })
   })
 })
 

@@ -2,10 +2,12 @@ import { NextResponse } from 'next/server'
 import { requireUser } from '@/lib/data/auth'
 import { parseInput, readJsonBody, toErrorResponse } from '@/lib/data/errors'
 import { createPost, listPosts } from '@/lib/data/posts'
+import { consumePublicApiLimit } from '@/lib/data/rateLimit'
 import { createPostInput, listPostsQuery } from '@/lib/dto/posts'
 
 export const GET = async (request: Request) => {
   try {
+    await consumePublicApiLimit('posts')
     const { searchParams } = new URL(request.url)
     // Decodes the query string (every value arrives as a string); `listPosts` validates again.
     const query = parseInput(listPostsQuery, Object.fromEntries(searchParams))

@@ -31,6 +31,7 @@
     "@hookform/resolvers": "^5.9.1",
     "@prisma/adapter-pg": "7.10.0",
     "@prisma/client": "7.10.0",
+    "@scalar/nextjs-api-reference": "^0.12.9",
     "better-auth": "1.7.7",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -49,7 +50,8 @@
     "server-only": "^0.0.1",
     "sonner": "^2.0.8",
     "tsx": "^4.23.15",
-    "zod": "^4.6.5"
+    "zod": "^4.6.5",
+    "zod-openapi": "^6.0.2"
   },
   "devDependencies": {
     "@babel/core": "^8.0.6",

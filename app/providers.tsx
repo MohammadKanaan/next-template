@@ -5,9 +5,21 @@ import { ThemeProvider } from 'next-themes'
 import { Toaster } from '@/components/SCN/sonner'
 import { TooltipProvider } from '@/components/SCN/tooltip'
 
-export const Providers = ({ children }: { children: ReactNode }) => {
+type ProvidersProps = {
+  children: ReactNode
+  /** The request's CSP nonce, for next-themes' inline script (it sets the theme before paint). */
+  nonce?: string
+}
+
+export const Providers = ({ children, nonce }: ProvidersProps) => {
   return (
-    <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+    <ThemeProvider
+      nonce={nonce}
+      attribute="class"
+      defaultTheme="system"
+      enableSystem
+      disableTransitionOnChange
+    >
       <TooltipProvider>
         {children}
         <Toaster />

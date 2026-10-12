@@ -44,4 +44,21 @@ describe('proxy', () => {
       expect(proxy(request(path)).headers.get('x-middleware-next')).toBe('1')
     }
   })
+
+  it('gives every page a Content-Security-Policy with a nonce of its own', () => {
+    const first = proxy(request('/posts'))
+    const policy = first.headers.get('content-security-policy')
+    const nonce = policy?.match(/'nonce-([^']+)'/)?.[1]
+    expect(nonce).toBeDefined()
+    // Next reads the nonce from the request's copy of the header when it renders the page.
+    expect(first.headers.get('x-middleware-request-content-security-policy')).toBe(policy)
+    expect(first.headers.get('x-middleware-request-x-nonce')).toBe(nonce)
+
+    const second = proxy(request('/posts')).headers.get('content-security-policy')
+    expect(second).not.toBe(policy)
+  })
+
+  it('sends no policy with a redirect to login', () => {
+    expect(proxy(request('/settings')).headers.get('content-security-policy')).toBeNull()
+  })
 })

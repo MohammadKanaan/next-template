@@ -1,13 +1,6 @@
-export type FieldErrors = Record<string, string[]>
+import type { ErrorBody } from '@/lib/dto/errors'
 
-export type ErrorCode = 'UNAUTHORIZED' | 'FORBIDDEN' | 'NOT_FOUND' | 'VALIDATION' | 'RATE_LIMITED'
-
-/** Error JSON from Route Handlers; the same fields a failed Server Action returns. */
-export type ErrorBody = {
-  code: ErrorCode
-  message: string
-  fieldErrors?: FieldErrors
-}
+export type { ErrorBody, ErrorCode, FieldErrors } from '@/lib/dto/errors'
 
 export type ActionFailure = { ok: false } & ErrorBody
 
