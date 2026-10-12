@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import userEvent from '@testing-library/user-event'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { NavBar } from '@/components/Layout/NavBar'
 import type { CurrentUser } from '@/lib/dto/users'
 
@@ -85,5 +86,21 @@ describe('NavBar', () => {
       expect(link).toHaveAttribute('href', '/login')
     }
     expect(linksNamed('Log in')).toHaveLength(2)
+  })
+})
+
+describe('NavBar log in', () => {
+  afterEach(() => {
+    window.sessionStorage.clear()
+    window.history.replaceState(null, '', '/')
+  })
+
+  it('remembers the page the visitor was on, to return them after logging in', async () => {
+    window.history.replaceState(null, '', '/posts/mine?q=draft')
+    render(<NavBar user={null} />)
+
+    await userEvent.click(linksNamed('Log in')[0])
+
+    expect(window.sessionStorage.getItem('return-path')).toBe('/posts/mine?q=draft')
   })
 })

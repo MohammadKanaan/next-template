@@ -3,6 +3,7 @@
 'use no memo'
 
 import { zodResolver } from '@hookform/resolvers/zod'
+import { Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { Input } from '@/components/Form/Input'
@@ -57,6 +58,7 @@ export const DeleteAccountDialog = ({ onConfirm }: DeleteAccountDialogProps) => 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger render={<Button type="button" variant="destructive" />}>
+        <Trash2 data-icon="inline-start" aria-hidden="true" />
         Delete account
       </DialogTrigger>
       <DialogContent>

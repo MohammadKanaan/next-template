@@ -8,7 +8,7 @@ export const metadata: Metadata = {
 }
 
 const MinimalLayout = ({ children }: LayoutProps<'/'>) => {
-  return <div className={styles.minimalContent}>{children}</div>
+  return <main className={styles.minimalContent}>{children}</main>
 }
 
 export default MinimalLayout

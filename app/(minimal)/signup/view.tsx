@@ -2,9 +2,11 @@
 
 import { useRouter } from 'next/navigation'
 import { signUpAction } from '@/actions/auth'
+import { AuthHeader } from '@/components/Auth/AuthHeader'
 import { GoogleButton } from '@/components/Auth/GoogleButton'
 import { SignUpForm } from '@/components/Auth/SignUpForm'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/SCN/card'
+import { Card, CardContent } from '@/components/SCN/card'
+import { useReturnPath } from '@/hooks/useReturnPath'
 import type { SignUpInput } from '@/lib/dto/auth'
 import styles from '../login/styles.module.scss'
 
@@ -15,17 +17,20 @@ type SignUpViewProps = {
 
 export const SignUpView = ({ nextPath, googleEnabled }: SignUpViewProps) => {
   const router = useRouter()
+  const { resolve, clear } = useReturnPath()
+  const target = resolve(nextPath)
 
   const handleSubmit = async (values: SignUpInput) => {
     const result = await signUpAction(values)
     if (result.ok) {
+      clear()
       // A Route Handler (such as an email link under `/api/`) is not an app page: the client
       // router cannot render it, so the browser must navigate to it.
-      const isRouteHandler = nextPath.startsWith('/api/')
+      const isRouteHandler = target.startsWith('/api/')
       if (isRouteHandler) {
-        window.location.assign(nextPath)
+        window.location.assign(target)
       } else {
-        router.replace(nextPath)
+        router.replace(target)
       }
     }
     return result
@@ -35,13 +40,13 @@ export const SignUpView = ({ nextPath, googleEnabled }: SignUpViewProps) => {
     <div className={styles.page}>
       <div className={styles.card}>
         <Card>
-          <CardHeader>
-            <CardTitle>Create an account</CardTitle>
-            <CardDescription>Sign up with your email and a password.</CardDescription>
-          </CardHeader>
           <CardContent>
+            <AuthHeader
+              title="Create an account"
+              description="Sign up with your email and a password."
+            />
             <SignUpForm onSubmit={handleSubmit} />
-            {googleEnabled && <GoogleButton nextPath={nextPath} />}
+            {googleEnabled && <GoogleButton nextPath={target} />}
           </CardContent>
         </Card>
       </div>

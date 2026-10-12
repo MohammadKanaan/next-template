@@ -3,6 +3,9 @@
 import { X } from 'lucide-react'
 import { useState, type ComponentProps, type ReactNode } from 'react'
 import { toast } from 'sonner'
+import { ActionButton } from '@/components/ActionButton'
+import { ActionGroup } from '@/components/ActionGroup'
+import { ActionLink } from '@/components/ActionLink'
 import { ConfirmDialog } from '@/components/Admin/ConfirmDialog'
 import { StatCard } from '@/components/Admin/StatCard'
 import { Empty } from '@/components/Empty'
@@ -17,6 +20,7 @@ import { Pagination } from '@/components/Pagination'
 import { PostsFilters, type PostsFiltersPatch } from '@/components/Posts/Filters'
 import { PostForm } from '@/components/Posts/Form'
 import { PostStatusBadge } from '@/components/Posts/StatusBadge'
+import { ShortcutHint } from '@/components/ShortcutHint'
 import { AvatarUploader } from '@/components/Settings/AvatarUploader'
 import {
   Avatar,
@@ -596,6 +600,36 @@ export const UiKitView = () => {
             onConfirm={() => resolveAfter(CONFIRM_OK)}
           />
         </div>
+      </Section>
+
+      <Section
+        id="record-actions"
+        eyebrow="Application components"
+        title="ActionButton, ActionLink and ActionGroup"
+        description="A record's view, edit and delete as colour-coded icon buttons with tooltips, always in that order and at the end of their row."
+      >
+        <ActionGroup label="Record actions">
+          <ActionLink action="view" label="View record" href="#record-actions" />
+          <ActionButton action="edit" label="Edit record" />
+          <ConfirmDialog
+            trigger="Delete record"
+            triggerAction="delete"
+            title="Delete this record?"
+            description="This cannot be undone."
+            confirmLabel="Delete"
+            onConfirm={() => resolveAfter(CONFIRM_OK)}
+            onDone={() => toast.success('Record deleted')}
+          />
+        </ActionGroup>
+      </Section>
+
+      <Section
+        id="shortcut-hint"
+        eyebrow="Application components"
+        title="ShortcutHint"
+        description="Names the submit shortcut (⌘ on Apple platforms, Ctrl elsewhere) beside a form's submit button. Pointer-only devices do not show it."
+      >
+        <ShortcutHint action="to submit" />
       </Section>
 
       <Section

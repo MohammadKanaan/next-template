@@ -1,5 +1,7 @@
 'use client'
 
+import { ActionGroup } from '@/components/ActionGroup'
+import { ActionLink } from '@/components/ActionLink'
 import { ButtonLink } from '@/components/ButtonLink'
 import { Empty } from '@/components/Empty'
 import { Pagination } from '@/components/Pagination'
@@ -70,14 +72,18 @@ export const MyPostsView = ({ posts }: MyPostsViewProps) => {
                 </TableCell>
                 <TableCell>{formatDateTime(post.createdAt)}</TableCell>
                 <TableCell>
-                  <div className={styles.actions}>
-                    <ButtonLink href={ROUTE_POST_DETAILS(post.id)} size="sm" variant="secondary">
-                      View
-                    </ButtonLink>
-                    <ButtonLink href={ROUTE_POST_EDIT(post.id)} size="sm" variant="outline">
-                      Edit
-                    </ButtonLink>
-                  </div>
+                  <ActionGroup label={`Actions for ${post.title}`}>
+                    <ActionLink
+                      action="view"
+                      label={`View ${post.title}`}
+                      href={ROUTE_POST_DETAILS(post.id)}
+                    />
+                    <ActionLink
+                      action="edit"
+                      label={`Edit ${post.title}`}
+                      href={ROUTE_POST_EDIT(post.id)}
+                    />
+                  </ActionGroup>
                 </TableCell>
               </TableRow>
             ))}

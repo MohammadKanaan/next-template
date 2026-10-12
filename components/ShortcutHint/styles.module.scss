@@ -1,0 +1,15 @@
+.hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin-right: auto;
+  color: var(--muted-foreground);
+  font-size: 0.8125rem;
+}
+
+// Only where there is a keyboard to press it with.
+@media (hover: none), (pointer: coarse) {
+  .hint {
+    display: none;
+  }
+}

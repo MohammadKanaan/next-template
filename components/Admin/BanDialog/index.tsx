@@ -3,6 +3,7 @@
 'use no memo'
 
 import { zodResolver } from '@hookform/resolvers/zod'
+import { Ban } from 'lucide-react'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { toast } from 'sonner'
@@ -65,6 +66,7 @@ export const BanUserDialog = ({ user, disabled }: BanUserDialogProps) => {
       <DialogTrigger
         render={<Button type="button" size="sm" variant="destructive" disabled={disabled} />}
       >
+        <Ban data-icon="inline-start" aria-hidden="true" />
         Ban
       </DialogTrigger>
       <DialogContent>

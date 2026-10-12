@@ -1,0 +1,17 @@
+// Holds the tooltip of a disabled button, which takes no pointer events of its own.
+.disabled {
+  display: inline-flex;
+}
+
+// The reason, read out as the button's description.
+.reason {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

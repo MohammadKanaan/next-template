@@ -1,7 +1,9 @@
 'use client'
 
+import { AtSign, Camera, KeyRound, MonitorSmartphone, TriangleAlert, UserRound } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import type { ReactNode } from 'react'
 import { toast } from 'sonner'
 import {
   changeEmailAction,
@@ -18,7 +20,8 @@ import { EmailForm } from '@/components/Settings/EmailForm'
 import { PasswordForm } from '@/components/Settings/PasswordForm'
 import { ProfileForm } from '@/components/Settings/ProfileForm'
 import { SessionList } from '@/components/Settings/SessionList'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/SCN/card'
+import { SettingsNav, type SettingsNavItem } from '@/components/Settings/SettingsNav'
+import { SettingsSection } from '@/components/Settings/SettingsSection'
 import { ROUTE_FORGOT_PASSWORD, ROUTE_HOME } from '@/lib/constants-routes'
 import type { ChangeEmailInput, ChangePasswordInput, DeleteAccountInput } from '@/lib/dto/auth'
 import type { CurrentUser, SessionSummary, UpdateProfileInput } from '@/lib/dto/users'
@@ -30,6 +33,13 @@ type SettingsViewProps = {
   hasPassword: boolean
   /** Whether storage is configured; without it the photo card is not shown. */
   canUpload: boolean
+}
+
+/** One settings row; its id, title and icon also make its SettingsNav link. */
+type Section = Pick<SettingsNavItem, 'id' | 'icon' | 'danger'> & {
+  title: string
+  description: ReactNode
+  content: ReactNode
 }
 
 export const SettingsView = ({ user, sessions, hasPassword, canUpload }: SettingsViewProps) => {
@@ -86,104 +96,104 @@ export const SettingsView = ({ user, sessions, hasPassword, canUpload }: Setting
     return result
   }
 
+  const sections: Section[] = [
+    ...(canUpload
+      ? [
+          {
+            id: 'photo',
+            title: 'Profile photo',
+            description: 'Shown in the navigation bar next to your name.',
+            icon: Camera,
+            content: (
+              <AvatarUploader
+                name={user.name}
+                image={user.image}
+                onCreateUpload={createUploadAction}
+                onAttach={attachAvatarAction}
+                onUploaded={() => toast.success('Profile photo updated')}
+              />
+            ),
+          },
+        ]
+      : []),
+    {
+      id: 'profile',
+      title: 'Profile',
+      description: 'Your name, username, and website.',
+      icon: UserRound,
+      content: <ProfileForm user={user} onSubmit={handleProfile} />,
+    },
+    {
+      id: 'email',
+      title: 'Email',
+      description: (
+        <>
+          Your email is <strong className={styles.email}>{user.email}</strong>. We email your
+          current address to confirm a change, then the new address to verify it.
+        </>
+      ),
+      icon: AtSign,
+      content: <EmailForm onSubmit={handleEmail} />,
+    },
+    {
+      id: 'password',
+      title: 'Password',
+      description: hasPassword
+        ? 'Changing it signs out every other device.'
+        : 'Your account has no password yet.',
+      icon: KeyRound,
+      content: hasPassword ? (
+        <PasswordForm onSubmit={handlePassword} />
+      ) : (
+        <p className={styles.note}>
+          You signed in with Google. To set a password, use{' '}
+          <Link href={ROUTE_FORGOT_PASSWORD}>Forgot password</Link> with {user.email}: the emailed
+          link creates one. It also signs you out everywhere, so you sign in again afterwards.
+        </p>
+      ),
+    },
+    {
+      id: 'sessions',
+      title: 'Sessions',
+      description: 'The devices currently signed in to your account.',
+      icon: MonitorSmartphone,
+      content: (
+        <SessionList
+          sessions={sessions}
+          onRevoke={handleRevoke}
+          onRevokeOthers={handleRevokeOthers}
+        />
+      ),
+    },
+    {
+      id: 'delete',
+      title: 'Delete account',
+      description: 'Permanently remove your account and your posts. This cannot be undone.',
+      icon: TriangleAlert,
+      danger: true,
+      content: hasPassword ? (
+        <DeleteAccountDialog onConfirm={handleDelete} />
+      ) : (
+        <p className={styles.note}>
+          Deleting an account asks for its password, and yours has none yet. Set one with{' '}
+          <Link href={ROUTE_FORGOT_PASSWORD}>Forgot password</Link> first.
+        </p>
+      ),
+    },
+  ]
+
   return (
-    <div className={styles.stack}>
-      {canUpload && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Profile photo</CardTitle>
-            <CardDescription>Shown in the navigation bar next to your name.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <AvatarUploader
-              name={user.name}
-              image={user.image}
-              onCreateUpload={createUploadAction}
-              onAttach={attachAvatarAction}
-              onUploaded={() => toast.success('Profile photo updated')}
-            />
-          </CardContent>
-        </Card>
-      )}
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Profile</CardTitle>
-          <CardDescription>Your name, username, and website.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ProfileForm user={user} onSubmit={handleProfile} />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Email</CardTitle>
-          <CardDescription>
-            Your email is {user.email}. We email your current address to confirm a change, then the
-            new address to verify it.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <EmailForm onSubmit={handleEmail} />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Password</CardTitle>
-          <CardDescription>
-            {hasPassword
-              ? 'Changing it signs out every other device.'
-              : 'Your account has no password yet.'}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {hasPassword ? (
-            <PasswordForm onSubmit={handlePassword} />
-          ) : (
-            <p className={styles.note}>
-              You signed in with Google. To set a password, use{' '}
-              <Link href={ROUTE_FORGOT_PASSWORD}>Forgot password</Link> with {user.email}: the
-              emailed link creates one. It also signs you out everywhere, so you sign in again
-              afterwards.
-            </p>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Sessions</CardTitle>
-          <CardDescription>The devices currently signed in to your account.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <SessionList
-            sessions={sessions}
-            onRevoke={handleRevoke}
-            onRevokeOthers={handleRevokeOthers}
-          />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Delete account</CardTitle>
-          <CardDescription>
-            Permanently remove your account and your posts. This cannot be undone.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {hasPassword ? (
-            <DeleteAccountDialog onConfirm={handleDelete} />
-          ) : (
-            <p className={styles.note}>
-              Deleting an account asks for its password, and yours has none yet. Set one with{' '}
-              <Link href={ROUTE_FORGOT_PASSWORD}>Forgot password</Link> first.
-            </p>
-          )}
-        </CardContent>
-      </Card>
+    <div className={styles.layout}>
+      <SettingsNav
+        items={sections.map(({ id, title, icon, danger }) => ({ id, label: title, icon, danger }))}
+      />
+      <div className={styles.sections}>
+        {sections.map(({ id, title, description, danger, content }) => (
+          <SettingsSection key={id} id={id} title={title} description={description} danger={danger}>
+            {content}
+          </SettingsSection>
+        ))}
+      </div>
     </div>
   )
 }

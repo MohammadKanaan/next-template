@@ -177,4 +177,23 @@ describe('PostForm', () => {
     expect(onCancel).toHaveBeenCalledTimes(1)
     expect(onSubmit).not.toHaveBeenCalled()
   })
+
+  it('submits from the body with ⌘ or Ctrl + Enter, and keeps a plain Enter as a new line', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(success)
+    render(<PostForm post={null} submitLabel="Create post" onSubmit={onSubmit} />)
+    await userEvent.type(screen.getByLabelText(/Title/), 'Hello')
+    const body = screen.getByLabelText(/Body/)
+    await userEvent.type(body, 'One{Enter}Two')
+    expect(body).toHaveValue('One\nTwo')
+    expect(onSubmit).not.toHaveBeenCalled()
+
+    await userEvent.keyboard('{Meta>}{Enter}{/Meta}')
+    await vi.waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith({ title: 'Hello', body: 'One\nTwo', published: false }),
+    )
+    expect(screen.getByRole('button', { name: 'Create post' })).toHaveAttribute(
+      'aria-keyshortcuts',
+      'Meta+Enter Control+Enter',
+    )
+  })
 })

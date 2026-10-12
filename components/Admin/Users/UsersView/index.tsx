@@ -75,7 +75,13 @@ export const UsersView = ({ users, viewerId }: UsersViewProps) => {
     <div className={styles.view}>
       <div className={styles.toolbar}>
         {/* Remounted when the URL's search changes (back/forward), so the field follows it. */}
-        <form key={state.q} className={styles.search} onSubmit={handleSearch} role="search">
+        <form
+          key={state.q}
+          className={styles.search}
+          onSubmit={handleSearch}
+          role="search"
+          aria-label="Users"
+        >
           <div className={styles.searchField}>
             <Input
               name="q"

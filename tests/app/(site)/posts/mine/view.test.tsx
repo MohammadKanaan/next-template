@@ -45,22 +45,22 @@ describe('MyPostsView', () => {
     render(<MyPostsView posts={page([draft, published])} />)
     const draftRow = screen.getByRole('row', { name: /A draft/ })
     expect(within(draftRow).getByText('Draft')).toBeInTheDocument()
-    expect(within(draftRow).getByRole('link', { name: 'View' })).toHaveAttribute(
+    expect(within(draftRow).getByRole('link', { name: /^View/ })).toHaveAttribute(
       'href',
       `/posts/${draft.id}`,
     )
-    expect(within(draftRow).getByRole('link', { name: 'Edit' })).toHaveAttribute(
+    expect(within(draftRow).getByRole('link', { name: /^Edit/ })).toHaveAttribute(
       'href',
       `/posts/${draft.id}/edit`,
     )
 
     const liveRow = screen.getByRole('row', { name: /Live post/ })
     expect(within(liveRow).getByText('Published')).toBeInTheDocument()
-    expect(within(liveRow).getByRole('link', { name: 'View' })).toHaveAttribute(
+    expect(within(liveRow).getByRole('link', { name: /^View/ })).toHaveAttribute(
       'href',
       `/posts/${published.id}`,
     )
-    expect(within(liveRow).getByRole('link', { name: 'Edit' })).toHaveAttribute(
+    expect(within(liveRow).getByRole('link', { name: /^Edit/ })).toHaveAttribute(
       'href',
       `/posts/${published.id}/edit`,
     )

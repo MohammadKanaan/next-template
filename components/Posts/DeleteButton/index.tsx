@@ -1,9 +1,11 @@
 'use client'
 
+import { Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
 import { deletePostAction } from '@/actions/posts'
+import { ActionButton } from '@/components/ActionButton'
 import { LoadingButton } from '@/components/LoadingButton'
 import { Button } from '@/components/SCN/button'
 import {
@@ -42,7 +44,7 @@ export const DeletePostButton = ({ postId }: DeletePostButtonProps) => {
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger render={<Button type="button" variant="destructive" />}>Delete</DialogTrigger>
+      <DialogTrigger render={<ActionButton action="delete" label="Delete post" />} />
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Delete this post?</DialogTitle>
@@ -55,6 +57,7 @@ export const DeletePostButton = ({ postId }: DeletePostButtonProps) => {
           <LoadingButton
             type="button"
             variant="destructive"
+            icon={Trash2}
             loading={isPending}
             onClick={handleConfirm}
           >

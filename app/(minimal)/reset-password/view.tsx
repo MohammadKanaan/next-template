@@ -4,8 +4,9 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { resetPasswordAction } from '@/actions/auth'
+import { AuthHeader } from '@/components/Auth/AuthHeader'
 import { ResetPasswordForm } from '@/components/Auth/ResetPasswordForm'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/SCN/card'
+import { Card, CardContent } from '@/components/SCN/card'
 import { ROUTE_FORGOT_PASSWORD, ROUTE_LOGIN } from '@/lib/constants-routes'
 import type { ResetPasswordInput } from '@/lib/dto/auth'
 import styles from '../login/styles.module.scss'
@@ -31,13 +32,13 @@ export const ResetPasswordView = ({ token }: ResetPasswordViewProps) => {
     <div className={styles.page}>
       <div className={styles.card}>
         <Card>
-          <CardHeader>
-            <CardTitle>Reset your password</CardTitle>
-            <CardDescription>
-              {token ? 'Choose a new password.' : 'This reset link is invalid or has expired.'}
-            </CardDescription>
-          </CardHeader>
           <CardContent>
+            <AuthHeader
+              title="Reset your password"
+              description={
+                token ? 'Choose a new password.' : 'This reset link is invalid or has expired.'
+              }
+            />
             {token ? (
               <ResetPasswordForm token={token} onSubmit={handleSubmit} />
             ) : (

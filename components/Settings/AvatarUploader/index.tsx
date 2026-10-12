@@ -1,6 +1,8 @@
 'use client'
 
+import { Camera } from 'lucide-react'
 import { LoadingButton } from '@/components/LoadingButton'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/SCN/tooltip'
 import { UserAvatar } from '@/components/UserAvatar'
 import { useImageUpload } from '@/hooks/useImageUpload'
 import { AVATAR_CONTENT_TYPES, type CreateUploadInput, type UploadTicket } from '@/lib/dto/uploads'
@@ -49,9 +51,22 @@ export const AvatarUploader = ({
           disabled={uploading}
           onChange={handleChange}
         />
-        <LoadingButton type="button" variant="outline" loading={uploading} onClick={openPicker}>
-          Change photo
-        </LoadingButton>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <LoadingButton
+                type="button"
+                variant="outline"
+                size="icon-sm"
+                icon={Camera}
+                aria-label="Change photo"
+                loading={uploading}
+                onClick={openPicker}
+              />
+            }
+          />
+          <TooltipContent>Change photo</TooltipContent>
+        </Tooltip>
         <p className={styles.hint}>PNG, JPEG, or WebP, up to 2 MB.</p>
         {error && (
           <p id={errorId} className={styles.error} role="alert">

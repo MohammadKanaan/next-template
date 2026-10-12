@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, type ComponentProps } from 'react'
+import { ActionButton } from '@/components/ActionButton'
+import type { RecordAction } from '@/components/ActionButton/actions'
 import { LoadingButton } from '@/components/LoadingButton'
 import { Button } from '@/components/SCN/button'
 import {
@@ -20,8 +22,10 @@ type ButtonVariant = ComponentProps<typeof Button>['variant']
 type ButtonSize = ComponentProps<typeof Button>['size']
 
 type ConfirmDialogProps<T> = {
-  /** The text of the button that opens the dialog. */
+  /** The text of the button that opens the dialog; with `triggerAction`, its label. */
   trigger: string
+  /** Makes the trigger a record action's icon button (`ActionButton`) labelled `trigger`. */
+  triggerAction?: RecordAction
   triggerVariant?: ButtonVariant
   triggerSize?: ButtonSize
   /** Why the trigger is disabled, shown on hover and focus. */
@@ -41,6 +45,7 @@ type ConfirmDialogProps<T> = {
 /** Asks before an irreversible write and shows the server's refusal where the question was asked. */
 export const ConfirmDialog = <T,>({
   trigger,
+  triggerAction,
   triggerVariant = 'destructive',
   triggerSize = 'sm',
   triggerTitle,
@@ -81,19 +86,32 @@ export const ConfirmDialog = <T,>({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger
-        render={
-          <Button
-            type="button"
-            variant={triggerVariant}
-            size={triggerSize}
-            disabled={disabled}
-            title={triggerTitle}
-          />
-        }
-      >
-        {trigger}
-      </DialogTrigger>
+      {triggerAction ? (
+        <DialogTrigger
+          render={
+            <ActionButton
+              action={triggerAction}
+              label={trigger}
+              disabled={disabled}
+              disabledReason={triggerTitle}
+            />
+          }
+        />
+      ) : (
+        <DialogTrigger
+          render={
+            <Button
+              type="button"
+              variant={triggerVariant}
+              size={triggerSize}
+              disabled={disabled}
+              title={triggerTitle}
+            />
+          }
+        >
+          {trigger}
+        </DialogTrigger>
+      )}
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>

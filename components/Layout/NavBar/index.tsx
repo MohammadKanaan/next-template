@@ -9,6 +9,7 @@ import { SignOutButton } from '@/components/Auth/SignOutButton'
 import { ButtonLink } from '@/components/ButtonLink'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { UserAvatar } from '@/components/UserAvatar'
+import { useReturnPath } from '@/hooks/useReturnPath'
 import { useScrollLock } from '@/hooks/useScrollLock'
 import { BREAKPOINTS } from '@/lib/constants-breakpoints'
 import {
@@ -20,6 +21,7 @@ import {
   ROUTE_SETTINGS,
   ROUTE_UI_KIT,
 } from '@/lib/constants-routes'
+import { PINNED_THEME } from '@/lib/constants-theme'
 import type { CurrentUser } from '@/lib/dto/users'
 import { env } from '@/lib/env'
 import styles from './styles.module.scss'
@@ -71,9 +73,11 @@ type AccountActionsProps = {
 }
 
 const AccountActions = ({ user }: AccountActionsProps) => {
+  const { remember } = useReturnPath()
+
   if (!user) {
     return (
-      <ButtonLink href={ROUTE_LOGIN} size="sm">
+      <ButtonLink href={ROUTE_LOGIN} size="sm" onClick={remember}>
         Log in
       </ButtonLink>
     )
@@ -140,7 +144,7 @@ export const NavBar = ({ user }: NavBarProps) => {
         <div className={styles.desktopNav}>
           <NavLinks links={links} />
           <div className={styles.accountArea}>
-            <ThemeToggle />
+            {PINNED_THEME === null && <ThemeToggle />}
             <AccountActions user={user} />
           </div>
         </div>
@@ -181,7 +185,7 @@ export const NavBar = ({ user }: NavBarProps) => {
             ))}
           </div>
           <div className={styles.mobileAccountArea}>
-            <ThemeToggle />
+            {PINNED_THEME === null && <ThemeToggle />}
             {/* Account actions close the menu; theme choices keep it open. */}
             <div className={styles.accountArea} onClick={closeMobileMenu}>
               <AccountActions user={user} />

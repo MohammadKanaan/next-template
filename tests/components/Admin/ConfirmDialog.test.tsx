@@ -68,4 +68,21 @@ describe('ConfirmDialog', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument()
     expect(onDone).not.toHaveBeenCalled()
   })
+
+  it('can open from a record action icon button named by the trigger text', async () => {
+    render(
+      <ConfirmDialog
+        trigger="Delete Dune"
+        triggerAction="delete"
+        title="Delete Dune?"
+        description="Its credits go with it."
+        confirmLabel="Delete movie"
+        onConfirm={async () => ({ ok: true as const, data: undefined })}
+      />,
+    )
+    const trigger = screen.getByRole('button', { name: 'Delete Dune' })
+    expect(trigger).toHaveTextContent('')
+    await userEvent.click(trigger)
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+  })
 })

@@ -7,6 +7,7 @@ import { ButtonLink } from '@/components/ButtonLink'
 import { Separator } from '@/components/SCN/separator'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/SCN/sidebar'
 import { ThemeToggle } from '@/components/ThemeToggle'
+import { PINNED_THEME } from '@/lib/constants-theme'
 import { ROUTE_HOME } from '@/lib/constants-routes'
 import type { CurrentUser } from '@/lib/dto/users'
 import styles from './styles.module.scss'
@@ -36,7 +37,7 @@ export const AdminShell = ({ viewer, defaultOpen, children }: AdminShellProps) =
               View site
               <ExternalLink data-icon="inline-end" aria-hidden="true" />
             </ButtonLink>
-            <ThemeToggle />
+            {PINNED_THEME === null && <ThemeToggle />}
           </div>
         </header>
         <div className={styles.content}>{children}</div>

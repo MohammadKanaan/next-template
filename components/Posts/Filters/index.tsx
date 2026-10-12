@@ -85,7 +85,7 @@ export const PostsFilters = ({ q, sort, onChange, disabled }: PostsFiltersProps)
   }
 
   return (
-    <div className={styles.filters}>
+    <div className={styles.filters} role="search" aria-label="Posts">
       <div className={styles.search}>
         <Input
           type="search"

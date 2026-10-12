@@ -1,7 +1,10 @@
 import type { Metadata } from 'next'
 import { cache } from 'react'
-import { JsonLd } from '@/components/JsonLd'
+import { ArrowLeft } from 'lucide-react'
+import { ActionGroup } from '@/components/ActionGroup'
+import { ActionLink } from '@/components/ActionLink'
 import { ButtonLink } from '@/components/ButtonLink'
+import { JsonLd } from '@/components/JsonLd'
 import { PageHeader } from '@/components/PageHeader'
 import { DeletePostButton } from '@/components/Posts/DeleteButton'
 import { PostStatusBadge } from '@/components/Posts/StatusBadge'
@@ -61,14 +64,17 @@ const PostDetailPage = async ({ params }: PageProps<'/posts/[id]'>) => {
         actions={
           <>
             <ButtonLink href={ROUTE_POSTS} variant="secondary">
+              <ArrowLeft data-icon="inline-start" aria-hidden="true" />
               Back
             </ButtonLink>
-            {post.permissions.update && (
-              <ButtonLink href={ROUTE_POST_EDIT(post.id)} variant="outline">
-                Edit
-              </ButtonLink>
+            {(post.permissions.update || post.permissions.delete) && (
+              <ActionGroup label="Post actions">
+                {post.permissions.update && (
+                  <ActionLink action="edit" label="Edit post" href={ROUTE_POST_EDIT(post.id)} />
+                )}
+                {post.permissions.delete && <DeletePostButton postId={post.id} />}
+              </ActionGroup>
             )}
-            {post.permissions.delete && <DeletePostButton postId={post.id} />}
           </>
         }
       />
