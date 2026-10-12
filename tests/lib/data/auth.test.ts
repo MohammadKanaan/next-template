@@ -28,6 +28,11 @@ vi.mock('next/headers', () => ({
   headers: async () => requestHeaders(),
 }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn(), refresh: vi.fn() }))
+const BUCKET_URL = vi.hoisted(() => 'https://pub-abc.r2.dev/')
+vi.mock('@/lib/server/storage', () => ({
+  keyFromPublicUrl: (url: string | null) =>
+    url?.startsWith(BUCKET_URL) ? url.slice(BUCKET_URL.length) : null,
+}))
 
 const currentSessionOf = (userId: string) =>
   db.session.findFirstOrThrow({ where: { userId }, orderBy: { createdAt: 'desc' } })
@@ -451,28 +456,39 @@ describe('DAL auth', () => {
       expect(await getViewer()).toBeNull()
     })
 
-    it("queues the user's upload objects for deletion, delayed past every ticket's lifetime", async () => {
+    it("queues the avatar's object for deletion, delayed past every ticket's lifetime", async () => {
       const user = await createUser({})
-      const other = await createUser({})
-      const upload = (userId: string, key: string, status: 'pending' | 'attached') =>
-        db.upload.create({
-          data: { userId, key, purpose: 'avatar', contentType: 'image/png', size: 1, status },
-        })
-      await upload(user.id, `avatars/${user.id}/old`, 'attached')
-      await upload(user.id, `avatars/${user.id}/half`, 'pending')
-      await upload(other.id, `avatars/${other.id}/keep`, 'attached')
+      const key = `avatars/${user.id}/0190d1a2-0000-7000-8000-000000000001`
+      await db.user.update({ where: { id: user.id }, data: { image: `${BUCKET_URL}${key}` } })
       await signInAs(user)
       vi.mocked(enqueue).mockClear()
 
       await auth.api.deleteUser({ body: { password: TEST_PASSWORD }, headers: requestHeaders() })
 
       const deletes = vi.mocked(enqueue).mock.calls.filter(([name]) => name === 'delete-object')
-      const keys = deletes.map(([, payload]) => ('key' in payload ? payload.key : null)).sort()
-      expect(keys).toEqual([`avatars/${user.id}/half`, `avatars/${user.id}/old`])
-      for (const [, , options] of deletes) {
-        expect(options).toEqual({ startAfter: MAX_OBJECT_DELETE_DELAY_SECONDS })
+      expect(deletes).toEqual([
+        ['delete-object', { key }, { startAfter: MAX_OBJECT_DELETE_DELAY_SECONDS }],
+      ])
+    })
+
+    it('deletes no object it does not own: a Google picture or another user’s key', async () => {
+      const other = await createUser({})
+      for (const image of [
+        'https://lh3.googleusercontent.com/a/picture',
+        `${BUCKET_URL}avatars/${other.id}/0190d1a2-0000-7000-8000-000000000001`,
+      ]) {
+        const user = await createUser({})
+        await db.user.update({ where: { id: user.id }, data: { image } })
+        await signInAs(user)
+        vi.mocked(enqueue).mockClear()
+
+        await auth.api.deleteUser({ body: { password: TEST_PASSWORD }, headers: requestHeaders() })
+
+        expect(await db.user.count({ where: { id: user.id } })).toBe(0)
+        expect(vi.mocked(enqueue).mock.calls.filter(([name]) => name === 'delete-object')).toEqual(
+          [],
+        )
       }
-      expect(await db.upload.count()).toBe(1)
     })
 
     it('refuses a wrong password and keeps the account', async () => {

@@ -130,6 +130,19 @@ export const deleteObject = async (key: string): Promise<void> => {
   await getClient().send(new DeleteObjectCommand({ Bucket: requireStorageEnv().bucket, Key: key }))
 }
 
+/**
+ * The key of an object this bucket serves at `url`, or null for any other URL (a Google profile
+ * picture, or anything when storage is not configured). The inverse of `publicUrl`.
+ */
+export const keyFromPublicUrl = (url: string | null): string | null => {
+  const env = storageEnv()
+  if (!env || !url) {
+    return null
+  }
+  const prefix = `${env.publicUrl.replace(/\/+$/, '')}/`
+  return url.startsWith(prefix) && url.length > prefix.length ? url.slice(prefix.length) : null
+}
+
 /** The URL anyone can load the object from: the bucket's public domain plus the key. */
 export const publicUrl = (key: string): string => {
   return `${requireStorageEnv().publicUrl.replace(/\/+$/, '')}/${key}`

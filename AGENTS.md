@@ -213,8 +213,8 @@ docs/DECISIONS.md        # Framework and library choices, with reasons; what was
   `NotFoundError`), so pages pass the route param straight in; a write that takes an id
   (`updatePost`, `setUserRole`) reports it as a validation error.
 - Every function enforces auth itself: `requireUser()` / `requireAdmin()` plus record-level rules.
-  `createPost` also calls `consumeRateLimit` right after `requireUser()`, so every path to it shares
-  the limit.
+  `createPost` and `createUpload` also call `consumeRateLimit` right after `requireUser()`, so every
+  path to them shares the limit.
 - Record-level rules live in `lib/data/policies/<resource>.ts` (`postPolicy`), pure and tested per
   viewer in `tests/lib/data/policies/`; DAL functions call `authorize(rule, viewer, record)`
   (`lib/data/policy.ts`, throws `ForbiddenError`) and build a DTO's `permissions` with

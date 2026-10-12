@@ -16,6 +16,7 @@ import { deriveUsername } from '@/lib/username'
 import { invalidateTags } from '@/lib/server/cache'
 import { logger } from '@/lib/server/logger'
 import { enqueue } from '@/lib/server/queue'
+import { keyFromPublicUrl } from '@/lib/server/storage'
 import { POSTS_TAG, userTag } from './cacheTags'
 import { db } from './db'
 import { ForbiddenError, UnauthorizedError } from './errors'
@@ -209,27 +210,24 @@ export const auth = betterAuth({
     },
     deleteUser: {
       enabled: true,
-      // Upload rows go with the user (cascade) but their objects would stay in the bucket, so the
-      // keys are read and queued for deletion before the rows disappear. The jobs are delayed past
-      // every ticket's lifetime plus the grace period: an object uploaded through a still-valid
-      // ticket after the rows are gone would otherwise be orphaned.
+      // The avatar's object would stay in the bucket once the user is gone, so it is queued for
+      // deletion first. The job is delayed past every ticket's lifetime plus the grace period: an
+      // object uploaded through a still-valid ticket after the job ran would otherwise be orphaned.
+      // Only an object under the user's own prefix is ours to delete (a Google picture is not).
       beforeDelete: async (user) => {
-        const uploads = await db.upload.findMany({
-          where: { userId: user.id },
-          select: { key: true },
-        })
-        const results = await Promise.allSettled(
-          uploads.map(({ key }) =>
-            enqueue('delete-object', { key }, { startAfter: MAX_OBJECT_DELETE_DELAY_SECONDS }),
-          ),
-        )
-        for (const result of results) {
-          if (result.status === 'rejected') {
-            log.error({ err: result.reason, userId: user.id }, 'object not queued for deletion')
-          }
+        const key = keyFromPublicUrl(user.image ?? null)
+        if (!key?.startsWith(`avatars/${user.id}/`)) {
+          return
         }
+        await enqueue(
+          'delete-object',
+          { key },
+          { startAfter: MAX_OBJECT_DELETE_DELAY_SECONDS },
+        ).catch((error) =>
+          log.error({ err: error, userId: user.id }, 'avatar not queued for deletion'),
+        )
       },
-      // Posts, sessions, accounts and uploads cascade: drop the cached lists and the cached viewer.
+      // Posts, sessions and accounts cascade: drop the cached lists and the cached viewer.
       afterDelete: async (user) => {
         await invalidateTags(POSTS_TAG, userTag(user.id))
       },

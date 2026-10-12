@@ -4,7 +4,7 @@ import { RequestError } from '@/lib/client/errors'
 import { uploadFile } from '@/lib/client/uploads'
 
 const ticket = {
-  uploadId: 'id',
+  key: 'avatars/u/1',
   url: 'https://acct.r2.cloudflarestorage.com/bucket/avatars/u/1?X-Amz-Signature=s',
   headers: { 'Content-Type': 'image/png' },
 }

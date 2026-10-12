@@ -51,7 +51,6 @@ model User {
   sessions      Session[]
   accounts      Account[]
   posts         Post[]
-  uploads       Upload[]
 
   @@map("users")
 }
@@ -127,31 +126,4 @@ model Post {
   @@index([userId])
   @@index([published, createdAt, id])
   @@map("posts")
-}
-
-enum UploadPurpose {
-  avatar
-}
-
-enum UploadStatus {
-  pending
-  attached
-}
-
-/// Every object the app asked the browser to upload to R2, so abandoned `pending` rows and replaced
-/// files can be cleaned up by jobs instead of leaking in the bucket.
-model Upload {
-  id          String        @id @default(uuid(7)) @db.Uuid
-  key         String        @unique
-  userId      String        @map("user_id") @db.Uuid
-  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  purpose     UploadPurpose
-  contentType String        @map("content_type")
-  size        Int
-  status      UploadStatus  @default(pending)
-  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
-
-  @@index([userId, purpose, status])
-  @@index([status, createdAt])
-  @@map("uploads")
 }

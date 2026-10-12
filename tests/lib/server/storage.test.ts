@@ -7,6 +7,7 @@ import {
   deleteObject,
   headObject,
   isStorageConfigured,
+  keyFromPublicUrl,
   publicUrl,
 } from '@/lib/server/storage'
 
@@ -51,6 +52,16 @@ describe('storage', () => {
 
   it('builds the public URL from the bucket origin, without a double slash', () => {
     expect(publicUrl('avatars/u/1')).toBe('https://pub-abc.r2.dev/avatars/u/1')
+  })
+
+  it('reads a key back from the public URL, for this bucket only', () => {
+    expect(keyFromPublicUrl('https://pub-abc.r2.dev/avatars/u/1')).toBe('avatars/u/1')
+    expect(keyFromPublicUrl(publicUrl('avatars/u/1'))).toBe('avatars/u/1')
+    expect(keyFromPublicUrl('https://lh3.googleusercontent.com/a/picture')).toBeNull()
+    expect(keyFromPublicUrl('https://pub-abc.r2.dev/')).toBeNull()
+    expect(keyFromPublicUrl(null)).toBeNull()
+    stubR2({})
+    expect(keyFromPublicUrl('https://pub-abc.r2.dev/avatars/u/1')).toBeNull()
   })
 
   it('signs a PUT to the account endpoint whose signature covers the type and the exact size', async () => {
